@@ -1,0 +1,39 @@
+import { api } from "./client";
+import type {
+  Agent,
+  AgentTool,
+  Approval,
+  ComplianceIncident,
+  ComplianceSummary,
+  CountMap,
+  DashboardSummary,
+  Execution,
+  Incident,
+  ListResponse,
+  PolicyDecisionResponse,
+  PolicyRule
+} from "../types/api";
+
+export const endpoints = {
+  dashboardSummary: () => api.get<DashboardSummary>("/api/v1/dashboard/summary").then((r) => r.data),
+  agentsByRisk: () => api.get<CountMap>("/api/v1/dashboard/agents-by-risk").then((r) => r.data),
+  executionsByStatus: () =>
+    api.get<CountMap>("/api/v1/dashboard/executions-by-status").then((r) => r.data),
+  approvalsByStatus: () =>
+    api.get<CountMap>("/api/v1/dashboard/approvals-by-status").then((r) => r.data),
+  agents: () => api.get<ListResponse<Agent>>("/api/v1/agents").then((r) => r.data),
+  agent: (id: string) => api.get<Agent>(`/api/v1/agents/${id}`).then((r) => r.data),
+  agentTools: (agentId: string) =>
+    api.get<ListResponse<AgentTool>>(`/api/v1/agents/${agentId}/tools`).then((r) => r.data),
+  policyRules: () =>
+    api.get<ListResponse<PolicyRule>>("/api/v1/policy-rules").then((r) => r.data),
+  approvals: () => api.get<ListResponse<Approval>>("/api/v1/approvals").then((r) => r.data),
+  executions: () => api.get<ListResponse<Execution>>("/api/v1/executions").then((r) => r.data),
+  incidents: () => api.get<ListResponse<Incident>>("/api/v1/incidents").then((r) => r.data),
+  complianceSummary: () =>
+    api.get<ComplianceSummary>("/api/v1/compliance/summary").then((r) => r.data),
+  complianceIncidents: () =>
+    api.get<ListResponse<ComplianceIncident>>("/api/v1/compliance/incidents").then((r) => r.data),
+  evaluatePolicy: (payload: unknown) =>
+    api.post<PolicyDecisionResponse>("/api/v1/policy-decisions/evaluate", payload).then((r) => r.data)
+};
