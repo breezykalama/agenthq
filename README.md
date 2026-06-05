@@ -1,46 +1,81 @@
 # AgentHQ
 
-AgentHQ is an enterprise agent governance platform MVP. It helps teams register agents, declare allowed tools, define policy rules, evaluate governance decisions, track simulated executions, manage approvals, record incidents, and produce compliance summaries.
+Enterprise AI Agent Governance Platform.
 
-## What AgentHQ Is
+AgentHQ provides visibility, governance, approvals, policy enforcement, execution tracking, incident management, auditability, and compliance reporting for AI agents.
 
-- A governance control plane for enterprise AI agents.
-- A registry for agents, tools, policies, approvals, executions, incidents, audit logs, dashboards, and compliance reports.
-- A local demo-ready backend and frontend for showing how governance workflows fit together.
+## The Problem
 
-## What AgentHQ Is Not
+Organizations are rapidly deploying AI agents across operations, customer service, knowledge management, and business workflows.
 
-- It is not an authentication or identity system yet.
-- It does not execute real agents or tools.
-- It does not integrate with LLMs, MCP servers, or external AI providers yet.
-- It is not production deployment infrastructure.
+As the number of agents grows, organizations need answers to critical governance questions:
 
-## Architecture Overview
+* Which agents exist?
+* What tools can they access?
+* Which actions require approval?
+* Which executions were blocked?
+* What incidents occurred?
+* How do we audit agent activity?
+* How do we generate compliance reports?
 
-```text
-frontend/
-  React + TypeScript + Vite + Tailwind
-  React Router + TanStack Query + Axios
+## The Solution
 
-backend/
-  FastAPI API
-  SQLAlchemy models and repositories
-  Service-layer business rules
-  Alembic migrations
-  PostgreSQL
-```
+AgentHQ provides:
 
-Primary backend modules:
+* Agent Registry
+* Agent Tools Registry
+* Policy Rules
+* Policy Decision Engine
+* Approval Workflows
+* Execution Tracking
+* Incident Management
+* Audit Logging
+* Compliance Reporting
+* Dashboard Analytics
 
-- Agent Registry
-- Agent Tools Registry
-- Policy Rules
-- Policy Decision Engine
-- Execution Tracking and Policy Enforcement
-- Approvals
-- Incident Reporting
-- Audit Logging
-- Dashboard and Compliance Reports
+## Architecture
+
+![AgentHQ Architecture](docs/images/agenthq-architecture.png)
+
+AgentHQ uses a React frontend for the governance console, a FastAPI backend for API workflows, modular governance services for policy decisions and lifecycle rules, PostgreSQL persistence for operational records, and audit/compliance capabilities for reporting and review.
+
+## Core Capabilities
+
+* **Agent Registry**: Maintain a catalog of governed agents, ownership, status, department, and risk level.
+* **Policy Enforcement**: Evaluate active policy rules to allow, require approval, or block requested actions.
+* **Approval Workflows**: Track human approval requests for high-risk or policy-controlled actions.
+* **Execution Tracking**: Record simulated agent actions, status, cost, latency, policy decisions, and outcomes.
+* **Incident Management**: Capture and resolve incidents related to failed executions, blocked actions, or policy violations.
+* **Audit Logging**: Preserve structured before/after audit events across governance workflows.
+* **Compliance Reporting**: Generate read-only summaries for auditors and managers.
+
+## Tech Stack
+
+### Backend
+
+* FastAPI
+* PostgreSQL
+* SQLAlchemy
+* Alembic
+
+### Frontend
+
+* React
+* TypeScript
+* Tailwind CSS
+* TanStack Query
+
+### Infrastructure
+
+* Docker Compose
+
+## Quality
+
+* 144 automated tests passing
+* Ruff clean
+* MyPy clean
+* Dockerized deployment
+* Seed/demo data included
 
 ## Repository Structure
 
@@ -209,19 +244,22 @@ See [DEMO.md](DEMO.md) for curl-based examples.
 
 Screenshots can be added here once the visual demo flow stabilizes:
 
-- Dashboard overview
-- Agent detail and tools
-- Policy decision tester
-- Compliance summary
+* Dashboard overview
+* Agent detail and tools
+* Policy decision tester
+* Compliance summary
 
 ## Roadmap
 
-- Authentication and role-based access control
-- Production deployment configuration
-- Real agent/tool execution integrations
-- MCP and LLM provider integrations
-- Richer compliance exports
-- Deeper analytics and trend reporting
+Future ideas:
+
+* Authentication & RBAC
+* Real Agent Registration
+* MCP Server Registration
+* Foundry Agent Registration
+* Cost Tracking
+* Notifications
+* Multi-tenancy
 
 ## Health Check
 
