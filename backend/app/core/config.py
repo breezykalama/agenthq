@@ -4,6 +4,28 @@ from pydantic import Field, PostgresDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def normalize_database_url(database_url: str) -> str:
+    for prefix in ("postgres://", "postgresql://"):
+        if database_url.startswith(prefix):
+            return database_url.replace(prefix, "postgresql+psycopg://", 1)
+    return database_url
+
+
+class CorsSettings(BaseSettings):
+    backend_cors_origins: str = Field(default="", alias="BACKEND_CORS_ORIGINS")
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+
+def get_cors_origins() -> list[str]:
+    origins = CorsSettings().backend_cors_origins
+    return [origin.strip().rstrip("/") for origin in origins.split(",") if origin.strip()]
+
+
 class Settings(BaseSettings):
     app_name: str = "AgentHQ"
     environment: str = "development"
@@ -17,7 +39,7 @@ class Settings(BaseSettings):
 
     @property
     def sqlalchemy_database_uri(self) -> str:
-        return str(self.database_url)
+        return normalize_database_url(str(self.database_url))
 
 
 @lru_cache

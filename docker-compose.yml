@@ -26,6 +26,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+psycopg://agenthq:agenthq@postgres:5432/agenthq
+      BACKEND_CORS_ORIGINS: http://localhost:5173
       APP_NAME: AgentHQ
       ENVIRONMENT: development
     ports:

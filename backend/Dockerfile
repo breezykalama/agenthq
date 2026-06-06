@@ -4,7 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/root/.local/bin:/app/.venv/bin:$PATH"
 
 WORKDIR /app
 
@@ -14,10 +14,11 @@ RUN apt-get update \
     && curl -LsSf https://astral.sh/uv/install.sh | sh
 
 COPY pyproject.toml uv.lock ./
-RUN /root/.local/bin/uv sync --frozen --no-dev
+RUN /root/.local/bin/uv sync --frozen --no-dev --no-install-project
 
 COPY . .
+RUN /root/.local/bin/uv sync --frozen --no-dev
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

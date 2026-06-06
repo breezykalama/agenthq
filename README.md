@@ -68,10 +68,13 @@ AgentHQ uses a React frontend for the governance console, a FastAPI backend for 
 ### Infrastructure
 
 * Docker Compose
+* Supabase PostgreSQL
+* Render
+* Vercel
 
 ## Quality
 
-* 144 automated tests passing
+* 146 automated tests passing
 * Ruff clean
 * MyPy clean
 * Dockerized deployment
@@ -123,7 +126,7 @@ http://localhost:8000/docs
 Seed demo data manually:
 
 ```bash
-docker compose exec api agenthq-seed
+docker compose exec api python -m app.seed
 ```
 
 Stop the stack:
@@ -137,6 +140,21 @@ Reset local database data:
 ```bash
 docker compose down -v
 ```
+
+## Production Deployment
+
+AgentHQ is prepared for a Supabase PostgreSQL, Render backend, and Vercel frontend deployment.
+
+Production configuration is environment-driven:
+
+```text
+Backend:  DATABASE_URL, BACKEND_CORS_ORIGINS
+Frontend: VITE_API_BASE_URL
+```
+
+Use exact HTTPS origins in `BACKEND_CORS_ORIGINS`, keep `DATABASE_URL` in backend secret storage, apply migrations before serving a new version, and never seed production automatically. FastAPI interactive docs remain enabled for this MVP and can be restricted at the edge when needed.
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the complete deployment guide.
 
 ## Frontend
 
@@ -199,7 +217,7 @@ Seed demo data:
 
 ```bash
 cd backend
-uv run agenthq-seed
+uv run python -m app.seed
 ```
 
 Run the API locally:
