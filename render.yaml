@@ -3,7 +3,6 @@ services:
     name: agenthq-api
     runtime: docker
     plan: free
-    rootDir: backend
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     envVars:
