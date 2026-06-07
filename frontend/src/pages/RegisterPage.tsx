@@ -34,7 +34,7 @@ export function RegisterPage() {
   return (
     <AuthPageFrame title="Create your account" subtitle="Register an identity for governed access.">
       <div className="mb-5 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">
-        The first registered user becomes admin. Later users default to agent owner.
+        New accounts default to Agent Owner. An administrator can update roles after registration.
       </div>
       <form className="space-y-4" onSubmit={submit}>
         <Field label="Full name">
