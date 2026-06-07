@@ -93,3 +93,67 @@ curl -X POST http://localhost:8000/api/v1/incidents \
 ```bash
 curl http://localhost:8000/api/v1/compliance/summary
 ```
+
+## AgentHQ v0.2.0 MCP Demo Flow
+
+This flow uses the current mock/local MCP discovery adapter. It demonstrates registration, linked agent creation, idempotent tool discovery, auditing, and dashboard counts without real MCP protocol networking.
+
+## 9. Register an MCP Server
+
+```bash
+curl -X POST http://localhost:8000/api/v1/mcp-servers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Customer Operations MCP",
+    "description": "Demo MCP server for customer operations.",
+    "server_url": "https://mcp.example.com/server"
+  }'
+```
+
+Save the returned MCP server `id` as `{server_id}`.
+
+## 10. Sync the MCP Server
+
+```bash
+curl -X POST http://localhost:8000/api/v1/mcp-servers/{server_id}/sync
+```
+
+Save the returned `agent_id`. A successful sync reports `connected`, creates three tools, and sets `last_sync_at`.
+
+## 11. Confirm the Linked Agent
+
+```bash
+curl http://localhost:8000/api/v1/agents/{agent_id}
+```
+
+The linked agent name should match the registered MCP server name.
+
+## 12. Confirm Discovered Tools
+
+```bash
+curl http://localhost:8000/api/v1/agents/{agent_id}/tools
+```
+
+The response should include:
+
+* `list_customers`
+* `create_ticket`
+* `summarize_policy`
+
+Run the sync endpoint again to confirm no duplicate tools are created.
+
+## 13. Confirm the MCP Sync Audit Log
+
+```bash
+curl "http://localhost:8000/api/v1/audit-logs?action=mcp_server.synced&entity_id={server_id}"
+```
+
+The response should include an `mcp_server.synced` event with before/after snapshots.
+
+## 14. Confirm the Dashboard MCP Server Count
+
+```bash
+curl http://localhost:8000/api/v1/dashboard/summary
+```
+
+Confirm `total_mcp_servers` and `connected_mcp_servers` include the synced server.

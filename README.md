@@ -33,11 +33,29 @@ AgentHQ provides:
 * Compliance Reporting
 * Dashboard Analytics
 
+## AgentHQ v0.2.0
+
+AgentHQ v0.2.0 introduces MCP Server Registration and Tool Discovery.
+
+This allows AgentHQ to:
+
+* Register MCP servers
+* Track MCP server connection status
+* Automatically create linked agents
+* Discover tools from MCP servers
+* Sync discovered tools into the Agent Tools Registry
+* Preserve manually edited tool risk levels and permissions
+* Prevent duplicate tools during repeated syncs
+* Audit successful and failed MCP sync operations
+* Show MCP server counts on the dashboard
+
+See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the complete v0.2.0 release summary.
+
 ## Architecture
 
 ![AgentHQ Architecture](docs/images/agenthq-architecture.png)
 
-AgentHQ uses a React frontend for the governance console, a FastAPI backend for API workflows, modular governance services for policy decisions and lifecycle rules, PostgreSQL persistence for operational records, and audit/compliance capabilities for reporting and review.
+AgentHQ uses a React frontend for the governance console, a FastAPI backend for API workflows, modular governance services for policy decisions and lifecycle rules, PostgreSQL persistence for operational records, and audit/compliance capabilities for reporting and review. AgentHQ can also register MCP servers and sync discovered tools into the governance layer through an adapter-based discovery boundary.
 
 ## Core Capabilities
 
@@ -48,6 +66,10 @@ AgentHQ uses a React frontend for the governance console, a FastAPI backend for 
 * **Incident Management**: Capture and resolve incidents related to failed executions, blocked actions, or policy violations.
 * **Audit Logging**: Preserve structured before/after audit events across governance workflows.
 * **Compliance Reporting**: Generate read-only summaries for auditors and managers.
+* **MCP Server Registration**: Register MCP servers and track connection, synchronization, and error status.
+* **MCP Tool Discovery**: Discover tools through an adapter-based integration and sync them into the Agent Tools Registry.
+* **Linked Agent Creation**: Automatically create or reuse the governed agent associated with an MCP server.
+* **Tool Sync Auditing**: Record successful and failed MCP synchronization events with before/after snapshots.
 
 ## Tech Stack
 
@@ -74,7 +96,7 @@ AgentHQ uses a React frontend for the governance console, a FastAPI backend for 
 
 ## Quality
 
-* 146 automated tests passing
+* 170 automated tests passing
 * Ruff clean
 * MyPy clean
 * Dockerized deployment
@@ -269,13 +291,19 @@ Screenshots can be added here once the visual demo flow stabilizes:
 
 ## Roadmap
 
+Completed in v0.2.0:
+
+* MCP Server Registration
+* MCP Tool Discovery
+* Linked Agent Creation
+* Tool Sync Auditing
+
 Future ideas:
 
+* Real MCP protocol client integration
 * Authentication & RBAC
-* Real Agent Registration
-* MCP Server Registration
 * Foundry Agent Registration
-* Cost Tracking
+* Copilot Studio Agent Registration
 * Notifications
 * Multi-tenancy
 
