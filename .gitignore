@@ -16,7 +16,8 @@ build/
 
 # Editors
 .idea/
-.vscode/
+.vscode/*
+!.vscode/settings.json
 
 # OS
 .DS_Store

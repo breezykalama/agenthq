@@ -6,6 +6,7 @@ from app.models.agent import AgentRiskLevel, AgentStatus
 from app.models.approval import ApprovalStatus
 from app.models.execution import ExecutionStatus
 from app.models.incident import IncidentStatus
+from app.models.mcp_server import MCPServerStatus
 from app.repositories import dashboard as dashboard_repository
 from app.schemas.dashboard import (
     AgentsByRisk,
@@ -58,6 +59,15 @@ def get_summary(db: Session) -> DashboardSummary:
         critical_incidents=dashboard_repository.count_incidents(
             db,
             severity=AgentRiskLevel.CRITICAL,
+        ),
+        total_mcp_servers=dashboard_repository.count_mcp_servers(db),
+        connected_mcp_servers=dashboard_repository.count_mcp_servers(
+            db,
+            MCPServerStatus.CONNECTED,
+        ),
+        disconnected_mcp_servers=dashboard_repository.count_mcp_servers(
+            db,
+            MCPServerStatus.DISCONNECTED,
         ),
         total_cost_usd=dashboard_repository.total_execution_cost_usd(db),
         average_latency_ms=dashboard_repository.average_execution_latency_ms(db),

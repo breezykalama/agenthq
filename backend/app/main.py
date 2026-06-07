@@ -13,6 +13,7 @@ from app.api.dashboard import router as dashboard_router
 from app.api.executions import router as executions_router
 from app.api.health import router as health_router
 from app.api.incidents import router as incidents_router
+from app.api.mcp_servers import router as mcp_servers_router
 from app.api.policy_decisions import router as policy_decisions_router
 from app.api.policy_rules import router as policy_rules_router
 from app.core.config import get_cors_origins, get_settings
@@ -26,7 +27,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="AgentHQ", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="AgentHQ", version="0.2.0", lifespan=lifespan)
     cors_origins = get_cors_origins()
     if cors_origins:
         app.add_middleware(
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
     app.include_router(policy_rules_router)
     app.include_router(policy_decisions_router)
     app.include_router(incidents_router)
+    app.include_router(mcp_servers_router)
     app.include_router(compliance_router)
     return app
 

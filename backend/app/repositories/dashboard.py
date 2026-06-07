@@ -8,6 +8,7 @@ from app.models.agent import Agent, AgentRiskLevel, AgentStatus
 from app.models.approval import Approval, ApprovalStatus
 from app.models.execution import Execution, ExecutionStatus
 from app.models.incident import Incident, IncidentStatus
+from app.models.mcp_server import MCPServer, MCPServerStatus
 
 
 def count_agents(db: Session, status: AgentStatus | None = None) -> int:
@@ -52,6 +53,13 @@ def count_incidents(
         statement = statement.where(Incident.status == status)
     if severity is not None:
         statement = statement.where(Incident.severity == severity)
+    return db.scalar(statement) or 0
+
+
+def count_mcp_servers(db: Session, status: MCPServerStatus | None = None) -> int:
+    statement = select(func.count()).select_from(MCPServer).where(MCPServer.deleted_at.is_(None))
+    if status is not None:
+        statement = statement.where(MCPServer.status == status)
     return db.scalar(statement) or 0
 
 

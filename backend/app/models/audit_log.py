@@ -30,6 +30,11 @@ class AuditAction(StrEnum):
     INCIDENT_UPDATED = "incident.updated"
     INCIDENT_RESOLVED = "incident.resolved"
     INCIDENT_DISMISSED = "incident.dismissed"
+    MCP_SERVER_CREATED = "mcp_server.created"
+    MCP_SERVER_UPDATED = "mcp_server.updated"
+    MCP_SERVER_DELETED = "mcp_server.deleted"
+    MCP_SERVER_SYNCED = "mcp_server.synced"
+    MCP_SERVER_SYNC_FAILED = "mcp_server.sync_failed"
 
 
 JsonObject = dict[str, object]

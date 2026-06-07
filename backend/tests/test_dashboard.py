@@ -100,6 +100,9 @@ def test_empty_dashboard_returns_zeros(client: TestClient) -> None:
         "investigating_incidents": 0,
         "resolved_incidents": 0,
         "critical_incidents": 0,
+        "total_mcp_servers": 0,
+        "connected_mcp_servers": 0,
+        "disconnected_mcp_servers": 0,
         "total_cost_usd": "0",
         "average_latency_ms": 0.0,
     }
@@ -196,6 +199,42 @@ def test_summary_counts_incidents_correctly(client: TestClient) -> None:
     assert summary["investigating_incidents"] == 1
     assert summary["resolved_incidents"] == 1
     assert summary["critical_incidents"] == 1
+
+
+def test_summary_counts_mcp_servers_correctly(client: TestClient) -> None:
+    connected = client.post(
+        "/api/v1/mcp-servers",
+        json={
+            "name": "Connected MCP",
+            "server_url": "https://connected.example.com/mcp",
+            "status": "connected",
+        },
+    )
+    disconnected = client.post(
+        "/api/v1/mcp-servers",
+        json={
+            "name": "Disconnected MCP",
+            "server_url": "https://disconnected.example.com/mcp",
+        },
+    )
+    deleted = client.post(
+        "/api/v1/mcp-servers",
+        json={
+            "name": "Deleted MCP",
+            "server_url": "https://deleted.example.com/mcp",
+            "status": "connected",
+        },
+    )
+    assert connected.status_code == 201
+    assert disconnected.status_code == 201
+    assert deleted.status_code == 201
+    client.delete(f"/api/v1/mcp-servers/{deleted.json()['id']}")
+
+    summary = get_summary(client)
+
+    assert summary["total_mcp_servers"] == 2
+    assert summary["connected_mcp_servers"] == 1
+    assert summary["disconnected_mcp_servers"] == 1
 
 
 def test_soft_deleted_agents_excluded_from_counts(client: TestClient) -> None:

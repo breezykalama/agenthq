@@ -21,6 +21,9 @@ class DashboardSummary(BaseModel):
     investigating_incidents: int
     resolved_incidents: int
     critical_incidents: int
+    total_mcp_servers: int
+    connected_mcp_servers: int
+    disconnected_mcp_servers: int
     total_cost_usd: Decimal
     average_latency_ms: float
 
