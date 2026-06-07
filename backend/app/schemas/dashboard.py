@@ -24,6 +24,8 @@ class DashboardSummary(BaseModel):
     total_mcp_servers: int
     connected_mcp_servers: int
     disconnected_mcp_servers: int
+    total_users: int
+    active_users: int
     total_cost_usd: Decimal
     average_latency_ms: float
 

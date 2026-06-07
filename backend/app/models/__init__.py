@@ -8,6 +8,7 @@ from app.models.execution import Execution
 from app.models.incident import Incident
 from app.models.mcp_server import MCPServer
 from app.models.policy_rule import PolicyRule
+from app.models.user import User
 
 __all__ = [
     "Agent",
@@ -18,4 +19,5 @@ __all__ = [
     "Incident",
     "MCPServer",
     "PolicyRule",
+    "User",
 ]

@@ -40,8 +40,8 @@ def create_agent(db: Session, agent_create: AgentCreate) -> Agent:
     return agent
 
 
-def list_agents(db: Session) -> tuple[list[Agent], int]:
-    return agent_repository.list_agents(db)
+def list_agents(db: Session, owner: str | None = None) -> tuple[list[Agent], int]:
+    return agent_repository.list_agents(db, owner=owner)
 
 
 def get_agent_by_id(db: Session, agent_id: UUID) -> Agent:

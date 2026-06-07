@@ -252,9 +252,7 @@ def test_sync_preserves_existing_risk_level_and_permission(client: TestClient) -
     )
 
     sync_mcp_server(client, str(mcp_server["id"]))
-    updated_tool = client.get(
-        f"/api/v1/agents/{result['agent_id']}/tools/{tool['id']}"
-    ).json()
+    updated_tool = client.get(f"/api/v1/agents/{result['agent_id']}/tools/{tool['id']}").json()
 
     assert updated_tool["permission"] == "read"
     assert updated_tool["risk_level"] == "critical"

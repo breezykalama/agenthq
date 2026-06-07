@@ -12,6 +12,22 @@ export type IncidentStatus = "open" | "investigating" | "resolved" | "dismissed"
 export type PolicyRuleScope = "global" | "agent" | "tool";
 export type PolicyRuleEffect = "allow" | "require_approval" | "block";
 export type ToolPermission = "read" | "write" | "execute" | "admin";
+export type UserRole = "admin" | "auditor" | "operator" | "agent_owner";
+
+export interface User {
+  id: string;
+  email: string;
+  full_name: string;
+  role: UserRole;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+}
 
 export interface ListResponse<T> {
   items: T[];

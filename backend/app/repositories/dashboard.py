@@ -9,6 +9,7 @@ from app.models.approval import Approval, ApprovalStatus
 from app.models.execution import Execution, ExecutionStatus
 from app.models.incident import Incident, IncidentStatus
 from app.models.mcp_server import MCPServer, MCPServerStatus
+from app.models.user import User
 
 
 def count_agents(db: Session, status: AgentStatus | None = None) -> int:
@@ -60,6 +61,13 @@ def count_mcp_servers(db: Session, status: MCPServerStatus | None = None) -> int
     statement = select(func.count()).select_from(MCPServer).where(MCPServer.deleted_at.is_(None))
     if status is not None:
         statement = statement.where(MCPServer.status == status)
+    return db.scalar(statement) or 0
+
+
+def count_users(db: Session, *, active_only: bool = False) -> int:
+    statement = select(func.count()).select_from(User)
+    if active_only:
+        statement = statement.where(User.is_active.is_(True))
     return db.scalar(statement) or 0
 
 

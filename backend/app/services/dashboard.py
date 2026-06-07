@@ -69,6 +69,8 @@ def get_summary(db: Session) -> DashboardSummary:
             db,
             MCPServerStatus.DISCONNECTED,
         ),
+        total_users=dashboard_repository.count_users(db),
+        active_users=dashboard_repository.count_users(db, active_only=True),
         total_cost_usd=dashboard_repository.total_execution_cost_usd(db),
         average_latency_ms=dashboard_repository.average_execution_latency_ms(db),
     )

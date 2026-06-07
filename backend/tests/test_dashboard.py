@@ -103,6 +103,8 @@ def test_empty_dashboard_returns_zeros(client: TestClient) -> None:
         "total_mcp_servers": 0,
         "connected_mcp_servers": 0,
         "disconnected_mcp_servers": 0,
+        "total_users": 1,
+        "active_users": 1,
         "total_cost_usd": "0",
         "average_latency_ms": 0.0,
     }

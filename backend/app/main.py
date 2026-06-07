@@ -8,6 +8,7 @@ from app.api.agent_tools import router as agent_tools_router
 from app.api.agents import router as agents_router
 from app.api.approvals import router as approvals_router
 from app.api.audit_logs import router as audit_logs_router
+from app.api.auth import router as auth_router
 from app.api.compliance import router as compliance_router
 from app.api.dashboard import router as dashboard_router
 from app.api.executions import router as executions_router
@@ -16,6 +17,7 @@ from app.api.incidents import router as incidents_router
 from app.api.mcp_servers import router as mcp_servers_router
 from app.api.policy_decisions import router as policy_decisions_router
 from app.api.policy_rules import router as policy_rules_router
+from app.api.users import router as users_router
 from app.core.config import get_cors_origins, get_settings
 
 
@@ -27,7 +29,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="AgentHQ", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="AgentHQ", version="0.3.0", lifespan=lifespan)
     cors_origins = get_cors_origins()
     if cors_origins:
         app.add_middleware(
@@ -38,6 +40,8 @@ def create_app() -> FastAPI:
             allow_headers=["*"],
         )
     app.include_router(health_router)
+    app.include_router(auth_router)
+    app.include_router(users_router)
     app.include_router(agents_router)
     app.include_router(agent_tools_router)
     app.include_router(audit_logs_router)

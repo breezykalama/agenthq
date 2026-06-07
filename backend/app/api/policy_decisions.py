@@ -3,11 +3,17 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.security import require_roles
 from app.db.session import get_db
+from app.models.user import UserRole
 from app.schemas.policy_decision import PolicyDecisionRequest, PolicyDecisionResponse
 from app.services import policy_decisions as policy_decision_service
 
-router = APIRouter(prefix="/api/v1/policy-decisions", tags=["policy-decisions"])
+router = APIRouter(
+    prefix="/api/v1/policy-decisions",
+    tags=["policy-decisions"],
+    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.OPERATOR))],
+)
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
 

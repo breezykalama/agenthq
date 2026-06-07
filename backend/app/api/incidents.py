@@ -4,9 +4,11 @@ from uuid import UUID
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.core.security import require_roles
 from app.db.session import get_db
 from app.models.agent import AgentRiskLevel
 from app.models.incident import IncidentStatus
+from app.models.user import UserRole
 from app.schemas.incident import (
     IncidentCreate,
     IncidentDecision,
@@ -16,7 +18,11 @@ from app.schemas.incident import (
 )
 from app.services import incidents as incident_service
 
-router = APIRouter(prefix="/api/v1/incidents", tags=["incidents"])
+router = APIRouter(
+    prefix="/api/v1/incidents",
+    tags=["incidents"],
+    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.AUDITOR, UserRole.OPERATOR))],
+)
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
 

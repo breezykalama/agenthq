@@ -4,9 +4,11 @@ from uuid import UUID
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.core.security import require_roles
 from app.db.session import get_db
 from app.models.agent import AgentRiskLevel
 from app.models.approval import ApprovalStatus
+from app.models.user import UserRole
 from app.schemas.approval import (
     ApprovalCreate,
     ApprovalDecision,
@@ -15,7 +17,11 @@ from app.schemas.approval import (
 )
 from app.services import approvals as approval_service
 
-router = APIRouter(prefix="/api/v1/approvals", tags=["approvals"])
+router = APIRouter(
+    prefix="/api/v1/approvals",
+    tags=["approvals"],
+    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.OPERATOR))],
+)
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
 

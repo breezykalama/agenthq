@@ -35,6 +35,10 @@ class AuditAction(StrEnum):
     MCP_SERVER_DELETED = "mcp_server.deleted"
     MCP_SERVER_SYNCED = "mcp_server.synced"
     MCP_SERVER_SYNC_FAILED = "mcp_server.sync_failed"
+    USER_CREATED = "user.created"
+    USER_UPDATED = "user.updated"
+    USER_LOGIN = "user.login"
+    USER_DEACTIVATED = "user.deactivated"
 
 
 JsonObject = dict[str, object]

@@ -57,10 +57,14 @@ export function DataState({
     );
   }
   if (error) {
+    const message = getErrorMessage(error);
+    const permissionDenied = message === "You do not have permission to access this resource.";
     return (
       <Card className="border-red-200 bg-red-50 text-red-800">
-        <div className="font-medium">Unable to load this section.</div>
-        <div className="mt-1 text-sm">{getErrorMessage(error)}</div>
+        <div className="font-medium">
+          {permissionDenied ? "You do not have permission." : "Unable to load this section."}
+        </div>
+        <div className="mt-1 text-sm">{message}</div>
       </Card>
     );
   }

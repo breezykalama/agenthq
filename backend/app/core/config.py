@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     app_name: str = "AgentHQ"
     environment: str = "development"
     database_url: PostgresDsn = Field(alias="DATABASE_URL")
+    jwt_secret_key: str = Field(
+        default="change-me-in-production-at-least-32-bytes",
+        alias="JWT_SECRET_KEY",
+    )
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -27,6 +27,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://agenthq:agenthq@postgres:5432/agenthq
       BACKEND_CORS_ORIGINS: http://localhost:5173
+      JWT_SECRET_KEY: local-development-secret-change-before-production
       APP_NAME: AgentHQ
       ENVIRONMENT: development
     ports:

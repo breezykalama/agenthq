@@ -3,7 +3,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.core.security import require_roles
 from app.db.session import get_db
+from app.models.user import UserRole
 from app.schemas.dashboard import (
     AgentsByRisk,
     ApprovalsByStatus,
@@ -12,7 +14,11 @@ from app.schemas.dashboard import (
 )
 from app.services import dashboard as dashboard_service
 
-router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
+router = APIRouter(
+    prefix="/api/v1/dashboard",
+    tags=["dashboard"],
+    dependencies=[Depends(require_roles(*UserRole))],
+)
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
 

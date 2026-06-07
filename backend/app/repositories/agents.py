@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.agent import Agent
 from app.schemas.agent import AgentCreate
@@ -16,9 +17,12 @@ def create_agent(db: Session, agent_create: AgentCreate) -> Agent:
     return agent
 
 
-def list_agents(db: Session) -> tuple[list[Agent], int]:
-    statement = select(Agent).where(Agent.deleted_at.is_(None)).order_by(Agent.created_at.desc())
-    count_statement = select(func.count()).select_from(Agent).where(Agent.deleted_at.is_(None))
+def list_agents(db: Session, owner: str | None = None) -> tuple[list[Agent], int]:
+    filters: list[ColumnElement[bool]] = [Agent.deleted_at.is_(None)]
+    if owner is not None:
+        filters.append(Agent.owner == owner)
+    statement = select(Agent).where(*filters).order_by(Agent.created_at.desc())
+    count_statement = select(func.count()).select_from(Agent).where(*filters)
 
     agents = list(db.scalars(statement).all())
     total = db.scalar(count_statement) or 0
