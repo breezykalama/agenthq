@@ -4,6 +4,33 @@ Enterprise AI Agent Governance Platform.
 
 AgentHQ provides visibility, governance, approvals, policy enforcement, execution tracking, incident management, auditability, and compliance reporting for AI agents.
 
+## Live Demo
+
+Frontend:
+[https://agenthq-seven.vercel.app/](https://agenthq-seven.vercel.app/)
+
+Backend API:
+[https://agenthq.onrender.com/docs](https://agenthq.onrender.com/docs)
+
+## Current Version
+
+AgentHQ v0.3.0
+
+## Project Status
+
+AgentHQ is a live Enterprise AI Agent Governance Platform focused on:
+
+* Agent Governance
+* Policy Enforcement
+* Approval Workflows
+* Execution Tracking
+* Incident Management
+* Audit Logging
+* Compliance Reporting
+* MCP Server Registration
+* MCP Tool Discovery
+* Authentication & RBAC
+
 ## The Problem
 
 Organizations are rapidly deploying AI agents across operations, customer service, knowledge management, and business workflows.
@@ -51,11 +78,50 @@ This allows AgentHQ to:
 
 See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the complete v0.2.0 release summary.
 
+## AgentHQ v0.3.0
+
+### Authentication & RBAC
+
+Added:
+
+* User management
+* JWT authentication
+* Login and registration
+* Role-based access control
+
+Roles:
+
+* Admin
+* Auditor
+* Operator
+* Agent Owner
+
+### Enterprise Access Control
+
+Protected:
+
+* Policy Rules
+* MCP Servers
+* Audit Logs
+* Compliance Reports
+* Executions
+* Incidents
+* Agent Management
+
+### Dashboard
+
+Added:
+
+* Total users
+* Active users
+
 ## Architecture
 
 ![AgentHQ Architecture](docs/images/agenthq-architecture.png)
 
-AgentHQ uses a React frontend for the governance console, a FastAPI backend for API workflows, modular governance services for policy decisions and lifecycle rules, PostgreSQL persistence for operational records, and audit/compliance capabilities for reporting and review. AgentHQ can also register MCP servers and sync discovered tools into the governance layer through an adapter-based discovery boundary.
+AgentHQ uses a React frontend for the governance console, a FastAPI backend for API workflows, modular governance services for policy decisions and lifecycle rules, PostgreSQL persistence for operational records, and audit/compliance capabilities for reporting and review.
+
+The architecture now includes a JWT authentication layer, reusable RBAC enforcement layer, MCP Server Registry, and MCP Discovery Layer that synchronizes discovered tools into the governance layer.
 
 ## Core Capabilities
 
@@ -96,10 +162,14 @@ AgentHQ uses a React frontend for the governance console, a FastAPI backend for 
 
 ## Quality
 
-* 170 automated tests passing
+* 183 automated tests passing
 * Ruff clean
 * MyPy clean
 * Dockerized deployment
+* Live deployment
+* Supabase PostgreSQL
+* Render backend
+* Vercel frontend
 * Seed/demo data included
 
 ## Repository Structure
@@ -298,12 +368,19 @@ Completed in v0.2.0:
 * Linked Agent Creation
 * Tool Sync Auditing
 
-Future ideas:
+Completed in v0.3.0:
 
-* Real MCP protocol client integration
 * Authentication & RBAC
+* JWT Authentication
+* User Management
+* Agent Ownership Enforcement
+
+### Upcoming
+
+* Real MCP Protocol Integration
 * Foundry Agent Registration
 * Copilot Studio Agent Registration
+* Cost Tracking
 * Notifications
 * Multi-tenancy
 

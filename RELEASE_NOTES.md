@@ -32,3 +32,41 @@ AgentHQ records `mcp_server.synced` and `mcp_server.sync_failed` audit events wi
 * Ruff clean
 * MyPy clean
 * MCP migrations verified against PostgreSQL
+
+# AgentHQ v0.3.0 — Authentication & RBAC
+
+AgentHQ v0.3.0 introduces enterprise identity, authentication, and role-based access control across the governance platform.
+
+## Highlights
+
+* JWT Authentication
+* User Management
+* Role-Based Access Control
+* Agent Ownership Enforcement
+* Protected Governance Endpoints
+* Dashboard User Metrics
+* 183 Automated Tests Passing
+
+## Authentication
+
+Users can register, sign in, persist an access token, load their current identity, and sign out through the AgentHQ frontend. Passwords are hashed with Argon2 and are never stored as plaintext.
+
+## Role-Based Access Control
+
+AgentHQ supports Admin, Auditor, Operator, and Agent Owner roles. Governance endpoints enforce role permissions, while agent owners can access and manage only agents assigned to their email identity.
+
+## Protected Governance
+
+RBAC protects policy rules, MCP servers, audit logs, compliance reports, executions, incidents, agent management, and administrative user management.
+
+## Dashboard
+
+The dashboard summary now reports total users and active users.
+
+## Verification
+
+* 183 automated backend tests passing
+* Ruff clean
+* MyPy clean
+* Frontend build and lint passing
+* Live frontend and backend deployment
