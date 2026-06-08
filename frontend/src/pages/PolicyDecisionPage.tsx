@@ -4,18 +4,26 @@ import { useSearchParams } from "react-router-dom";
 
 import { getErrorMessage } from "../api/client";
 import { endpoints } from "../api/queries";
+import { useAuth } from "../auth/context";
 import { Badge, Card, Field, PageHeader, PrimaryButton, inputClass } from "../components/Ui";
+import { markOnboardingStepComplete } from "../onboarding/progress";
 
 function formString(form: FormData, key: string) {
   return String(form.get(key) ?? "");
 }
 
 export function PolicyDecisionPage() {
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const [agentId, setAgentId] = useState(searchParams.get("agentId") ?? "");
   const [toolId, setToolId] = useState(searchParams.get("toolId") ?? "");
   const [requestedAction, setRequestedAction] = useState(searchParams.get("action") ?? "run_tool");
-  const evaluate = useMutation({ mutationFn: endpoints.evaluatePolicy });
+  const evaluate = useMutation({
+    mutationFn: endpoints.evaluatePolicy,
+    onSuccess: () => {
+      if (user) markOnboardingStepComplete(user.id, "testPolicyDecision");
+    }
+  });
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

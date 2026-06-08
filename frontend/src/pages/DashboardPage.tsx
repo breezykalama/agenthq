@@ -1,6 +1,5 @@
 import { useQueries } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router-dom";
 
 import { endpoints } from "../api/queries";
 import { Card, DataState, EmptyState, MetricCard, PageHeader } from "../components/Ui";
@@ -48,26 +47,6 @@ export function DashboardPage() {
     "Escalation Agent"
   ]);
   const isDemoMode = agents.data?.items.some((agent) => demoAgentNames.has(agent.name)) ?? false;
-  const quickStart = [
-    {
-      label: "Register MCP Server",
-      complete: (data?.total_mcp_servers ?? 0) > 0,
-      to: "/mcp-servers"
-    },
-    {
-      label: "Sync Tools",
-      complete: (data?.connected_mcp_servers ?? 0) > 0,
-      to: "/mcp-servers"
-    },
-    { label: "Review Agent", complete: (data?.total_agents ?? 0) > 0, to: "/agents" },
-    { label: "Test Policy Decision", complete: false, to: "/policy-decisions" },
-    {
-      label: "Review Compliance",
-      complete: (data?.total_executions ?? 0) > 0,
-      to: "/compliance"
-    }
-  ];
-
   return (
     <>
       <PageHeader title="Dashboard" subtitle="Operational posture across agents, approvals, executions, and incidents." />
@@ -88,46 +67,6 @@ export function DashboardPage() {
           </button>
         </div>
       ) : null}
-      <Card className="mb-6">
-        <div className="grid gap-5 lg:grid-cols-[1fr_1.1fr] lg:items-start">
-          <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              Get started
-            </div>
-            <h3 className="mt-2 text-xl font-semibold text-slate-950">
-              Govern agents with clear policies and evidence.
-            </h3>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              AgentHQ shows which agents and tools exist, controls risky actions, and records the
-              approvals, executions, incidents, and audit evidence behind every decision.
-            </p>
-          </div>
-          <div>
-            <h4 className="text-sm font-semibold text-slate-900">Quick Start</h4>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {quickStart.map((item) => (
-                <Link
-                  key={item.label}
-                  to={item.to}
-                  className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-400 hover:bg-slate-50"
-                >
-                  <span
-                    aria-hidden="true"
-                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs ${
-                      item.complete
-                        ? "bg-emerald-100 text-emerald-800"
-                        : "border border-slate-300 text-slate-400"
-                    }`}
-                  >
-                    {item.complete ? "OK" : ""}
-                  </span>
-                  {item.label}
-                </Link>
-              ))}
-            </div>
-          </div>
-        </div>
-      </Card>
       <DataState isLoading={summary.isLoading} error={summary.error}>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard label="Total Agents" value={data?.total_agents ?? 0} />

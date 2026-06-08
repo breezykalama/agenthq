@@ -5,6 +5,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api, getErrorMessage } from "../api/client";
 import { endpoints } from "../api/queries";
 import { useAuth } from "../auth/context";
+import { markOnboardingStepComplete } from "../onboarding/progress";
 import {
   Badge,
   Card,
@@ -40,11 +41,27 @@ export function AgentsPage() {
     queryFn: () => endpoints.agentTools(selectedAgent?.id ?? ""),
     enabled: Boolean(selectedAgent?.id)
   });
+  const mcpServers = useQuery({
+    queryKey: ["mcp-servers"],
+    queryFn: endpoints.mcpServers,
+    enabled: user?.role === "admin"
+  });
   const selectedFromMcpSync = Boolean(requestedAgentId && selectedAgent?.id === requestedAgentId);
 
   useEffect(() => {
     if (requestedAgentId) setSelectedAgentId(requestedAgentId);
   }, [requestedAgentId]);
+
+  useEffect(() => {
+    if (!user || !selectedAgent) return;
+    const selectedViaLinkedRoute = requestedAgentId === selectedAgent.id;
+    const selectedLinkedAgent = mcpServers.data?.items.some(
+      (server) => server.agent_id === selectedAgent.id
+    );
+    if (selectedViaLinkedRoute || selectedLinkedAgent) {
+      markOnboardingStepComplete(user.id, "reviewLinkedAgent");
+    }
+  }, [mcpServers.data, requestedAgentId, selectedAgent, user]);
 
   const createAgent = useMutation({
     mutationFn: (payload: unknown) => api.post("/api/v1/agents", payload),

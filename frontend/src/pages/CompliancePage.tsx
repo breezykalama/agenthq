@@ -1,12 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 
 import { endpoints } from "../api/queries";
+import { useAuth } from "../auth/context";
 import { Card, DataState, EmptyState, MetricCard, PageHeader } from "../components/Ui";
+import { markOnboardingStepComplete } from "../onboarding/progress";
 import type { ComplianceIncident, ListResponse } from "../types/api";
 
 export function CompliancePage() {
+  const { user } = useAuth();
   const summary = useQuery({ queryKey: ["compliance-summary"], queryFn: endpoints.complianceSummary });
   const incidents = useQuery({ queryKey: ["compliance-incidents"], queryFn: endpoints.complianceIncidents });
+
+  useEffect(() => {
+    if (user) markOnboardingStepComplete(user.id, "reviewCompliance");
+  }, [user]);
 
   return (
     <>
