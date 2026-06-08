@@ -7,6 +7,7 @@ from app.models.audit_log import AuditAction, JsonObject
 
 
 class AuditLogCreate(BaseModel):
+    organization_id: UUID | None = None
     actor: str = "system"
     action: AuditAction
     entity_type: str
@@ -17,6 +18,7 @@ class AuditLogCreate(BaseModel):
 
 class AuditLogRead(BaseModel):
     id: UUID
+    organization_id: UUID | None
     actor: str
     action: AuditAction
     entity_type: str

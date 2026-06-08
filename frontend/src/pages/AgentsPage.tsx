@@ -41,10 +41,11 @@ export function AgentsPage() {
     queryFn: () => endpoints.agentTools(selectedAgent?.id ?? ""),
     enabled: Boolean(selectedAgent?.id)
   });
+  const isOrganizationAdmin = user?.organization_membership?.role === "admin";
   const mcpServers = useQuery({
     queryKey: ["mcp-servers"],
     queryFn: endpoints.mcpServers,
-    enabled: user?.role === "admin"
+    enabled: isOrganizationAdmin
   });
   const selectedFromMcpSync = Boolean(requestedAgentId && selectedAgent?.id === requestedAgentId);
 
@@ -106,7 +107,7 @@ export function AgentsPage() {
 
   return (
     <>
-      <PageHeader title="Agents" subtitle="Register governed agents and their allowed tools." />
+      <PageHeader title="Agents" subtitle="Agents in this organization and their allowed tools." />
       <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <Card>
           <h3 className="mb-3 font-semibold">Agent Registry</h3>
@@ -142,11 +143,11 @@ export function AgentsPage() {
             {agents.data?.total === 0 ? (
               <div className="mt-4">
                 <EmptyState
-                  title="No agents registered"
-                  message="Register an MCP server to create a linked agent and discover its tools, or create an agent manually."
+                  title="No agents yet in this organization"
+                  message="Register an MCP server for this organization to create a linked agent and discover its tools, or create an agent manually."
                   actions={
                     <>
-                      {user?.role === "admin" ? (
+                      {isOrganizationAdmin ? (
                         <Link to="/mcp-servers" className={actionLinkClass}>
                           Register MCP Server
                         </Link>

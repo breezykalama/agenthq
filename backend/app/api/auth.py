@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.user import TokenResponse, UserLogin, UserRead, UserRegister
 from app.services import auth as auth_service
+from app.services import organizations as organization_service
 from app.services import users as user_service
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -38,5 +39,5 @@ def login(credentials: UserLogin, db: DatabaseSession) -> TokenResponse:
 
 
 @router.get("/me", response_model=UserRead)
-def me(current_user: CurrentUser) -> UserRead:
-    return UserRead.model_validate(current_user)
+def me(current_user: CurrentUser, db: DatabaseSession) -> UserRead:
+    return organization_service.user_read_with_membership(db, current_user)

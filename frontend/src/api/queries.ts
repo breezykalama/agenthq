@@ -3,6 +3,7 @@ import type {
   Agent,
   AgentTool,
   Approval,
+  AuditLog,
   ComplianceIncident,
   ComplianceSummary,
   CountMap,
@@ -14,6 +15,15 @@ import type {
   PolicyDecisionResponse,
   PolicyRule
 } from "../types/api";
+
+export interface AuditLogFilters {
+  action?: string;
+  entity_type?: string;
+  entity_id?: string;
+  actor?: string;
+  limit?: number;
+  offset?: number;
+}
 
 export const endpoints = {
   dashboardSummary: () => api.get<DashboardSummary>("/api/v1/dashboard/summary").then((r) => r.data),
@@ -31,6 +41,8 @@ export const endpoints = {
   approvals: () => api.get<ListResponse<Approval>>("/api/v1/approvals").then((r) => r.data),
   executions: () => api.get<ListResponse<Execution>>("/api/v1/executions").then((r) => r.data),
   incidents: () => api.get<ListResponse<Incident>>("/api/v1/incidents").then((r) => r.data),
+  auditLogs: (params: AuditLogFilters) =>
+    api.get<ListResponse<AuditLog>>("/api/v1/audit-logs", { params }).then((r) => r.data),
   mcpServers: () =>
     api.get<ListResponse<MCPServer>>("/api/v1/mcp-servers").then((r) => r.data),
   complianceSummary: () =>

@@ -25,6 +25,7 @@ class PolicyRule(Base):
     __tablename__ = "policy_rules"
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     scope: Mapped[PolicyRuleScope] = mapped_column(
@@ -66,11 +67,13 @@ class PolicyRule(Base):
 
 Index(
     "ix_policy_rules_unique_name_not_deleted",
+    PolicyRule.organization_id,
     PolicyRule.name,
     unique=True,
     postgresql_where=PolicyRule.deleted_at.is_(None),
     sqlite_where=PolicyRule.deleted_at.is_(None),
 )
+Index("ix_policy_rules_organization_id", PolicyRule.organization_id)
 Index(
     "ix_policy_rules_scope_agent_id_tool_id_priority",
     PolicyRule.scope,

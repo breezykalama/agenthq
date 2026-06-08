@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, DateTime, Enum, Index, String, Uuid
+from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Index, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -39,6 +39,11 @@ class AuditAction(StrEnum):
     USER_UPDATED = "user.updated"
     USER_LOGIN = "user.login"
     USER_DEACTIVATED = "user.deactivated"
+    ORGANIZATION_CREATED = "organization.created"
+    ORGANIZATION_MEMBERSHIP_CREATED = "organization_membership.created"
+    ORGANIZATION_INVITE_CREATED = "organization_invite.created"
+    ORGANIZATION_INVITE_ACCEPTED = "organization_invite.accepted"
+    ORGANIZATION_INVITE_REVOKED = "organization_invite.revoked"
 
 
 JsonObject = dict[str, object]
@@ -48,6 +53,10 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("organizations.id"),
+        nullable=True,
+    )
     actor: Mapped[str] = mapped_column(String(255), nullable=False, default="system")
     action: Mapped[AuditAction] = mapped_column(
         Enum(
@@ -68,3 +77,4 @@ Index("ix_audit_logs_created_at", AuditLog.created_at)
 Index("ix_audit_logs_entity_type_entity_id", AuditLog.entity_type, AuditLog.entity_id)
 Index("ix_audit_logs_action", AuditLog.action)
 Index("ix_audit_logs_actor", AuditLog.actor)
+Index("ix_audit_logs_organization_id_created_at", AuditLog.organization_id, AuditLog.created_at)

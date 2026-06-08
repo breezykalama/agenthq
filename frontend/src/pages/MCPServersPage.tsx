@@ -28,7 +28,7 @@ function formatDate(value: string | null) {
 export function MCPServersPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.organization_membership?.role === "admin";
   const [syncResult, setSyncResult] = useState<MCPServerSyncResponse | null>(null);
   const [copiedAgentId, setCopiedAgentId] = useState<string | null>(null);
   const servers = useQuery({ queryKey: ["mcp-servers"], queryFn: endpoints.mcpServers });
@@ -70,7 +70,7 @@ export function MCPServersPage() {
     <>
       <PageHeader
         title="MCP Servers"
-        subtitle="Register tool providers and sync discovered tools into governed agents."
+        subtitle="MCP servers registered for this organization."
       />
       <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <Card>
@@ -137,8 +137,8 @@ export function MCPServersPage() {
             {servers.data?.total === 0 ? (
               <div className="mt-4">
                 <EmptyState
-                  title="No MCP servers registered"
-                  message="MCP servers connect AgentHQ to tool providers so their agents and tools can be governed."
+                  title="No MCP servers registered for this organization"
+                  message="Register an MCP server to connect this organization workspace to governed agents and tools."
                   actions={
                     isAdmin ? (
                       <a href="#register-mcp-server" className={actionLinkClass}>

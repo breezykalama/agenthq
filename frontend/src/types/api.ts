@@ -14,6 +14,7 @@ export type PolicyRuleEffect = "allow" | "require_approval" | "block";
 export type ToolPermission = "read" | "write" | "execute" | "admin";
 export type UserRole = "admin" | "auditor" | "operator" | "agent_owner";
 export type MCPServerStatus = "connected" | "disconnected" | "error";
+export type OrganizationInviteStatus = "pending" | "accepted" | "expired" | "revoked";
 
 export interface User {
   id: string;
@@ -23,6 +24,45 @@ export interface User {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  organization_membership: OrganizationMembership | null;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrganizationMembership {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  role: UserRole;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  organization: Organization;
+}
+
+export interface OrganizationInvite {
+  id: string;
+  organization_id: string;
+  email: string;
+  full_name: string | null;
+  role: UserRole;
+  status: OrganizationInviteStatus;
+  invited_by_user_id: string;
+  expires_at: string;
+  accepted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrganizationInviteCreateResponse extends OrganizationInvite {
+  token: string;
+  invite_url: string;
 }
 
 export interface TokenResponse {
@@ -30,9 +70,24 @@ export interface TokenResponse {
   token_type: string;
 }
 
+export interface BootstrapTokenResponse extends TokenResponse {
+  user: User;
+}
+
 export interface ListResponse<T> {
   items: T[];
   total: number;
+}
+
+export interface AuditLog {
+  id: string;
+  actor: string;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  created_at: string;
 }
 
 export interface Agent {

@@ -13,6 +13,12 @@ def create_user(db: Session, user: User) -> User:
     return user
 
 
+def create_user_pending(db: Session, user: User) -> User:
+    db.add(user)
+    db.flush()
+    return user
+
+
 def count_users(db: Session, *, active_only: bool = False) -> int:
     statement = select(func.count()).select_from(User)
     if active_only:

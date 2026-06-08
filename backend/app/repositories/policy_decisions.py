@@ -3,6 +3,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.tenancy import get_current_organization_id
 from app.models.agent import AgentRiskLevel
 from app.models.policy_rule import PolicyRule, PolicyRuleScope
 
@@ -19,6 +20,7 @@ def list_matching_policy_rules(
         candidate_scopes.append(PolicyRuleScope.TOOL)
 
     statement = select(PolicyRule).where(
+        PolicyRule.organization_id == get_current_organization_id(db),
         PolicyRule.deleted_at.is_(None),
         PolicyRule.is_enabled.is_(True),
         PolicyRule.scope.in_(candidate_scopes),

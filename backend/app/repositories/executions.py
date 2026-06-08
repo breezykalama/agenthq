@@ -3,12 +3,13 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.tenancy import get_current_organization_id
 from app.models.agent import AgentRiskLevel
 from app.models.execution import Execution, ExecutionStatus
 
 
 def create_execution(db: Session, values: dict[str, object]) -> Execution:
-    execution = Execution(**values)
+    execution = Execution(organization_id=get_current_organization_id(db), **values)
     db.add(execution)
     db.commit()
     db.refresh(execution)
@@ -16,7 +17,7 @@ def create_execution(db: Session, values: dict[str, object]) -> Execution:
 
 
 def create_execution_pending(db: Session, values: dict[str, object]) -> Execution:
-    execution = Execution(**values)
+    execution = Execution(organization_id=get_current_organization_id(db), **values)
     db.add(execution)
     db.flush()
     return execution
@@ -32,7 +33,7 @@ def list_executions(
     limit: int,
     offset: int,
 ) -> tuple[list[Execution], int]:
-    filters = []
+    filters = [Execution.organization_id == get_current_organization_id(db)]
     if agent_id is not None:
         filters.append(Execution.agent_id == agent_id)
     if status is not None:
@@ -57,7 +58,10 @@ def list_executions(
 
 
 def get_execution_by_id(db: Session, execution_id: UUID) -> Execution | None:
-    statement = select(Execution).where(Execution.id == execution_id)
+    statement = select(Execution).where(
+        Execution.organization_id == get_current_organization_id(db),
+        Execution.id == execution_id,
+    )
     return db.scalar(statement)
 
 

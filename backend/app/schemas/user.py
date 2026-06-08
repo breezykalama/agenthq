@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.models.user import UserRole
+from app.schemas.organization import OrganizationMembershipRead
 
 
 class UserRegister(BaseModel):
@@ -31,6 +32,7 @@ class UserRead(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    organization_membership: OrganizationMembershipRead | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -43,3 +45,7 @@ class UserListResponse(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class BootstrapTokenResponse(TokenResponse):
+    user: UserRead

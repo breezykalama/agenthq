@@ -47,7 +47,7 @@ export function PolicyRulesPage() {
 
   return (
     <>
-      <PageHeader title="Policy Rules" subtitle="Define governance rules for agents and tools." />
+      <PageHeader title="Policy Rules" subtitle="Policies for this organization." />
       <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <Card>
           <h3 className="mb-3 font-semibold">Rules</h3>
@@ -73,7 +73,10 @@ export function PolicyRulesPage() {
             </div>
             {rules.data?.total === 0 ? (
               <div className="mt-4">
-                <EmptyState title="No policy rules yet" message="Create a policy rule to govern agent behavior." />
+                <EmptyState
+                  title="No policy rules created for this organization"
+                  message="Create a policy rule to govern this organization's agent behavior."
+                />
               </div>
             ) : null}
           </DataState>

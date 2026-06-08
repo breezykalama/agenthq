@@ -32,14 +32,16 @@ export function RegisterPage() {
   }
 
   return (
-    <AuthPageFrame title="Create your account" subtitle="Register an identity for governed access.">
+    <AuthPageFrame title="Create a legacy account" subtitle="Demo and standalone deployment access.">
       <div className="mb-5 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">
-        <p className="font-medium">Create your AgentHQ account.</p>
+        <p className="font-medium">Direct registration is for legacy or demo access.</p>
         <p className="mt-1">
-          AgentHQ helps organizations govern AI agents through policies, approvals, audit trails,
-          compliance reporting, and MCP integrations.
+          Access to an existing organization should normally happen through an invitation from its
+          administrator.
         </p>
-        <p className="mt-1">Additional permissions may be granted by an administrator.</p>
+        <p className="mt-1">
+          Use organization setup only when creating the first organization workspace.
+        </p>
       </div>
       <form className="space-y-4" onSubmit={submit}>
         <Field label="Full name">
@@ -86,6 +88,14 @@ export function RegisterPage() {
           Sign in
         </Link>
       </p>
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm">
+        <Link className="font-medium text-slate-700 underline" to="/bootstrap">
+          Create organization
+        </Link>
+        <Link className="font-medium text-slate-700 underline" to="/accept-invite">
+          Accept invitation
+        </Link>
+      </div>
     </AuthPageFrame>
   );
 }

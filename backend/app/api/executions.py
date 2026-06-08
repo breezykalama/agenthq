@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.pagination import PaginationParams
-from app.core.security import require_roles
+from app.core.security import require_current_organization, require_roles
 from app.db.session import get_db
 from app.models.agent import AgentRiskLevel
 from app.models.execution import ExecutionStatus
@@ -21,7 +21,10 @@ from app.services import executions as execution_service
 router = APIRouter(
     prefix="/api/v1/executions",
     tags=["executions"],
-    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.OPERATOR))],
+    dependencies=[
+        Depends(require_current_organization),
+        Depends(require_roles(UserRole.ADMIN, UserRole.OPERATOR)),
+    ],
 )
 DatabaseSession = Annotated[Session, Depends(get_db)]
 

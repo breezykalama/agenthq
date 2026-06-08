@@ -24,6 +24,7 @@ class Execution(Base):
     __tablename__ = "executions"
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     agent_id: Mapped[UUID] = mapped_column(ForeignKey("agents.id"), nullable=False)
     action_name: Mapped[str] = mapped_column(String(255), nullable=False)
     input_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -71,3 +72,4 @@ class Execution(Base):
 Index("ix_executions_created_at", Execution.created_at)
 Index("ix_executions_agent_id_created_at", Execution.agent_id, Execution.created_at)
 Index("ix_executions_status_created_at", Execution.status, Execution.created_at)
+Index("ix_executions_organization_id", Execution.organization_id)

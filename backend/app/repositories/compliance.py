@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.sql import Select
 
+from app.core.tenancy import get_current_organization_id
 from app.models.agent import Agent, AgentRiskLevel
 from app.models.agent_tool import AgentTool
 from app.models.approval import Approval, ApprovalStatus
@@ -65,24 +66,29 @@ def get_summary_metrics(
     end_at: datetime | None,
     agent_id: UUID | None,
 ) -> ComplianceSummaryMetrics:
-    agent_statement = select(func.count()).select_from(Agent).where(Agent.deleted_at.is_(None))
+    organization_id = get_current_organization_id(db)
+    agent_statement = (
+        select(func.count())
+        .select_from(Agent)
+        .where(Agent.organization_id == organization_id, Agent.deleted_at.is_(None))
+    )
     execution_statement = select(
         func.count(),
         func.count().filter(Execution.status == ExecutionStatus.BLOCKED),
         func.count().filter(Execution.status == ExecutionStatus.REQUIRES_APPROVAL),
-    )
+    ).where(Execution.organization_id == organization_id)
     approval_statement = select(
         func.count().filter(Approval.status == ApprovalStatus.APPROVED),
         func.count().filter(Approval.status == ApprovalStatus.REJECTED),
-    )
+    ).where(Approval.organization_id == organization_id)
     incident_statement = select(
         func.count().filter(Incident.status == IncidentStatus.OPEN),
         func.count().filter(Incident.severity == AgentRiskLevel.CRITICAL),
-    )
+    ).where(Incident.organization_id == organization_id)
     audit_statement = select(
         func.count().filter(AuditLog.action == AuditAction.POLICY_DECISION_EVALUATED),
         func.count(),
-    )
+    ).where(AuditLog.organization_id == organization_id)
 
     agent_statement = apply_date_filters(
         agent_statement,
@@ -140,15 +146,24 @@ def get_summary_metrics(
 
 
 def get_agent(db: Session, agent_id: UUID) -> Agent | None:
-    statement = select(Agent).where(Agent.id == agent_id, Agent.deleted_at.is_(None))
+    statement = select(Agent).where(
+        Agent.organization_id == get_current_organization_id(db),
+        Agent.id == agent_id,
+        Agent.deleted_at.is_(None),
+    )
     return db.scalar(statement)
 
 
 def get_agent_report_metrics(db: Session, agent_id: UUID) -> AgentReportMetrics:
+    organization_id = get_current_organization_id(db)
     tools_count = (
         select(func.count())
         .select_from(AgentTool)
-        .where(AgentTool.agent_id == agent_id, AgentTool.deleted_at.is_(None))
+        .where(
+            AgentTool.organization_id == organization_id,
+            AgentTool.agent_id == agent_id,
+            AgentTool.deleted_at.is_(None),
+        )
         .scalar_subquery()
     )
     policy_rules_count = (
@@ -156,34 +171,55 @@ def get_agent_report_metrics(db: Session, agent_id: UUID) -> AgentReportMetrics:
         .select_from(PolicyRule)
         .where(
             PolicyRule.deleted_at.is_(None),
+            PolicyRule.organization_id == organization_id,
             or_(PolicyRule.scope == PolicyRuleScope.GLOBAL, PolicyRule.agent_id == agent_id),
         )
         .scalar_subquery()
     )
     executions_count = (
-        select(func.count()).select_from(Execution).where(Execution.agent_id == agent_id)
+        select(func.count())
+        .select_from(Execution)
+        .where(Execution.organization_id == organization_id, Execution.agent_id == agent_id)
     ).scalar_subquery()
     blocked_executions = (
         select(func.count())
         .select_from(Execution)
-        .where(Execution.agent_id == agent_id, Execution.status == ExecutionStatus.BLOCKED)
+        .where(
+            Execution.organization_id == organization_id,
+            Execution.agent_id == agent_id,
+            Execution.status == ExecutionStatus.BLOCKED,
+        )
     ).scalar_subquery()
     failed_executions = (
         select(func.count())
         .select_from(Execution)
-        .where(Execution.agent_id == agent_id, Execution.status == ExecutionStatus.FAILED)
+        .where(
+            Execution.organization_id == organization_id,
+            Execution.agent_id == agent_id,
+            Execution.status == ExecutionStatus.FAILED,
+        )
     ).scalar_subquery()
     approvals_count = (
-        select(func.count()).select_from(Approval).where(Approval.agent_id == agent_id)
+        select(func.count())
+        .select_from(Approval)
+        .where(Approval.organization_id == organization_id, Approval.agent_id == agent_id)
     ).scalar_subquery()
     incidents_count = (
-        select(func.count()).select_from(Incident).where(Incident.agent_id == agent_id)
+        select(func.count())
+        .select_from(Incident)
+        .where(Incident.organization_id == organization_id, Incident.agent_id == agent_id)
     ).scalar_subquery()
     latest_execution_at = (
-        select(func.max(Execution.created_at)).where(Execution.agent_id == agent_id)
+        select(func.max(Execution.created_at)).where(
+            Execution.organization_id == organization_id,
+            Execution.agent_id == agent_id,
+        )
     ).scalar_subquery()
     latest_incident_at = (
-        select(func.max(Incident.created_at)).where(Incident.agent_id == agent_id)
+        select(func.max(Incident.created_at)).where(
+            Incident.organization_id == organization_id,
+            Incident.agent_id == agent_id,
+        )
     ).scalar_subquery()
 
     row = db.execute(
@@ -213,7 +249,7 @@ def list_incidents(
     limit: int,
     offset: int,
 ) -> tuple[list[Incident], int]:
-    filters = []
+    filters = [Incident.organization_id == get_current_organization_id(db)]
     if start_at is not None:
         filters.append(Incident.created_at >= start_at)
     if end_at is not None:

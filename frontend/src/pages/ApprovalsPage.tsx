@@ -51,7 +51,10 @@ export function ApprovalsPage() {
           </div>
           {approvals.data?.total === 0 ? (
             <div className="mt-4">
-              <EmptyState title="No approvals requested" message="Approval requests appear when policy-controlled actions need a human decision." />
+              <EmptyState
+                title="No approvals requested for this organization"
+                message="Approval requests appear when this organization's policy-controlled actions need a human decision."
+              />
             </div>
           ) : null}
         </DataState>

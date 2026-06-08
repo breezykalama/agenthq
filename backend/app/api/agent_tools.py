@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.pagination import PaginationParams
-from app.core.security import ensure_agent_access, require_roles
+from app.core.security import ensure_agent_access, require_current_organization, require_roles
 from app.db.session import get_db
 from app.models.user import UserRole
 from app.schemas.agent_tool import (
@@ -20,6 +20,7 @@ router = APIRouter(
     prefix="/api/v1/agents/{agent_id}/tools",
     tags=["agent-tools"],
     dependencies=[
+        Depends(require_current_organization),
         Depends(require_roles(UserRole.ADMIN, UserRole.AGENT_OWNER)),
         Depends(ensure_agent_access),
     ],

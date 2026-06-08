@@ -5,13 +5,17 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.core.tenancy import get_current_organization_id
 from app.models.agent import AgentRiskLevel
 from app.models.policy_rule import PolicyRule, PolicyRuleEffect, PolicyRuleScope
 from app.schemas.policy_rule import PolicyRuleCreate
 
 
 def create_policy_rule(db: Session, policy_rule_create: PolicyRuleCreate) -> PolicyRule:
-    policy_rule = PolicyRule(**policy_rule_create.model_dump())
+    policy_rule = PolicyRule(
+        organization_id=get_current_organization_id(db),
+        **policy_rule_create.model_dump(),
+    )
     db.add(policy_rule)
     db.commit()
     db.refresh(policy_rule)
@@ -30,7 +34,10 @@ def list_policy_rules(
     limit: int,
     offset: int,
 ) -> tuple[list[PolicyRule], int]:
-    filters: list[ColumnElement[bool]] = [PolicyRule.deleted_at.is_(None)]
+    filters: list[ColumnElement[bool]] = [
+        PolicyRule.organization_id == get_current_organization_id(db),
+        PolicyRule.deleted_at.is_(None),
+    ]
     if scope is not None:
         filters.append(PolicyRule.scope == scope)
     if agent_id is not None:
@@ -60,6 +67,7 @@ def list_policy_rules(
 
 def get_policy_rule_by_id(db: Session, rule_id: UUID) -> PolicyRule | None:
     statement = select(PolicyRule).where(
+        PolicyRule.organization_id == get_current_organization_id(db),
         PolicyRule.id == rule_id,
         PolicyRule.deleted_at.is_(None),
     )
@@ -68,6 +76,7 @@ def get_policy_rule_by_id(db: Session, rule_id: UUID) -> PolicyRule | None:
 
 def get_policy_rule_by_name(db: Session, name: str) -> PolicyRule | None:
     statement = select(PolicyRule).where(
+        PolicyRule.organization_id == get_current_organization_id(db),
         PolicyRule.name == name,
         PolicyRule.deleted_at.is_(None),
     )

@@ -72,7 +72,10 @@ export function ExecutionsPage() {
           </div>
           {executions.data?.total === 0 ? (
             <div className="mt-4">
-              <EmptyState title="No executions tracked" message="Run a simulated execution to test governance." />
+              <EmptyState
+                title="No executions tracked for this organization"
+                message="Run a simulated execution to test this organization's governance policies."
+              />
             </div>
           ) : null}
         </DataState>

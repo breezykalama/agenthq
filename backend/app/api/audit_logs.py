@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.pagination import PaginationParams
-from app.core.security import require_roles
+from app.core.security import require_current_organization, require_roles
 from app.db.session import get_db
 from app.models.audit_log import AuditAction
 from app.models.user import UserRole
@@ -15,7 +15,10 @@ from app.services import audit_logs as audit_log_service
 router = APIRouter(
     prefix="/api/v1/audit-logs",
     tags=["audit-logs"],
-    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.AUDITOR))],
+    dependencies=[
+        Depends(require_current_organization),
+        Depends(require_roles(UserRole.ADMIN, UserRole.AUDITOR)),
+    ],
 )
 DatabaseSession = Annotated[Session, Depends(get_db)]
 

@@ -5,7 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.pagination import PaginationParams
-from app.core.security import ensure_agent_access, get_current_user, require_roles
+from app.core.security import (
+    CurrentOrganizationContext,
+    ensure_agent_access,
+    get_current_organization_context,
+    get_current_user,
+    require_current_organization,
+    require_roles,
+)
 from app.db.session import get_db
 from app.models.user import User, UserRole
 from app.schemas.agent import AgentCreate, AgentListResponse, AgentRead, AgentUpdate
@@ -14,10 +21,17 @@ from app.services import agents as agent_service
 router = APIRouter(
     prefix="/api/v1/agents",
     tags=["agents"],
-    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.AGENT_OWNER))],
+    dependencies=[
+        Depends(require_current_organization),
+        Depends(require_roles(UserRole.ADMIN, UserRole.AGENT_OWNER)),
+    ],
 )
 DatabaseSession = Annotated[Session, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
+OrganizationContext = Annotated[
+    CurrentOrganizationContext,
+    Depends(get_current_organization_context),
+]
 
 
 @router.post("", response_model=AgentRead, status_code=status.HTTP_201_CREATED)
@@ -25,8 +39,9 @@ def create_agent(
     agent_create: AgentCreate,
     db: DatabaseSession,
     current_user: CurrentUser,
+    context: OrganizationContext,
 ) -> AgentRead:
-    if current_user.role == UserRole.AGENT_OWNER and agent_create.owner != current_user.email:
+    if context.current_role == UserRole.AGENT_OWNER and agent_create.owner != current_user.email:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Agent owner must match user.",
@@ -44,9 +59,10 @@ def create_agent(
 def list_agents(
     db: DatabaseSession,
     current_user: CurrentUser,
+    context: OrganizationContext,
     pagination: PaginationParams,
 ) -> AgentListResponse:
-    owner = current_user.email if current_user.role == UserRole.AGENT_OWNER else None
+    owner = current_user.email if context.current_role == UserRole.AGENT_OWNER else None
     agents, total = agent_service.list_agents(
         db,
         owner=owner,
@@ -60,8 +76,8 @@ def list_agents(
 
 
 @router.get("/{agent_id}", response_model=AgentRead)
-def get_agent(agent_id: UUID, db: DatabaseSession, current_user: CurrentUser) -> AgentRead:
-    ensure_agent_access(agent_id, current_user, db)
+def get_agent(agent_id: UUID, db: DatabaseSession, context: OrganizationContext) -> AgentRead:
+    ensure_agent_access(agent_id, context, db)
     try:
         return AgentRead.model_validate(agent_service.get_agent_by_id(db, agent_id))
     except agent_service.AgentNotFoundError as exc:
@@ -77,9 +93,10 @@ def update_agent(
     agent_update: AgentUpdate,
     db: DatabaseSession,
     current_user: CurrentUser,
+    context: OrganizationContext,
 ) -> AgentRead:
-    ensure_agent_access(agent_id, current_user, db)
-    if current_user.role == UserRole.AGENT_OWNER and agent_update.owner not in (
+    ensure_agent_access(agent_id, context, db)
+    if context.current_role == UserRole.AGENT_OWNER and agent_update.owner not in (
         None,
         current_user.email,
     ):
@@ -102,8 +119,8 @@ def update_agent(
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_agent(agent_id: UUID, db: DatabaseSession, current_user: CurrentUser) -> None:
-    ensure_agent_access(agent_id, current_user, db)
+def delete_agent(agent_id: UUID, db: DatabaseSession, context: OrganizationContext) -> None:
+    ensure_agent_access(agent_id, context, db)
     try:
         agent_service.soft_delete_agent(db, agent_id)
     except agent_service.AgentNotFoundError as exc:

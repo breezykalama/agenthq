@@ -20,6 +20,7 @@ class AgentTool(Base):
     __tablename__ = "agent_tools"
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     agent_id: Mapped[UUID] = mapped_column(ForeignKey("agents.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -58,3 +59,4 @@ Index(
     sqlite_where=AgentTool.deleted_at.is_(None),
 )
 Index("ix_agent_tools_agent_id_created_at", AgentTool.agent_id, AgentTool.created_at)
+Index("ix_agent_tools_organization_id", AgentTool.organization_id)

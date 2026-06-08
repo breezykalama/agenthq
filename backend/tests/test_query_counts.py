@@ -6,8 +6,10 @@ from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401
+from app.core.tenancy import set_current_organization_id
 from app.db.base import Base
 from app.models.agent import Agent, AgentRiskLevel, AgentStatus
+from app.models.organization import Organization
 from app.services import compliance as compliance_service
 from app.services import dashboard as dashboard_service
 
@@ -38,7 +40,12 @@ def query_count_session() -> Iterator[tuple[Session, Engine, UUID]]:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     with Session(engine) as db:
+        organization = Organization(name="Query Count Org", slug="query-count-org")
+        db.add(organization)
+        db.flush()
+        set_current_organization_id(db, organization.id)
         agent = Agent(
+            organization_id=organization.id,
             name="Query Count Agent",
             owner="platform-team",
             department="governance",

@@ -18,12 +18,12 @@ export function CompliancePage() {
 
   return (
     <>
-      <PageHeader title="Compliance" subtitle="Read-only audit and incident reporting for managers." />
+      <PageHeader title="Compliance" subtitle="Compliance reporting for this organization." />
       <Card className="mb-6 border-blue-200 bg-blue-50 text-blue-950">
         <h3 className="text-sm font-semibold">Read-only compliance view</h3>
         <p className="mt-1 text-sm leading-6">
-          These reports summarize governance activity for review. They do not change agents,
-          approvals, policies, executions, or incidents.
+          These read-only reports summarize this organization's governance activity. They do not
+          change agents, approvals, policies, executions, or incidents.
         </p>
       </Card>
       <DataState isLoading={summary.isLoading} error={summary.error}>
@@ -59,7 +59,10 @@ export function CompliancePage() {
           </div>
           {incidents.data?.total === 0 ? (
             <div className="mt-4">
-              <EmptyState title="No incidents in the report" message="Reported governance issues will appear here for read-only review." />
+              <EmptyState
+                title="No incidents in this organization's report"
+                message="Reported governance issues for this organization will appear here for read-only review."
+              />
             </div>
           ) : null}
         </DataState>

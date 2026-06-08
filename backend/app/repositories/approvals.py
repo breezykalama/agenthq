@@ -3,13 +3,18 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.tenancy import get_current_organization_id
 from app.models.agent import AgentRiskLevel
 from app.models.approval import Approval, ApprovalStatus
 from app.schemas.approval import ApprovalCreate
 
 
 def create_approval(db: Session, approval_create: ApprovalCreate) -> Approval:
-    approval = Approval(**approval_create.model_dump(), status=ApprovalStatus.PENDING)
+    approval = Approval(
+        organization_id=get_current_organization_id(db),
+        **approval_create.model_dump(),
+        status=ApprovalStatus.PENDING,
+    )
     db.add(approval)
     db.commit()
     db.refresh(approval)
@@ -27,7 +32,7 @@ def list_approvals(
     limit: int,
     offset: int,
 ) -> tuple[list[Approval], int]:
-    filters = []
+    filters = [Approval.organization_id == get_current_organization_id(db)]
     if agent_id is not None:
         filters.append(Approval.agent_id == agent_id)
     if status is not None:
@@ -54,7 +59,10 @@ def list_approvals(
 
 
 def get_approval_by_id(db: Session, approval_id: UUID) -> Approval | None:
-    statement = select(Approval).where(Approval.id == approval_id)
+    statement = select(Approval).where(
+        Approval.organization_id == get_current_organization_id(db),
+        Approval.id == approval_id,
+    )
     return db.scalar(statement)
 
 

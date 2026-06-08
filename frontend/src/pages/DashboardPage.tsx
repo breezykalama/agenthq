@@ -49,7 +49,7 @@ export function DashboardPage() {
   const isDemoMode = agents.data?.items.some((agent) => demoAgentNames.has(agent.name)) ?? false;
   return (
     <>
-      <PageHeader title="Dashboard" subtitle="Operational posture across agents, approvals, executions, and incidents." />
+      <PageHeader title="Dashboard" subtitle="Your organization's agent governance overview." />
       {isDemoMode && !demoBannerDismissed ? (
         <div className="mb-4 flex flex-col gap-3 rounded-md border border-blue-200 bg-blue-50 p-4 text-blue-950 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm leading-6">
@@ -111,8 +111,8 @@ export function DashboardPage() {
       {data?.total_agents === 0 ? (
         <div className="mt-6">
           <EmptyState
-            title="Your governance workspace is ready"
-            message="Register an MCP server to discover tools, or create your first agent manually."
+            title="Your organization governance workspace is ready"
+            message="Register an MCP server for this organization, or create its first agent manually."
           />
         </div>
       ) : null}

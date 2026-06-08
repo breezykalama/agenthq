@@ -20,6 +20,7 @@ class Incident(Base):
     __tablename__ = "incidents"
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     agent_id: Mapped[UUID] = mapped_column(ForeignKey("agents.id"), nullable=False)
     execution_id: Mapped[UUID | None] = mapped_column(ForeignKey("executions.id"), nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -56,3 +57,4 @@ class Incident(Base):
 Index("ix_incidents_created_at", Incident.created_at)
 Index("ix_incidents_agent_id_created_at", Incident.agent_id, Incident.created_at)
 Index("ix_incidents_status_created_at", Incident.status, Incident.created_at)
+Index("ix_incidents_organization_id", Incident.organization_id)

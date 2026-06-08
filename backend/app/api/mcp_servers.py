@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.adapters.mcp_discovery import MCPDiscoveryAdapter, get_mcp_discovery_adapter
 from app.api.pagination import PaginationParams
-from app.core.security import require_roles
+from app.core.security import require_current_organization, require_roles
 from app.db.session import get_db
 from app.models.user import UserRole
 from app.schemas.mcp_server import (
@@ -21,7 +21,7 @@ from app.services import mcp_servers as mcp_server_service
 router = APIRouter(
     prefix="/api/v1/mcp-servers",
     tags=["mcp-servers"],
-    dependencies=[Depends(require_roles(UserRole.ADMIN))],
+    dependencies=[Depends(require_current_organization), Depends(require_roles(UserRole.ADMIN))],
 )
 DatabaseSession = Annotated[Session, Depends(get_db)]
 DiscoveryAdapter = Annotated[MCPDiscoveryAdapter, Depends(get_mcp_discovery_adapter)]

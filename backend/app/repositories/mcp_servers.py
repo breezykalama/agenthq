@@ -4,12 +4,16 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.tenancy import get_current_organization_id
 from app.models.mcp_server import MCPServer, MCPServerStatus
 from app.schemas.mcp_server import MCPServerCreate
 
 
 def create_mcp_server(db: Session, mcp_server_create: MCPServerCreate) -> MCPServer:
-    mcp_server = MCPServer(**mcp_server_create.model_dump())
+    mcp_server = MCPServer(
+        organization_id=get_current_organization_id(db),
+        **mcp_server_create.model_dump(),
+    )
     db.add(mcp_server)
     db.commit()
     db.refresh(mcp_server)
@@ -17,7 +21,10 @@ def create_mcp_server(db: Session, mcp_server_create: MCPServerCreate) -> MCPSer
 
 
 def list_mcp_servers(db: Session, *, limit: int, offset: int) -> tuple[list[MCPServer], int]:
-    filters = [MCPServer.deleted_at.is_(None)]
+    filters = [
+        MCPServer.organization_id == get_current_organization_id(db),
+        MCPServer.deleted_at.is_(None),
+    ]
     statement = (
         select(MCPServer)
         .where(*filters)
@@ -31,6 +38,7 @@ def list_mcp_servers(db: Session, *, limit: int, offset: int) -> tuple[list[MCPS
 
 def get_mcp_server_by_id(db: Session, mcp_server_id: UUID) -> MCPServer | None:
     statement = select(MCPServer).where(
+        MCPServer.organization_id == get_current_organization_id(db),
         MCPServer.id == mcp_server_id,
         MCPServer.deleted_at.is_(None),
     )
@@ -39,6 +47,7 @@ def get_mcp_server_by_id(db: Session, mcp_server_id: UUID) -> MCPServer | None:
 
 def get_mcp_server_by_name(db: Session, name: str) -> MCPServer | None:
     statement = select(MCPServer).where(
+        MCPServer.organization_id == get_current_organization_id(db),
         MCPServer.name == name,
         MCPServer.deleted_at.is_(None),
     )
@@ -87,7 +96,14 @@ def soft_delete_mcp_server(db: Session, mcp_server: MCPServer) -> MCPServer:
 
 
 def count_mcp_servers(db: Session, status: MCPServerStatus | None = None) -> int:
-    statement = select(func.count()).select_from(MCPServer).where(MCPServer.deleted_at.is_(None))
+    statement = (
+        select(func.count())
+        .select_from(MCPServer)
+        .where(
+            MCPServer.organization_id == get_current_organization_id(db),
+            MCPServer.deleted_at.is_(None),
+        )
+    )
     if status is not None:
         statement = statement.where(MCPServer.status == status)
     return db.scalar(statement) or 0

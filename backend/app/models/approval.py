@@ -20,6 +20,7 @@ class Approval(Base):
     __tablename__ = "approvals"
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     agent_id: Mapped[UUID] = mapped_column(ForeignKey("agents.id"), nullable=False)
     requested_action: Mapped[str] = mapped_column(String(255), nullable=False)
     requested_by: Mapped[str] = mapped_column(String(255), nullable=False, default="system")
@@ -49,3 +50,4 @@ class Approval(Base):
 
 Index("ix_approvals_agent_id_requested_at", Approval.agent_id, Approval.requested_at)
 Index("ix_approvals_status_requested_at", Approval.status, Approval.requested_at)
+Index("ix_approvals_organization_id", Approval.organization_id)

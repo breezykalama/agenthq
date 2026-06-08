@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 
-import type { LoginPayload, RegisterPayload } from "../api/auth";
+import type { BootstrapPayload, LoginPayload, RegisterPayload } from "../api/auth";
+import type { AcceptOrganizationInvitePayload } from "../api/organizationInvites";
 import type { User } from "../types/api";
 
 export interface AuthContextValue {
@@ -8,6 +9,8 @@ export interface AuthContextValue {
   isLoading: boolean;
   login: (payload: LoginPayload) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
+  bootstrap: (payload: BootstrapPayload) => Promise<void>;
+  acceptInvite: (payload: AcceptOrganizationInvitePayload) => Promise<void>;
   logout: () => void;
 }
 

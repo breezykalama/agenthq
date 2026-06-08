@@ -19,6 +19,7 @@ class MCPServer(Base):
     __tablename__ = "mcp_servers"
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     agent_id: Mapped[UUID | None] = mapped_column(ForeignKey("agents.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -45,6 +46,7 @@ class MCPServer(Base):
 
 Index(
     "ix_mcp_servers_unique_name_not_deleted",
+    MCPServer.organization_id,
     MCPServer.name,
     unique=True,
     postgresql_where=MCPServer.deleted_at.is_(None),
@@ -52,3 +54,4 @@ Index(
 )
 Index("ix_mcp_servers_status", MCPServer.status)
 Index("ix_mcp_servers_agent_id", MCPServer.agent_id)
+Index("ix_mcp_servers_organization_id", MCPServer.organization_id)

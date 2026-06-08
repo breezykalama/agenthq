@@ -5,12 +5,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.core.tenancy import get_current_organization_id
 from app.models.agent import Agent
 from app.schemas.agent import AgentCreate
 
 
 def create_agent(db: Session, agent_create: AgentCreate) -> Agent:
-    agent = Agent(**agent_create.model_dump())
+    agent = Agent(organization_id=get_current_organization_id(db), **agent_create.model_dump())
     db.add(agent)
     db.commit()
     db.refresh(agent)
@@ -18,7 +19,7 @@ def create_agent(db: Session, agent_create: AgentCreate) -> Agent:
 
 
 def create_agent_pending(db: Session, agent_create: AgentCreate) -> Agent:
-    agent = Agent(**agent_create.model_dump())
+    agent = Agent(organization_id=get_current_organization_id(db), **agent_create.model_dump())
     db.add(agent)
     db.flush()
     return agent
@@ -31,7 +32,10 @@ def list_agents(
     limit: int,
     offset: int,
 ) -> tuple[list[Agent], int]:
-    filters: list[ColumnElement[bool]] = [Agent.deleted_at.is_(None)]
+    filters: list[ColumnElement[bool]] = [
+        Agent.organization_id == get_current_organization_id(db),
+        Agent.deleted_at.is_(None),
+    ]
     if owner is not None:
         filters.append(Agent.owner == owner)
     statement = (
@@ -49,12 +53,20 @@ def list_agents(
 
 
 def get_agent_by_id(db: Session, agent_id: UUID) -> Agent | None:
-    statement = select(Agent).where(Agent.id == agent_id, Agent.deleted_at.is_(None))
+    statement = select(Agent).where(
+        Agent.organization_id == get_current_organization_id(db),
+        Agent.id == agent_id,
+        Agent.deleted_at.is_(None),
+    )
     return db.scalar(statement)
 
 
 def get_agent_by_name(db: Session, name: str) -> Agent | None:
-    statement = select(Agent).where(Agent.name == name, Agent.deleted_at.is_(None))
+    statement = select(Agent).where(
+        Agent.organization_id == get_current_organization_id(db),
+        Agent.name == name,
+        Agent.deleted_at.is_(None),
+    )
     return db.scalar(statement)
 
 

@@ -3,13 +3,17 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.tenancy import get_current_organization_id
 from app.models.agent import AgentRiskLevel
 from app.models.incident import Incident, IncidentStatus
 from app.schemas.incident import IncidentCreate
 
 
 def create_incident(db: Session, incident_create: IncidentCreate) -> Incident:
-    incident = Incident(**incident_create.model_dump())
+    incident = Incident(
+        organization_id=get_current_organization_id(db),
+        **incident_create.model_dump(),
+    )
     db.add(incident)
     db.commit()
     db.refresh(incident)
@@ -28,7 +32,7 @@ def list_incidents(
     limit: int,
     offset: int,
 ) -> tuple[list[Incident], int]:
-    filters = []
+    filters = [Incident.organization_id == get_current_organization_id(db)]
     if agent_id is not None:
         filters.append(Incident.agent_id == agent_id)
     if execution_id is not None:
@@ -57,7 +61,10 @@ def list_incidents(
 
 
 def get_incident_by_id(db: Session, incident_id: UUID) -> Incident | None:
-    statement = select(Incident).where(Incident.id == incident_id)
+    statement = select(Incident).where(
+        Incident.organization_id == get_current_organization_id(db),
+        Incident.id == incident_id,
+    )
     return db.scalar(statement)
 
 

@@ -16,6 +16,8 @@ from app.api.executions import router as executions_router
 from app.api.health import router as health_router
 from app.api.incidents import router as incidents_router
 from app.api.mcp_servers import router as mcp_servers_router
+from app.api.organization_invites import router as organization_invites_router
+from app.api.organizations import router as organizations_router
 from app.api.policy_decisions import router as policy_decisions_router
 from app.api.policy_rules import router as policy_rules_router
 from app.api.users import router as users_router
@@ -54,6 +56,8 @@ def create_app() -> FastAPI:
         )
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(organizations_router)
+    app.include_router(organization_invites_router)
     app.include_router(users_router)
     app.include_router(agents_router)
     app.include_router(agent_tools_router)

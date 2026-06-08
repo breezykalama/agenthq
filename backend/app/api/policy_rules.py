@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.pagination import PaginationParams
-from app.core.security import require_roles
+from app.core.security import require_current_organization, require_roles
 from app.db.session import get_db
 from app.models.agent import AgentRiskLevel
 from app.models.policy_rule import PolicyRuleEffect, PolicyRuleScope
@@ -21,7 +21,7 @@ from app.services import policy_rules as policy_rule_service
 router = APIRouter(
     prefix="/api/v1/policy-rules",
     tags=["policy-rules"],
-    dependencies=[Depends(require_roles(UserRole.ADMIN))],
+    dependencies=[Depends(require_current_organization), Depends(require_roles(UserRole.ADMIN))],
 )
 DatabaseSession = Annotated[Session, Depends(get_db)]
 

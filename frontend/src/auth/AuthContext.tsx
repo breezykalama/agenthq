@@ -9,6 +9,7 @@ import {
 
 import { authApi } from "../api/auth";
 import { clearStoredToken, getStoredToken, setStoredToken } from "../api/client";
+import { organizationInvitesApi } from "../api/organizationInvites";
 import type { User } from "../types/api";
 import { AuthContext, type AuthContextValue } from "./context";
 
@@ -58,6 +59,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await authApi.register(payload);
         const token = await authApi.login({ email: payload.email, password: payload.password });
         setStoredToken(token.access_token);
+        setUser(await authApi.me());
+      },
+      bootstrap: async (payload) => {
+        const result = await authApi.bootstrap(payload);
+        setStoredToken(result.access_token);
+        setUser(await authApi.me());
+      },
+      acceptInvite: async (payload) => {
+        const result = await organizationInvitesApi.accept(payload);
+        setStoredToken(result.access_token);
         setUser(await authApi.me());
       },
       logout

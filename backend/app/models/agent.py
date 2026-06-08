@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Enum, Index, String, Text, Uuid
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -30,6 +30,7 @@ class Agent(Base):
     __tablename__ = "agents"
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     owner: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -62,8 +63,10 @@ class Agent(Base):
 
 Index(
     "ix_agents_unique_name_not_deleted",
+    Agent.organization_id,
     Agent.name,
     unique=True,
     postgresql_where=Agent.deleted_at.is_(None),
     sqlite_where=Agent.deleted_at.is_(None),
 )
+Index("ix_agents_organization_id", Agent.organization_id)

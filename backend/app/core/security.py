@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
@@ -11,13 +12,24 @@ from pwdlib import PasswordHash
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.tenancy import get_current_organization_id, set_current_organization_id
 from app.db.session import get_db
+from app.models.organization import Organization, OrganizationMembership
 from app.models.user import User, UserRole
 from app.repositories import agents as agent_repository
+from app.repositories import organizations as organization_repository
 from app.repositories import users as user_repository
 
 password_hash = PasswordHash.recommended()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+
+@dataclass(frozen=True)
+class CurrentOrganizationContext:
+    current_user: User
+    current_organization: Organization | None
+    current_membership: OrganizationMembership | None
+    current_role: UserRole
 
 
 def hash_password(password: str) -> str:
@@ -69,23 +81,107 @@ def get_current_user(
 def require_roles(*roles: UserRole) -> Callable[..., User]:
     allowed_roles = set(roles)
 
-    def dependency(current_user: Annotated[User, Depends(get_current_user)]) -> User:
-        if current_user.role not in allowed_roles:
+    def dependency(
+        context: Annotated[CurrentOrganizationContext, Depends(get_current_organization_context)],
+    ) -> User:
+        if context.current_role not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions.",
             )
-        return current_user
+        return context.current_user
 
     return dependency
 
 
-def ensure_agent_access(
-    agent_id: UUID,
+def get_current_organization_context(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+) -> CurrentOrganizationContext:
+    memberships = organization_repository.list_active_memberships_for_user(db, current_user.id)
+    if len(memberships) == 1:
+        membership, organization = memberships[0]
+        return CurrentOrganizationContext(
+            current_user=current_user,
+            current_organization=organization,
+            current_membership=membership,
+            current_role=membership.role,
+        )
+    return CurrentOrganizationContext(
+        current_user=current_user,
+        current_organization=None,
+        current_membership=None,
+        current_role=current_user.role,
+    )
+
+
+def require_current_organization_admin(
+    context: Annotated[CurrentOrganizationContext, Depends(get_current_organization_context)],
+) -> CurrentOrganizationContext:
+    if (
+        context.current_organization is None
+        or context.current_membership is None
+        or context.current_role != UserRole.ADMIN
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization admin access required.",
+        )
+    return context
+
+
+def require_current_organization(
+    context: Annotated[CurrentOrganizationContext, Depends(get_current_organization_context)],
+    db: Annotated[Session, Depends(get_db)],
+) -> CurrentOrganizationContext:
+    if context.current_organization is not None and context.current_membership is not None:
+        set_current_organization_id(db, context.current_organization.id)
+        return context
+
+    active_organization_count = organization_repository.count_active_organizations(db)
+    if active_organization_count <= 1:
+        organization_id = get_current_organization_id(db)
+        organization = organization_repository.get_organization_by_id(db, organization_id)
+        if organization is None or (
+            active_organization_count == 1 and organization.slug != "default-organization"
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Organization membership required.",
+            )
+        membership = organization_repository.create_membership_pending(
+            db,
+            OrganizationMembership(
+                organization_id=organization.id,
+                user_id=context.current_user.id,
+                role=context.current_user.role,
+            ),
+        )
+        db.commit()
+        set_current_organization_id(db, organization.id)
+        return CurrentOrganizationContext(
+            current_user=context.current_user,
+            current_organization=organization,
+            current_membership=membership,
+            current_role=membership.role,
+        )
+
+    if context.current_organization is None or context.current_membership is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization membership required.",
+        )
+    return context
+
+
+def ensure_agent_access(
+    agent_id: UUID,
+    context: Annotated[CurrentOrganizationContext, Depends(get_current_organization_context)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> None:
-    if current_user.role == UserRole.ADMIN:
+    if context.current_organization is not None:
+        set_current_organization_id(db, context.current_organization.id)
+    if context.current_role == UserRole.ADMIN:
         return
     agent = agent_repository.get_agent_by_id(db, agent_id)
     if agent is None:
@@ -93,7 +189,7 @@ def ensure_agent_access(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Agent not found.",
         )
-    if agent.owner.lower() != current_user.email.lower():
+    if agent.owner.lower() != context.current_user.email.lower():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Agent access denied.",
