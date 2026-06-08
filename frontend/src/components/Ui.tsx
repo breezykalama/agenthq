@@ -71,11 +71,20 @@ export function DataState({
   return <>{children}</>;
 }
 
-export function EmptyState({ title, message }: { title: string; message: string }) {
+export function EmptyState({
+  title,
+  message,
+  actions
+}: {
+  title: string;
+  message: string;
+  actions?: ReactNode;
+}) {
   return (
     <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
       <div className="font-medium text-slate-900">{title}</div>
       <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">{message}</p>
+      {actions ? <div className="mt-4 flex flex-wrap justify-center gap-2">{actions}</div> : null}
     </div>
   );
 }
@@ -117,12 +126,21 @@ export function PrimaryButton({
   );
 }
 
-export function SecondaryButton({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
+export function SecondaryButton({
+  children,
+  onClick,
+  disabled = false
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+      disabled={disabled}
+      className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
     >
       {children}
     </button>

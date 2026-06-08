@@ -9,7 +9,7 @@ const navItems = [
   { to: "/mcp-servers", label: "MCP Servers" },
   { to: "/agents", label: "Agents" },
   { to: "/policy-rules", label: "Policy Rules" },
-  { to: "/policy-decision", label: "Decision Tester" },
+  { to: "/policy-decisions", label: "Decision Tester" },
   { to: "/approvals", label: "Approvals" },
   { to: "/executions", label: "Executions" },
   { to: "/incidents", label: "Incidents" },

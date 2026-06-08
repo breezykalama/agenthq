@@ -60,7 +60,7 @@ export function DashboardPage() {
       to: "/mcp-servers"
     },
     { label: "Review Agent", complete: (data?.total_agents ?? 0) > 0, to: "/agents" },
-    { label: "Test Policy Decision", complete: false, to: "/policy-decision" },
+    { label: "Test Policy Decision", complete: false, to: "/policy-decisions" },
     {
       label: "Review Compliance",
       complete: (data?.total_executions ?? 0) > 0,
@@ -119,7 +119,7 @@ export function DashboardPage() {
                         : "border border-slate-300 text-slate-400"
                     }`}
                   >
-                    {item.complete ? "✓" : ""}
+                    {item.complete ? "OK" : ""}
                   </span>
                   {item.label}
                 </Link>

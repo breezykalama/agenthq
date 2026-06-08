@@ -1,5 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
-import { FormEvent } from "react";
+import { FormEvent, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { getErrorMessage } from "../api/client";
 import { endpoints } from "../api/queries";
@@ -10,16 +11,19 @@ function formString(form: FormData, key: string) {
 }
 
 export function PolicyDecisionPage() {
+  const [searchParams] = useSearchParams();
+  const [agentId, setAgentId] = useState(searchParams.get("agentId") ?? "");
+  const [toolId, setToolId] = useState(searchParams.get("toolId") ?? "");
+  const [requestedAction, setRequestedAction] = useState(searchParams.get("action") ?? "run_tool");
   const evaluate = useMutation({ mutationFn: endpoints.evaluatePolicy });
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const toolId = formString(form, "tool_id");
     evaluate.mutate({
-      agent_id: formString(form, "agent_id"),
+      agent_id: agentId,
       tool_id: toolId || null,
-      requested_action: formString(form, "requested_action"),
+      requested_action: requestedAction,
       risk_level: formString(form, "risk_level")
     });
   }
@@ -34,9 +38,15 @@ export function PolicyDecisionPage() {
             can allow the action, require human approval, or block it based on active policy rules.
           </p>
           <form onSubmit={submit} className="space-y-3">
-            <Field label="Agent ID"><input name="agent_id" required className={inputClass} placeholder="Paste an agent UUID" /></Field>
-            <Field label="Tool ID"><input name="tool_id" className={inputClass} placeholder="Optional tool UUID" /></Field>
-            <Field label="Requested Action"><input name="requested_action" required defaultValue="run_tool" className={inputClass} placeholder="refund_review" /></Field>
+            <Field label="Agent ID">
+              <input name="agent_id" required className={inputClass} placeholder="Paste an agent UUID" value={agentId} onChange={(event) => setAgentId(event.target.value)} />
+            </Field>
+            <Field label="Tool ID">
+              <input name="tool_id" className={inputClass} placeholder="Optional tool UUID" value={toolId} onChange={(event) => setToolId(event.target.value)} />
+            </Field>
+            <Field label="Requested Action">
+              <input name="requested_action" required className={inputClass} placeholder="refund_review" value={requestedAction} onChange={(event) => setRequestedAction(event.target.value)} />
+            </Field>
             <Field label="Risk Level">
               <select name="risk_level" className={inputClass} defaultValue="high">
                 <option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="critical">critical</option>

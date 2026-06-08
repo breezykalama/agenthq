@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { api, getErrorMessage } from "../api/client";
 import { endpoints } from "../api/queries";
+import { useAuth } from "../auth/context";
 import {
   Badge,
   Card,
@@ -15,13 +17,19 @@ import {
 } from "../components/Ui";
 import type { Agent, AgentTool, ListResponse } from "../types/api";
 
+const actionLinkClass =
+  "rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50";
+
 function formString(form: FormData, key: string) {
   return String(form.get(key) ?? "");
 }
 
 export function AgentsPage() {
   const queryClient = useQueryClient();
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const requestedAgentId = searchParams.get("agentId");
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(requestedAgentId);
   const agents = useQuery({ queryKey: ["agents"], queryFn: endpoints.agents });
   const selectedAgent = useMemo(
     () => agents.data?.items.find((agent) => agent.id === selectedAgentId) ?? agents.data?.items[0],
@@ -32,6 +40,11 @@ export function AgentsPage() {
     queryFn: () => endpoints.agentTools(selectedAgent?.id ?? ""),
     enabled: Boolean(selectedAgent?.id)
   });
+  const selectedFromMcpSync = Boolean(requestedAgentId && selectedAgent?.id === requestedAgentId);
+
+  useEffect(() => {
+    if (requestedAgentId) setSelectedAgentId(requestedAgentId);
+  }, [requestedAgentId]);
 
   const createAgent = useMutation({
     mutationFn: (payload: unknown) => api.post("/api/v1/agents", payload),
@@ -96,7 +109,9 @@ export function AgentsPage() {
                     <tr
                       key={agent.id}
                       onClick={() => setSelectedAgentId(agent.id)}
-                      className="cursor-pointer border-b last:border-0 hover:bg-slate-50"
+                      className={`cursor-pointer border-b last:border-0 hover:bg-slate-50 ${
+                        selectedAgent?.id === agent.id ? "bg-blue-50" : ""
+                      }`}
                     >
                       <td className="py-3 font-medium">{agent.name}</td>
                       <td><Badge>{agent.status}</Badge></td>
@@ -109,12 +124,28 @@ export function AgentsPage() {
             </div>
             {agents.data?.total === 0 ? (
               <div className="mt-4">
-                <EmptyState title="No agents registered" message="Create your first agent or sync one from an MCP server." />
+                <EmptyState
+                  title="No agents registered"
+                  message="Register an MCP server to create a linked agent and discover its tools, or create an agent manually."
+                  actions={
+                    <>
+                      {user?.role === "admin" ? (
+                        <Link to="/mcp-servers" className={actionLinkClass}>
+                          Register MCP Server
+                        </Link>
+                      ) : null}
+                      <a href="#create-agent" className={actionLinkClass}>
+                        Create Agent Manually
+                      </a>
+                    </>
+                  }
+                />
               </div>
             ) : null}
           </DataState>
         </Card>
         <Card>
+          <div id="create-agent" className="scroll-mt-24" />
           <h3 className="mb-3 font-semibold">Create Agent</h3>
           <form onSubmit={submitAgent} className="space-y-3">
             <Field label="Name"><input name="name" required className={inputClass} placeholder="Refund Review Agent" /></Field>
@@ -140,7 +171,20 @@ export function AgentsPage() {
       {selectedAgent ? (
         <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_0.8fr]">
           <Card>
-            <h3 className="mb-2 font-semibold">{selectedAgent.name}</h3>
+            {selectedFromMcpSync ? (
+              <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                Linked agent selected from MCP sync. Review its discovered tools below.
+              </div>
+            ) : null}
+            <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="font-semibold">{selectedAgent.name}</h3>
+              <Link
+                to={`/policy-decisions?agentId=${selectedAgent.id}`}
+                className={actionLinkClass}
+              >
+                Test Policy Decision
+              </Link>
+            </div>
             <p className="mb-4 text-sm text-slate-500">{selectedAgent.description ?? "No description"}</p>
             <DataState isLoading={tools.isLoading} error={tools.error}>
               <div className="grid gap-3 md:grid-cols-2">
@@ -149,6 +193,12 @@ export function AgentsPage() {
                     <div className="font-medium">{tool.name}</div>
                     <div className="mt-1 text-sm text-slate-500">{tool.description}</div>
                     <div className="mt-3 flex gap-2"><Badge>{tool.permission}</Badge><Badge>{tool.risk_level}</Badge><Badge>{tool.is_enabled ? "enabled" : "disabled"}</Badge></div>
+                    <Link
+                      to={`/policy-decisions?agentId=${selectedAgent.id}&toolId=${tool.id}&action=${encodeURIComponent(tool.name)}`}
+                      className={`${actionLinkClass} mt-3 inline-flex`}
+                    >
+                      Test This Tool
+                    </Link>
                   </div>
                 ))}
               </div>

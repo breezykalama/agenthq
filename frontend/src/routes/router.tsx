@@ -29,6 +29,7 @@ export const router = createBrowserRouter([
           { path: "agents", element: <AgentsPage /> },
           { path: "policy-rules", element: <PolicyRulesPage /> },
           { path: "policy-decision", element: <PolicyDecisionPage /> },
+          { path: "policy-decisions", element: <PolicyDecisionPage /> },
           { path: "approvals", element: <ApprovalsPage /> },
           { path: "executions", element: <ExecutionsPage /> },
           { path: "incidents", element: <IncidentsPage /> },
