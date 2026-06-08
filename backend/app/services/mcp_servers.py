@@ -126,7 +126,7 @@ def sync_mcp_server(
             mcp_server,
             {"status": MCPServerStatus.ERROR, "last_error": error_message},
         )
-        audit_log_service.create_audit_log(
+        audit_log_service.create_critical_audit_log(
             db,
             AuditLogCreate(
                 action=AuditAction.MCP_SERVER_SYNC_FAILED,
@@ -180,16 +180,29 @@ def sync_mcp_server(
             "last_error": None,
         },
     )
-    audit_log_service.create_audit_log(
-        db,
-        AuditLogCreate(
-            action=AuditAction.MCP_SERVER_SYNCED,
-            entity_type="mcp_server",
-            entity_id=synced_server.id,
-            before=before,
-            after=serialize_mcp_server(synced_server),
-        ),
-    )
+    try:
+        audit_log_service.create_critical_audit_log(
+            db,
+            AuditLogCreate(
+                action=AuditAction.MCP_SERVER_SYNCED,
+                entity_type="mcp_server",
+                entity_id=synced_server.id,
+                before=before,
+                after=serialize_mcp_server(synced_server),
+            ),
+        )
+    except audit_log_service.AuditLoggingError:
+        mcp_server_repository.update_mcp_server_state(
+            db,
+            synced_server,
+            {
+                "agent_id": before["agent_id"],
+                "status": MCPServerStatus.ERROR,
+                "last_sync_at": before["last_sync_at"],
+                "last_error": "MCP sync completed but could not be audited.",
+            },
+        )
+        raise
     return MCPServerSyncResponse(
         server_id=synced_server.id,
         agent_id=agent_id,

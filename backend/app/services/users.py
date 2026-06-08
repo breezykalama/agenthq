@@ -71,15 +71,20 @@ def update_user(db: Session, user_id: UUID, update: UserUpdate, actor: User) -> 
         if values.get("is_active") is False and before["is_active"] is True
         else AuditAction.USER_UPDATED
     )
-    audit_log_service.create_audit_log(
-        db,
-        AuditLogCreate(
-            actor=actor.email,
-            action=action,
-            entity_type="user",
-            entity_id=updated_user.id,
-            before=before,
-            after=serialize_user(updated_user),
-        ),
+    audit_create = AuditLogCreate(
+        actor=actor.email,
+        action=action,
+        entity_type="user",
+        entity_id=updated_user.id,
+        before=before,
+        after=serialize_user(updated_user),
     )
+    if action == AuditAction.USER_DEACTIVATED:
+        try:
+            audit_log_service.create_critical_audit_log(db, audit_create)
+        except audit_log_service.AuditLoggingError:
+            user_repository.update_user(db, updated_user, {"is_active": before["is_active"]})
+            raise
+    else:
+        audit_log_service.create_audit_log(db, audit_create)
     return updated_user

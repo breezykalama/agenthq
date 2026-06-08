@@ -67,7 +67,11 @@ export function DashboardPage() {
           </button>
         </div>
       ) : null}
-      <DataState isLoading={summary.isLoading} error={summary.error}>
+      <DataState
+        isLoading={summary.isLoading}
+        error={summary.error}
+        onRetry={() => void summary.refetch()}
+      >
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard label="Total Agents" value={data?.total_agents ?? 0} />
           <MetricCard label="Executions Today" value={data?.executions_today ?? 0} />
@@ -82,13 +86,25 @@ export function DashboardPage() {
         </div>
       </DataState>
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
-        <DataState isLoading={agentsByRisk.isLoading} error={agentsByRisk.error}>
+        <DataState
+          isLoading={agentsByRisk.isLoading}
+          error={agentsByRisk.error}
+          onRetry={() => void agentsByRisk.refetch()}
+        >
           <CountList title="Agents by Risk" data={agentsByRisk.data} />
         </DataState>
-        <DataState isLoading={executionsByStatus.isLoading} error={executionsByStatus.error}>
+        <DataState
+          isLoading={executionsByStatus.isLoading}
+          error={executionsByStatus.error}
+          onRetry={() => void executionsByStatus.refetch()}
+        >
           <CountList title="Executions by Status" data={executionsByStatus.data} />
         </DataState>
-        <DataState isLoading={approvalsByStatus.isLoading} error={approvalsByStatus.error}>
+        <DataState
+          isLoading={approvalsByStatus.isLoading}
+          error={approvalsByStatus.error}
+          onRetry={() => void approvalsByStatus.refetch()}
+        >
           <CountList title="Approvals by Status" data={approvalsByStatus.data} />
         </DataState>
       </div>

@@ -39,10 +39,12 @@ export function Badge({ children }: { children: ReactNode }) {
 export function DataState({
   isLoading,
   error,
+  onRetry,
   children
 }: {
   isLoading: boolean;
   error: unknown;
+  onRetry?: () => void;
   children: ReactNode;
 }) {
   if (isLoading) {
@@ -65,6 +67,15 @@ export function DataState({
           {permissionDenied ? "You do not have permission." : "Unable to load this section."}
         </div>
         <div className="mt-1 text-sm">{message}</div>
+        {onRetry ? (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-3 rounded-md border border-red-300 px-3 py-2 text-sm font-medium hover:bg-red-100"
+          >
+            Retry
+          </button>
+        ) : null}
       </Card>
     );
   }

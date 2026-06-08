@@ -42,11 +42,24 @@ api.interceptors.response.use(
 
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
-    if (error.response?.status === 403) return "You do not have permission to access this resource.";
+    if (!error.response) return "AgentHQ is unavailable. Check your connection and try again.";
+    if (error.response.status === 401) return "Your session has expired. Please sign in again.";
+    if (error.response.status === 403) return "You do not have permission to access this resource.";
+    if (error.response.status === 422) {
+      const detail = error.response.data?.detail;
+      if (Array.isArray(detail)) {
+        const messages = detail
+          .map((item) => (typeof item?.msg === "string" ? item.msg : null))
+          .filter(Boolean);
+        return messages.length > 0
+          ? `Please check the submitted values: ${messages.join("; ")}`
+          : "Please check the submitted values and try again.";
+      }
+      return "Please check the submitted values and try again.";
+    }
     const detail = error.response?.data?.detail;
     if (typeof detail === "string") return detail;
-    return error.message;
+    return "AgentHQ could not complete the request. Please try again.";
   }
-  if (error instanceof Error) return error.message;
-  return "Something went wrong.";
+  return "AgentHQ could not complete the request. Please try again.";
 }

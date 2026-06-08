@@ -78,16 +78,21 @@ def create_execution(db: Session, execution_create: ExecutionCreate) -> Executio
         values["completed_at"] = utc_now()
 
     execution = execution_repository.create_execution(db, values)
-    audit_log_service.create_audit_log(
-        db,
-        AuditLogCreate(
-            action=AuditAction.EXECUTION_CREATED,
-            entity_type="execution",
-            entity_id=execution.id,
-            before=None,
-            after=serialize_execution(execution),
-        ),
-    )
+    try:
+        audit_log_service.create_critical_audit_log(
+            db,
+            AuditLogCreate(
+                action=AuditAction.EXECUTION_CREATED,
+                entity_type="execution",
+                entity_id=execution.id,
+                before=None,
+                after=serialize_execution(execution),
+            ),
+        )
+    except audit_log_service.AuditLoggingError:
+        db.delete(execution)
+        db.commit()
+        raise
     return execution
 
 
@@ -111,6 +116,29 @@ def evaluate_policy_decision(
         raise ExecutionToolNotFoundError from exc
     except policy_decision_service.PolicyDecisionToolDisabledError as exc:
         raise ExecutionToolDisabledError from exc
+    except audit_log_service.AuditLoggingError:
+        raise
+    except Exception:
+        fallback = PolicyDecisionResponse(
+            decision=PolicyRuleEffect.BLOCK,
+            matched_rule_id=None,
+            matched_rule_name=None,
+            reason=(
+                "Policy evaluation failed unexpectedly; fail-closed fallback blocked the execution."
+            ),
+            requires_approval=False,
+        )
+        policy_decision_service.audit_decision(
+            db,
+            PolicyDecisionRequest(
+                agent_id=execution_create.agent_id,
+                tool_id=execution_create.tool_id,
+                requested_action=execution_create.action_name,
+                risk_level=execution_create.risk_level,
+            ),
+            fallback,
+        )
+        return fallback
 
 
 def list_executions(

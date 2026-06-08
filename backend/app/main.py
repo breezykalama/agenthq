@@ -1,8 +1,9 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.agent_tools import router as agent_tools_router
 from app.api.agents import router as agents_router
@@ -19,6 +20,7 @@ from app.api.policy_decisions import router as policy_decisions_router
 from app.api.policy_rules import router as policy_rules_router
 from app.api.users import router as users_router
 from app.core.config import get_cors_origins, get_settings
+from app.services.audit_logs import AuditLoggingError
 
 
 @asynccontextmanager
@@ -30,6 +32,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="AgentHQ", version="0.3.0", lifespan=lifespan)
+
+    @app.exception_handler(AuditLoggingError)
+    async def audit_logging_error_handler(
+        request: Request,
+        exc: AuditLoggingError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": str(exc)},
+        )
+
     cors_origins = get_cors_origins()
     if cors_origins:
         app.add_middleware(

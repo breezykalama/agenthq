@@ -7,8 +7,20 @@ from app.repositories import audit_logs as audit_log_repository
 from app.schemas.audit_log import AuditLogCreate
 
 
+class AuditLoggingError(Exception):
+    pass
+
+
 def create_audit_log(db: Session, audit_log_create: AuditLogCreate) -> AuditLog:
     return audit_log_repository.create_audit_log(db, audit_log_create)
+
+
+def create_critical_audit_log(db: Session, audit_log_create: AuditLogCreate) -> AuditLog:
+    try:
+        return create_audit_log(db, audit_log_create)
+    except Exception as exc:
+        db.rollback()
+        raise AuditLoggingError("Critical action could not be audited.") from exc
 
 
 def list_audit_logs(

@@ -117,20 +117,32 @@ def decide_approval(
         raise InvalidApprovalTransitionError
 
     before = serialize_approval(approval)
+    original_values = {
+        "status": approval.status,
+        "approver": approval.approver,
+        "decision_reason": approval.decision_reason,
+        "decided_at": approval.decided_at,
+    }
     approval.status = status
     approval.approver = decision.approver
     approval.decision_reason = decision.decision_reason
     approval.decided_at = utc_now()
 
     updated_approval = approval_repository.update_approval(db, approval)
-    audit_log_service.create_audit_log(
-        db,
-        AuditLogCreate(
-            action=audit_action,
-            entity_type="approval",
-            entity_id=updated_approval.id,
-            before=before,
-            after=serialize_approval(updated_approval),
-        ),
-    )
+    try:
+        audit_log_service.create_critical_audit_log(
+            db,
+            AuditLogCreate(
+                action=audit_action,
+                entity_type="approval",
+                entity_id=updated_approval.id,
+                before=before,
+                after=serialize_approval(updated_approval),
+            ),
+        )
+    except audit_log_service.AuditLoggingError:
+        for field, value in original_values.items():
+            setattr(updated_approval, field, value)
+        approval_repository.update_approval(db, updated_approval)
+        raise
     return updated_approval

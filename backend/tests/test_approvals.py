@@ -1,6 +1,9 @@
 from typing import Any, cast
 
+import pytest
 from fastapi.testclient import TestClient
+
+from app.services import audit_logs as audit_log_service
 
 JsonResponse = dict[str, Any]
 
@@ -253,3 +256,24 @@ def test_audit_log_created_after_approval_cancel(client: TestClient) -> None:
     assert len(logs) == 1
     assert logs[0]["before"]["status"] == "pending"
     assert logs[0]["after"]["status"] == "cancelled"
+
+
+def test_approval_decision_is_compensated_when_critical_audit_fails(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent = create_agent(client)
+    approval = create_approval(client, str(agent["id"]))
+
+    def fail_audit(*args: object, **kwargs: object) -> None:
+        raise audit_log_service.AuditLoggingError("Critical action could not be audited.")
+
+    monkeypatch.setattr(audit_log_service, "create_critical_audit_log", fail_audit)
+
+    response = client.post(f"/api/v1/approvals/{approval['id']}/approve")
+
+    assert response.status_code == 503
+    persisted = client.get(f"/api/v1/approvals/{approval['id']}").json()
+    assert persisted["status"] == "pending"
+    assert persisted["approver"] is None
+    assert persisted["decided_at"] is None

@@ -1,6 +1,10 @@
 from typing import Any, cast
 
+import pytest
 from fastapi.testclient import TestClient
+
+from app.services import audit_logs as audit_log_service
+from app.services import executions as execution_service
 
 JsonResponse = dict[str, Any]
 
@@ -275,3 +279,53 @@ def test_execution_create_creates_execution_and_policy_decision_audits(
     assert execution_logs[0]["entity_id"] == execution["id"]
     assert execution_logs[0]["after"]["policy_decision"] == "require_approval"
     assert decision_logs[0]["after"]["request"]["requested_action"] == "summarize_policy"
+
+
+def test_policy_decision_failure_fails_closed(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent = create_agent(client)
+
+    def fail_policy_evaluation(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("Policy database unavailable")
+
+    monkeypatch.setattr(
+        execution_service.policy_decision_service,
+        "evaluate_policy_decision",
+        fail_policy_evaluation,
+    )
+
+    response = client.post(
+        "/api/v1/executions",
+        json=execution_payload(str(agent["id"]), risk_level="high"),
+    )
+
+    assert response.status_code == 201
+    execution = response.json()
+    assert execution["status"] == "blocked"
+    assert execution["policy_decision"] == "block"
+    assert "fail-closed fallback" in execution["policy_decision_reason"]
+    decision_logs = audit_logs(client, "policy_decision.evaluated")
+    assert decision_logs[-1]["after"]["response"]["decision"] == "block"
+
+
+def test_execution_create_is_compensated_when_critical_audit_fails(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent = create_agent(client)
+
+    def fail_audit(*args: object, **kwargs: object) -> None:
+        raise audit_log_service.AuditLoggingError("Critical action could not be audited.")
+
+    monkeypatch.setattr(audit_log_service, "create_critical_audit_log", fail_audit)
+
+    response = client.post(
+        "/api/v1/executions",
+        json=execution_payload(str(agent["id"]), risk_level="low"),
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Critical action could not be audited."
+    assert client.get("/api/v1/executions").json()["total"] == 0

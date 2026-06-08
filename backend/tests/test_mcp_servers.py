@@ -284,6 +284,28 @@ def test_sync_failure_sets_status_error_and_last_error(client: TestClient) -> No
     assert server["last_error"] == "Mock MCP discovery failed."
 
 
+def test_sync_failure_preserves_existing_agent_tools_and_last_sync(client: TestClient) -> None:
+    mcp_server = create_mcp_server(client)
+    first_sync = sync_mcp_server(client, str(mcp_server["id"]))
+    before_server = client.get(f"/api/v1/mcp-servers/{mcp_server['id']}").json()
+    before_tools = client.get(f"/api/v1/agents/{first_sync['agent_id']}/tools").json()
+    client.patch(
+        f"/api/v1/mcp-servers/{mcp_server['id']}",
+        json={"server_url": "https://fail.example.com/mcp"},
+    )
+
+    response = client.post(f"/api/v1/mcp-servers/{mcp_server['id']}/sync")
+
+    after_server = client.get(f"/api/v1/mcp-servers/{mcp_server['id']}").json()
+    after_tools = client.get(f"/api/v1/agents/{first_sync['agent_id']}/tools").json()
+    assert response.status_code == 502
+    assert after_server["agent_id"] == before_server["agent_id"]
+    assert after_server["last_sync_at"] == before_server["last_sync_at"]
+    assert after_server["status"] == "error"
+    assert after_server["last_error"] == "Mock MCP discovery failed."
+    assert after_tools == before_tools
+
+
 def test_sync_success_clears_last_error(client: TestClient) -> None:
     payload = mcp_server_payload()
     payload["server_url"] = "https://fail.example.com/mcp"

@@ -106,7 +106,7 @@ def audit_decision(
     decision_request: PolicyDecisionRequest,
     decision_response: PolicyDecisionResponse,
 ) -> None:
-    audit_log_service.create_audit_log(
+    audit_log_service.create_critical_audit_log(
         db,
         AuditLogCreate(
             action=AuditAction.POLICY_DECISION_EVALUATED,
