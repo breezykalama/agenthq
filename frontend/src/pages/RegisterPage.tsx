@@ -34,7 +34,12 @@ export function RegisterPage() {
   return (
     <AuthPageFrame title="Create your account" subtitle="Register an identity for governed access.">
       <div className="mb-5 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">
-        New accounts default to Agent Owner. An administrator can update roles after registration.
+        <p className="font-medium">Create your AgentHQ account.</p>
+        <p className="mt-1">
+          AgentHQ helps organizations govern AI agents through policies, approvals, audit trails,
+          compliance reporting, and MCP integrations.
+        </p>
+        <p className="mt-1">Additional permissions may be granted by an administrator.</p>
       </div>
       <form className="space-y-4" onSubmit={submit}>
         <Field label="Full name">
