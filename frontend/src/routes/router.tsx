@@ -11,6 +11,7 @@ import { IncidentsPage } from "../pages/IncidentsPage";
 import { PolicyDecisionPage } from "../pages/PolicyDecisionPage";
 import { PolicyRulesPage } from "../pages/PolicyRulesPage";
 import { LoginPage } from "../pages/LoginPage";
+import { MCPServersPage } from "../pages/MCPServersPage";
 import { RegisterPage } from "../pages/RegisterPage";
 
 export const router = createBrowserRouter([
@@ -24,6 +25,7 @@ export const router = createBrowserRouter([
         element: <Layout />,
         children: [
           { index: true, element: <DashboardPage /> },
+          { path: "mcp-servers", element: <MCPServersPage /> },
           { path: "agents", element: <AgentsPage /> },
           { path: "policy-rules", element: <PolicyRulesPage /> },
           { path: "policy-decision", element: <PolicyDecisionPage /> },

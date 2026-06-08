@@ -109,7 +109,7 @@ export function AgentsPage() {
             </div>
             {agents.data?.total === 0 ? (
               <div className="mt-4">
-                <EmptyState title="No agents registered" message="Create an agent or run the demo seed script to populate the registry." />
+                <EmptyState title="No agents registered" message="Create your first agent or sync one from an MCP server." />
               </div>
             ) : null}
           </DataState>
@@ -154,7 +154,7 @@ export function AgentsPage() {
               </div>
               {tools.data?.total === 0 ? (
                 <div className="mt-4">
-                  <EmptyState title="No tools declared" message="Add the first tool this agent is allowed to use." />
+                  <EmptyState title="No tools declared" message="Add a tool manually or sync tools from the linked MCP server." />
                 </div>
               ) : null}
             </DataState>

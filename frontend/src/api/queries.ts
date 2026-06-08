@@ -10,6 +10,7 @@ import type {
   Execution,
   Incident,
   ListResponse,
+  MCPServer,
   PolicyDecisionResponse,
   PolicyRule
 } from "../types/api";
@@ -30,6 +31,8 @@ export const endpoints = {
   approvals: () => api.get<ListResponse<Approval>>("/api/v1/approvals").then((r) => r.data),
   executions: () => api.get<ListResponse<Execution>>("/api/v1/executions").then((r) => r.data),
   incidents: () => api.get<ListResponse<Incident>>("/api/v1/incidents").then((r) => r.data),
+  mcpServers: () =>
+    api.get<ListResponse<MCPServer>>("/api/v1/mcp-servers").then((r) => r.data),
   complianceSummary: () =>
     api.get<ComplianceSummary>("/api/v1/compliance/summary").then((r) => r.data),
   complianceIncidents: () =>

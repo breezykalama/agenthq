@@ -80,7 +80,7 @@ export function IncidentsPage() {
           </div>
           {incidents.data?.total === 0 ? (
             <div className="mt-4">
-              <EmptyState title="No incidents reported" message="Create an incident when a blocked action, failed execution, or policy issue needs tracking." />
+              <EmptyState title="No incidents reported" message="Track governance issues and policy violations." />
             </div>
           ) : null}
         </DataState>

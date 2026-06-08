@@ -73,7 +73,7 @@ export function PolicyRulesPage() {
             </div>
             {rules.data?.total === 0 ? (
               <div className="mt-4">
-                <EmptyState title="No policy rules yet" message="Create a global, agent, or tool rule to drive policy decisions." />
+                <EmptyState title="No policy rules yet" message="Create a policy rule to govern agent behavior." />
               </div>
             ) : null}
           </DataState>

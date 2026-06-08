@@ -13,6 +13,7 @@ export type PolicyRuleScope = "global" | "agent" | "tool";
 export type PolicyRuleEffect = "allow" | "require_approval" | "block";
 export type ToolPermission = "read" | "write" | "execute" | "admin";
 export type UserRole = "admin" | "auditor" | "operator" | "agent_owner";
+export type MCPServerStatus = "connected" | "disconnected" | "error";
 
 export interface User {
   id: string;
@@ -78,8 +79,37 @@ export interface DashboardSummary {
   investigating_incidents: number;
   resolved_incidents: number;
   critical_incidents: number;
+  total_mcp_servers: number;
+  connected_mcp_servers: number;
+  disconnected_mcp_servers: number;
+  total_users: number;
+  active_users: number;
   total_cost_usd: string;
   average_latency_ms: number;
+}
+
+export interface MCPServer {
+  id: string;
+  agent_id: string | null;
+  name: string;
+  description: string | null;
+  server_url: string;
+  status: MCPServerStatus;
+  last_sync_at: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+export interface MCPServerSyncResponse {
+  server_id: string;
+  agent_id: string;
+  discovered_tools_count: number;
+  created_tools_count: number;
+  updated_tools_count: number;
+  status: MCPServerStatus;
+  last_sync_at: string;
 }
 
 export interface PolicyRule {

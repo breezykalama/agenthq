@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 
 import { useAuth } from "../auth/context";
+import { GuidedTour, WelcomeModal } from "./Onboarding";
 
 const navItems = [
   { to: "/", label: "Dashboard" },
+  { to: "/mcp-servers", label: "MCP Servers" },
   { to: "/agents", label: "Agents" },
   { to: "/policy-rules", label: "Policy Rules" },
   { to: "/policy-decision", label: "Decision Tester" },
@@ -15,9 +18,24 @@ const navItems = [
 
 export function Layout() {
   const { user, logout } = useAuth();
+  const onboardingKey = `agenthq_onboarding_seen_v1:${user?.id ?? "anonymous"}`;
+  const [welcomeOpen, setWelcomeOpen] = useState(() => !localStorage.getItem(onboardingKey));
+  const [tourOpen, setTourOpen] = useState(false);
+
+  const dismissWelcome = () => {
+    localStorage.setItem(onboardingKey, "true");
+    setWelcomeOpen(false);
+  };
+
+  const startTour = () => {
+    dismissWelcome();
+    setTourOpen(true);
+  };
 
   return (
     <div className="min-h-screen bg-slate-100">
+      <WelcomeModal open={welcomeOpen} onStartTour={startTour} onSkip={dismissWelcome} />
+      <GuidedTour open={tourOpen} onFinish={() => setTourOpen(false)} />
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 border-r border-slate-200 bg-white px-4 py-5 lg:block">
         <div className="mb-8">
           <div className="text-lg font-semibold text-slate-950">AgentHQ</div>
@@ -44,6 +62,13 @@ export function Layout() {
           <div className="mb-3 text-xs capitalize text-slate-500">
             {user?.role.replace(/_/g, " ")}
           </div>
+          <button
+            type="button"
+            onClick={() => setTourOpen(true)}
+            className="mb-2 w-full rounded-md border border-slate-300 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Guided tour
+          </button>
           <button
             type="button"
             onClick={logout}
@@ -83,6 +108,13 @@ export function Layout() {
                   {user?.role.replace(/_/g, " ")}
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setTourOpen(true)}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700"
+              >
+                Tour
+              </button>
               <button
                 type="button"
                 onClick={logout}

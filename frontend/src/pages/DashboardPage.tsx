@@ -1,4 +1,6 @@
 import { useQueries } from "@tanstack/react-query";
+import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import { endpoints } from "../api/queries";
 import { Card, DataState, EmptyState, MetricCard, PageHeader } from "../components/Ui";
@@ -13,10 +15,10 @@ function CountList({ title, data }: { title: string; data?: CountMap }) {
       ) : (
         <div className="space-y-2">
           {Object.entries(data ?? {}).map(([key, value]) => (
-          <div key={key} className="flex items-center justify-between text-sm">
-            <span className="capitalize text-slate-600">{key.replace(/_/g, " ")}</span>
-            <span className="font-semibold text-slate-900">{value}</span>
-          </div>
+            <div key={key} className="flex items-center justify-between text-sm">
+              <span className="capitalize text-slate-600">{key.replace(/_/g, " ")}</span>
+              <span className="font-semibold text-slate-900">{value}</span>
+            </div>
           ))}
         </div>
       )}
@@ -25,27 +27,105 @@ function CountList({ title, data }: { title: string; data?: CountMap }) {
 }
 
 export function DashboardPage() {
-  const [summary, agentsByRisk, executionsByStatus, approvalsByStatus] = useQueries({
+  const [demoBannerDismissed, setDemoBannerDismissed] = useState(
+    () => localStorage.getItem("agenthq_demo_banner_dismissed") === "true"
+  );
+  const [summary, agentsByRisk, executionsByStatus, approvalsByStatus, agents] = useQueries({
     queries: [
       { queryKey: ["dashboard-summary"], queryFn: endpoints.dashboardSummary },
       { queryKey: ["agents-by-risk"], queryFn: endpoints.agentsByRisk },
       { queryKey: ["executions-by-status"], queryFn: endpoints.executionsByStatus },
-      { queryKey: ["approvals-by-status"], queryFn: endpoints.approvalsByStatus }
+      { queryKey: ["approvals-by-status"], queryFn: endpoints.approvalsByStatus },
+      { queryKey: ["agents"], queryFn: endpoints.agents }
     ]
   });
 
   const data = summary.data as DashboardSummary | undefined;
+  const demoAgentNames = new Set([
+    "Policy Knowledge Agent",
+    "Customer Response Agent",
+    "Payment Operations Agent",
+    "Escalation Agent"
+  ]);
+  const isDemoMode = agents.data?.items.some((agent) => demoAgentNames.has(agent.name)) ?? false;
+  const quickStart = [
+    {
+      label: "Register MCP Server",
+      complete: (data?.total_mcp_servers ?? 0) > 0,
+      to: "/mcp-servers"
+    },
+    {
+      label: "Sync Tools",
+      complete: (data?.connected_mcp_servers ?? 0) > 0,
+      to: "/mcp-servers"
+    },
+    { label: "Review Agent", complete: (data?.total_agents ?? 0) > 0, to: "/agents" },
+    { label: "Test Policy Decision", complete: false, to: "/policy-decision" },
+    {
+      label: "Review Compliance",
+      complete: (data?.total_executions ?? 0) > 0,
+      to: "/compliance"
+    }
+  ];
 
   return (
     <>
       <PageHeader title="Dashboard" subtitle="Operational posture across agents, approvals, executions, and incidents." />
-      <Card className="mb-6 bg-slate-950 text-white">
-        <div className="max-w-3xl">
-          <h3 className="text-base font-semibold">AgentHQ helps teams govern enterprise agents before they act.</h3>
-          <p className="mt-2 text-sm leading-6 text-slate-300">
-            Register agents and tools, define policies, require approvals for risky actions,
-            track simulated executions, record incidents, and produce compliance-ready summaries.
+      {isDemoMode && !demoBannerDismissed ? (
+        <div className="mb-4 flex flex-col gap-3 rounded-md border border-blue-200 bg-blue-50 p-4 text-blue-950 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm leading-6">
+            This environment contains sample governance data so you can explore AgentHQ immediately.
           </p>
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.setItem("agenthq_demo_banner_dismissed", "true");
+              setDemoBannerDismissed(true);
+            }}
+            className="self-start rounded-md border border-blue-300 px-3 py-1.5 text-sm font-medium hover:bg-blue-100 sm:self-auto"
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+      <Card className="mb-6">
+        <div className="grid gap-5 lg:grid-cols-[1fr_1.1fr] lg:items-start">
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Get started
+            </div>
+            <h3 className="mt-2 text-xl font-semibold text-slate-950">
+              Govern agents with clear policies and evidence.
+            </h3>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              AgentHQ shows which agents and tools exist, controls risky actions, and records the
+              approvals, executions, incidents, and audit evidence behind every decision.
+            </p>
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold text-slate-900">Quick Start</h4>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {quickStart.map((item) => (
+                <Link
+                  key={item.label}
+                  to={item.to}
+                  className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs ${
+                      item.complete
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "border border-slate-300 text-slate-400"
+                    }`}
+                  >
+                    {item.complete ? "✓" : ""}
+                  </span>
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </div>
         </div>
       </Card>
       <DataState isLoading={summary.isLoading} error={summary.error}>
@@ -56,6 +136,8 @@ export function DashboardPage() {
           <MetricCard label="Open Incidents" value={data?.open_incidents ?? 0} />
           <MetricCard label="Blocked Executions" value={data?.blocked_executions ?? 0} />
           <MetricCard label="Requires Approval" value={data?.requires_approval_executions ?? 0} />
+          <MetricCard label="MCP Servers" value={data?.total_mcp_servers ?? 0} />
+          <MetricCard label="Active Users" value={data?.active_users ?? 0} />
           <MetricCard label="Total Cost" value={`$${data?.total_cost_usd ?? "0"}`} />
           <MetricCard label="Avg Latency" value={`${Math.round(data?.average_latency_ms ?? 0)} ms`} />
         </div>
@@ -74,8 +156,8 @@ export function DashboardPage() {
       {data?.total_agents === 0 ? (
         <div className="mt-6">
           <EmptyState
-            title="No demo data yet"
-            message="Run the seed script or create agents from the Agents page to populate the dashboard."
+            title="Your governance workspace is ready"
+            message="Register an MCP server to discover tools, or create your first agent manually."
           />
         </div>
       ) : null}

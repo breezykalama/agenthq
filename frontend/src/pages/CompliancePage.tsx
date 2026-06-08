@@ -51,7 +51,7 @@ export function CompliancePage() {
           </div>
           {incidents.data?.total === 0 ? (
             <div className="mt-4">
-              <EmptyState title="No incidents in the report" message="Incident records will appear here as operators create them." />
+              <EmptyState title="No incidents in the report" message="Reported governance issues will appear here for read-only review." />
             </div>
           ) : null}
         </DataState>
