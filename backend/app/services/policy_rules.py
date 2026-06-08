@@ -61,6 +61,8 @@ def list_policy_rules(
     risk_level: AgentRiskLevel | None = None,
     effect: PolicyRuleEffect | None = None,
     is_enabled: bool | None = None,
+    limit: int,
+    offset: int,
 ) -> tuple[list[PolicyRule], int]:
     return policy_rule_repository.list_policy_rules(
         db,
@@ -70,6 +72,8 @@ def list_policy_rules(
         risk_level=risk_level,
         effect=effect,
         is_enabled=is_enabled,
+        limit=limit,
+        offset=offset,
     )
 
 

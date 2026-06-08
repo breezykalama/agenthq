@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, Uuid
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -51,3 +51,8 @@ class Incident(Base):
         onupdate=utc_now,
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+Index("ix_incidents_created_at", Incident.created_at)
+Index("ix_incidents_agent_id_created_at", Incident.agent_id, Incident.created_at)
+Index("ix_incidents_status_created_at", Incident.status, Incident.created_at)

@@ -70,3 +70,38 @@ The dashboard summary now reports total users and active users.
 * MyPy clean
 * Frontend build and lint passing
 * Live frontend and backend deployment
+
+# AgentHQ v0.3.2 — Reliability & Performance Hardening
+
+## Highlights
+
+### Reliability
+
+* Added service-owned atomic transactions
+* Added rollback tests for critical governance flows
+* Eliminated partial-state risks for key operations
+
+### Performance
+
+* Added pagination across all major list endpoints
+* Added 16 PostgreSQL indexes
+* Optimized dashboard aggregates
+* Optimized compliance reporting
+* Added query-count regression tests
+
+### Quality
+
+* 201 automated tests passing
+* Ruff clean
+* MyPy clean
+
+## Metrics
+
+Dashboard Summary:
+24 → 6 queries
+
+Compliance Summary:
+10 → 5 queries
+
+Agent Compliance Report:
+10 → 2 queries

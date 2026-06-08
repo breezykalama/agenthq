@@ -54,6 +54,8 @@ def list_approvals(
     risk_level: AgentRiskLevel | None = None,
     requested_by: str | None = None,
     approver: str | None = None,
+    limit: int,
+    offset: int,
 ) -> tuple[list[Approval], int]:
     return approval_repository.list_approvals(
         db,
@@ -62,6 +64,8 @@ def list_approvals(
         risk_level=risk_level,
         requested_by=requested_by,
         approver=approver,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -117,19 +121,13 @@ def decide_approval(
         raise InvalidApprovalTransitionError
 
     before = serialize_approval(approval)
-    original_values = {
-        "status": approval.status,
-        "approver": approval.approver,
-        "decision_reason": approval.decision_reason,
-        "decided_at": approval.decided_at,
-    }
-    approval.status = status
-    approval.approver = decision.approver
-    approval.decision_reason = decision.decision_reason
-    approval.decided_at = utc_now()
-
-    updated_approval = approval_repository.update_approval(db, approval)
     try:
+        approval.status = status
+        approval.approver = decision.approver
+        approval.decision_reason = decision.decision_reason
+        approval.decided_at = utc_now()
+
+        updated_approval = approval_repository.update_approval_pending(db, approval)
         audit_log_service.create_critical_audit_log(
             db,
             AuditLogCreate(
@@ -140,9 +138,9 @@ def decide_approval(
                 after=serialize_approval(updated_approval),
             ),
         )
-    except audit_log_service.AuditLoggingError:
-        for field, value in original_values.items():
-            setattr(updated_approval, field, value)
-        approval_repository.update_approval(db, updated_approval)
+        db.commit()
+        db.refresh(updated_approval)
+    except Exception:
+        db.rollback()
         raise
     return updated_approval

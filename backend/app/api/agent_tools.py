@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.api.pagination import PaginationParams
 from app.core.security import ensure_agent_access, require_roles
 from app.db.session import get_db
 from app.models.user import UserRole
@@ -49,9 +50,18 @@ def create_agent_tool(
 
 
 @router.get("", response_model=AgentToolListResponse)
-def list_agent_tools(agent_id: UUID, db: DatabaseSession) -> AgentToolListResponse:
+def list_agent_tools(
+    agent_id: UUID,
+    db: DatabaseSession,
+    pagination: PaginationParams,
+) -> AgentToolListResponse:
     try:
-        agent_tools, total = agent_tool_service.list_agent_tools(db, agent_id)
+        agent_tools, total = agent_tool_service.list_agent_tools(
+            db,
+            agent_id,
+            limit=pagination.limit,
+            offset=pagination.offset,
+        )
     except agent_tool_service.AgentToolAgentNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

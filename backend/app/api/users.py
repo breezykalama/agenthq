@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.api.pagination import PaginationParams
 from app.core.security import get_current_user, require_roles
 from app.db.session import get_db
 from app.models.user import User, UserRole
@@ -20,8 +21,12 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 @router.get("", response_model=UserListResponse)
-def list_users(db: DatabaseSession) -> UserListResponse:
-    users, total = user_service.list_users(db)
+def list_users(db: DatabaseSession, pagination: PaginationParams) -> UserListResponse:
+    users, total = user_service.list_users(
+        db,
+        limit=pagination.limit,
+        offset=pagination.offset,
+    )
     return UserListResponse(items=[UserRead.model_validate(user) for user in users], total=total)
 
 

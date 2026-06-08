@@ -50,3 +50,5 @@ Index(
     postgresql_where=MCPServer.deleted_at.is_(None),
     sqlite_where=MCPServer.deleted_at.is_(None),
 )
+Index("ix_mcp_servers_status", MCPServer.status)
+Index("ix_mcp_servers_agent_id", MCPServer.agent_id)

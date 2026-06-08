@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.api.pagination import PaginationParams
 from app.core.security import ensure_agent_access, get_current_user, require_roles
 from app.db.session import get_db
 from app.models.user import User, UserRole
@@ -40,9 +41,18 @@ def create_agent(
 
 
 @router.get("", response_model=AgentListResponse)
-def list_agents(db: DatabaseSession, current_user: CurrentUser) -> AgentListResponse:
+def list_agents(
+    db: DatabaseSession,
+    current_user: CurrentUser,
+    pagination: PaginationParams,
+) -> AgentListResponse:
     owner = current_user.email if current_user.role == UserRole.AGENT_OWNER else None
-    agents, total = agent_service.list_agents(db, owner=owner)
+    agents, total = agent_service.list_agents(
+        db,
+        owner=owner,
+        limit=pagination.limit,
+        offset=pagination.offset,
+    )
     return AgentListResponse(
         items=[AgentRead.model_validate(agent) for agent in agents],
         total=total,

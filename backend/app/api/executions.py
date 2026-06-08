@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.pagination import PaginationParams
 from app.core.security import require_roles
 from app.db.session import get_db
 from app.models.agent import AgentRiskLevel
@@ -56,6 +57,7 @@ def create_execution(execution_create: ExecutionCreate, db: DatabaseSession) -> 
 @router.get("", response_model=ExecutionListResponse)
 def list_executions(
     db: DatabaseSession,
+    pagination: PaginationParams,
     agent_id: Annotated[UUID | None, Query()] = None,
     status: Annotated[ExecutionStatus | None, Query()] = None,
     risk_level: Annotated[AgentRiskLevel | None, Query()] = None,
@@ -67,6 +69,8 @@ def list_executions(
         status=status,
         risk_level=risk_level,
         approval_id=approval_id,
+        limit=pagination.limit,
+        offset=pagination.offset,
     )
     return ExecutionListResponse(
         items=[ExecutionRead.model_validate(execution) for execution in executions],

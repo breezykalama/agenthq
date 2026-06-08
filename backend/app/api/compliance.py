@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.pagination import PaginationParams
 from app.core.security import require_roles
 from app.db.session import get_db
 from app.models.agent import AgentRiskLevel
@@ -57,6 +58,7 @@ def get_agent_compliance(agent_id: UUID, db: DatabaseSession) -> AgentCompliance
 @router.get("/incidents", response_model=ComplianceIncidentListResponse)
 def list_compliance_incidents(
     db: DatabaseSession,
+    pagination: PaginationParams,
     start_date: Annotated[date | None, Query()] = None,
     end_date: Annotated[date | None, Query()] = None,
     severity: Annotated[AgentRiskLevel | None, Query()] = None,
@@ -71,6 +73,8 @@ def list_compliance_incidents(
             severity=severity,
             status=status,
             agent_id=agent_id,
+            limit=pagination.limit,
+            offset=pagination.offset,
         )
     except compliance_service.InvalidComplianceDateRangeError as exc:
         raise invalid_date_range_error() from exc

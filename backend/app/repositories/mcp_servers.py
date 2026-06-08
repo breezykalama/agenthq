@@ -16,9 +16,15 @@ def create_mcp_server(db: Session, mcp_server_create: MCPServerCreate) -> MCPSer
     return mcp_server
 
 
-def list_mcp_servers(db: Session) -> tuple[list[MCPServer], int]:
+def list_mcp_servers(db: Session, *, limit: int, offset: int) -> tuple[list[MCPServer], int]:
     filters = [MCPServer.deleted_at.is_(None)]
-    statement = select(MCPServer).where(*filters).order_by(MCPServer.created_at.desc())
+    statement = (
+        select(MCPServer)
+        .where(*filters)
+        .order_by(MCPServer.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     count_statement = select(func.count()).select_from(MCPServer).where(*filters)
     return list(db.scalars(statement).all()), db.scalar(count_statement) or 0
 
@@ -58,6 +64,18 @@ def update_mcp_server_state(
     values: dict[str, object],
 ) -> MCPServer:
     return update_mcp_server(db, mcp_server, values)
+
+
+def update_mcp_server_state_pending(
+    db: Session,
+    mcp_server: MCPServer,
+    values: dict[str, object],
+) -> MCPServer:
+    for field, value in values.items():
+        setattr(mcp_server, field, value)
+    db.add(mcp_server)
+    db.flush()
+    return mcp_server
 
 
 def soft_delete_mcp_server(db: Session, mcp_server: MCPServer) -> MCPServer:

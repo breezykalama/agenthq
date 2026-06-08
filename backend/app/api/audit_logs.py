@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.api.pagination import PaginationParams
 from app.core.security import require_roles
 from app.db.session import get_db
 from app.models.audit_log import AuditAction
@@ -22,6 +23,7 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 @router.get("", response_model=AuditLogListResponse)
 def list_audit_logs(
     db: DatabaseSession,
+    pagination: PaginationParams,
     entity_type: Annotated[str | None, Query()] = None,
     entity_id: Annotated[UUID | None, Query()] = None,
     action: Annotated[AuditAction | None, Query()] = None,
@@ -33,6 +35,8 @@ def list_audit_logs(
         entity_id=entity_id,
         action=action,
         actor=actor,
+        limit=pagination.limit,
+        offset=pagination.offset,
     )
     return AuditLogListResponse(
         items=[AuditLogRead.model_validate(audit_log) for audit_log in audit_logs],

@@ -28,6 +28,8 @@ class PolicyDecisionToolDisabledError(Exception):
 def evaluate_policy_decision(
     db: Session,
     decision_request: PolicyDecisionRequest,
+    *,
+    commit: bool = True,
 ) -> PolicyDecisionResponse:
     if agent_repository.get_agent_by_id(db, decision_request.agent_id) is None:
         raise PolicyDecisionAgentNotFoundError
@@ -52,7 +54,13 @@ def evaluate_policy_decision(
         )
     )
     response = response_from_rule(matched_rule, decision_request.risk_level)
-    audit_decision(db, decision_request, response)
+    try:
+        audit_decision(db, decision_request, response)
+        if commit:
+            db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return response
 
 

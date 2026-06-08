@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.pagination import PaginationParams
 from app.core.security import require_roles
 from app.db.session import get_db
 from app.models.agent import AgentRiskLevel
@@ -49,6 +50,7 @@ def create_policy_rule(
 @router.get("", response_model=PolicyRuleListResponse)
 def list_policy_rules(
     db: DatabaseSession,
+    pagination: PaginationParams,
     scope: Annotated[PolicyRuleScope | None, Query()] = None,
     agent_id: Annotated[UUID | None, Query()] = None,
     tool_id: Annotated[UUID | None, Query()] = None,
@@ -64,6 +66,8 @@ def list_policy_rules(
         risk_level=risk_level,
         effect=effect,
         is_enabled=is_enabled,
+        limit=pagination.limit,
+        offset=pagination.offset,
     )
     return PolicyRuleListResponse(
         items=[PolicyRuleRead.model_validate(policy_rule) for policy_rule in policy_rules],

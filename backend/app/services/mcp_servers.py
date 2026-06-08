@@ -56,8 +56,8 @@ def create_mcp_server(db: Session, mcp_server_create: MCPServerCreate) -> MCPSer
     return mcp_server
 
 
-def list_mcp_servers(db: Session) -> tuple[list[MCPServer], int]:
-    return mcp_server_repository.list_mcp_servers(db)
+def list_mcp_servers(db: Session, *, limit: int, offset: int) -> tuple[list[MCPServer], int]:
+    return mcp_server_repository.list_mcp_servers(db, limit=limit, offset=offset)
 
 
 def get_mcp_server_by_id(db: Session, mcp_server_id: UUID) -> MCPServer:
@@ -121,66 +121,71 @@ def sync_mcp_server(
         discovered_tools = adapter.discover_tools(mcp_server.server_url)
     except Exception as exc:
         error_message = str(exc) or type(exc).__name__
-        failed_server = mcp_server_repository.update_mcp_server_state(
-            db,
-            mcp_server,
-            {"status": MCPServerStatus.ERROR, "last_error": error_message},
-        )
-        audit_log_service.create_critical_audit_log(
-            db,
-            AuditLogCreate(
-                action=AuditAction.MCP_SERVER_SYNC_FAILED,
-                entity_type="mcp_server",
-                entity_id=failed_server.id,
-                before=before,
-                after=serialize_mcp_server(failed_server),
-            ),
-        )
-        raise MCPServerSyncError(error_message) from exc
-
-    agent_id = ensure_linked_agent(db, mcp_server)
-    created_tools_count = 0
-    updated_tools_count = 0
-    for discovered_tool in discovered_tools:
-        existing_tool = agent_tool_repository.get_agent_tool_by_name(
-            db,
-            agent_id,
-            discovered_tool.name,
-        )
-        if existing_tool is None:
-            agent_tool_repository.create_agent_tool(
+        try:
+            failed_server = mcp_server_repository.update_mcp_server_state_pending(
                 db,
-                agent_id,
-                AgentToolCreate(
-                    name=discovered_tool.name,
-                    description=discovered_tool.description,
-                    permission=AgentToolPermission.EXECUTE,
-                    risk_level=AgentRiskLevel.MEDIUM,
-                    is_enabled=True,
+                mcp_server,
+                {"status": MCPServerStatus.ERROR, "last_error": error_message},
+            )
+            audit_log_service.create_critical_audit_log(
+                db,
+                AuditLogCreate(
+                    action=AuditAction.MCP_SERVER_SYNC_FAILED,
+                    entity_type="mcp_server",
+                    entity_id=failed_server.id,
+                    before=before,
+                    after=serialize_mcp_server(failed_server),
                 ),
             )
-            created_tools_count += 1
-            continue
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        raise MCPServerSyncError(error_message) from exc
 
-        agent_tool_repository.update_agent_tool(
-            db,
-            existing_tool,
-            {"description": discovered_tool.description},
-        )
-        updated_tools_count += 1
-
-    synced_at = datetime.now(UTC)
-    synced_server = mcp_server_repository.update_mcp_server_state(
-        db,
-        mcp_server,
-        {
-            "agent_id": agent_id,
-            "status": MCPServerStatus.CONNECTED,
-            "last_sync_at": synced_at,
-            "last_error": None,
-        },
-    )
     try:
+        agent_id = ensure_linked_agent(db, mcp_server)
+        created_tools_count = 0
+        updated_tools_count = 0
+        for discovered_tool in discovered_tools:
+            existing_tool = agent_tool_repository.get_agent_tool_by_name(
+                db,
+                agent_id,
+                discovered_tool.name,
+            )
+            if existing_tool is None:
+                agent_tool_repository.create_agent_tool_pending(
+                    db,
+                    agent_id,
+                    AgentToolCreate(
+                        name=discovered_tool.name,
+                        description=discovered_tool.description,
+                        permission=AgentToolPermission.EXECUTE,
+                        risk_level=AgentRiskLevel.MEDIUM,
+                        is_enabled=True,
+                    ),
+                )
+                created_tools_count += 1
+                continue
+
+            agent_tool_repository.update_agent_tool_pending(
+                db,
+                existing_tool,
+                {"description": discovered_tool.description},
+            )
+            updated_tools_count += 1
+
+        synced_at = datetime.now(UTC)
+        synced_server = mcp_server_repository.update_mcp_server_state_pending(
+            db,
+            mcp_server,
+            {
+                "agent_id": agent_id,
+                "status": MCPServerStatus.CONNECTED,
+                "last_sync_at": synced_at,
+                "last_error": None,
+            },
+        )
         audit_log_service.create_critical_audit_log(
             db,
             AuditLogCreate(
@@ -191,17 +196,10 @@ def sync_mcp_server(
                 after=serialize_mcp_server(synced_server),
             ),
         )
-    except audit_log_service.AuditLoggingError:
-        mcp_server_repository.update_mcp_server_state(
-            db,
-            synced_server,
-            {
-                "agent_id": before["agent_id"],
-                "status": MCPServerStatus.ERROR,
-                "last_sync_at": before["last_sync_at"],
-                "last_error": "MCP sync completed but could not be audited.",
-            },
-        )
+        db.commit()
+        db.refresh(synced_server)
+    except Exception:
+        db.rollback()
         raise
     return MCPServerSyncResponse(
         server_id=synced_server.id,
@@ -224,15 +222,26 @@ def ensure_linked_agent(db: Session, mcp_server: MCPServer) -> UUID:
     if existing_agent is not None:
         return existing_agent.id
 
-    created_agent = agent_service.create_agent(
+    agent_create = AgentCreate(
+        name=mcp_server.name,
+        description=f"Agent linked to MCP server {mcp_server.name}.",
+        owner="system",
+        department="MCP",
+        risk_level=AgentRiskLevel.MEDIUM,
+        status=AgentStatus.DRAFT,
+    )
+    created_agent = agent_repository.create_agent_pending(
         db,
-        AgentCreate(
-            name=mcp_server.name,
-            description=f"Agent linked to MCP server {mcp_server.name}.",
-            owner="system",
-            department="MCP",
-            risk_level=AgentRiskLevel.MEDIUM,
-            status=AgentStatus.DRAFT,
+        agent_create,
+    )
+    audit_log_service.create_critical_audit_log(
+        db,
+        AuditLogCreate(
+            action=AuditAction.AGENT_CREATED,
+            entity_type="agent",
+            entity_id=created_agent.id,
+            before=None,
+            after=agent_service.serialize_agent(created_agent),
         ),
     )
     return created_agent.id

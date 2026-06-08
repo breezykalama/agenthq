@@ -52,33 +52,33 @@ def serialize_execution(execution: Execution) -> JsonObject:
 
 
 def create_execution(db: Session, execution_create: ExecutionCreate) -> Execution:
-    if agent_repository.get_agent_by_id(db, execution_create.agent_id) is None:
-        raise ExecutionAgentNotFoundError
-
-    policy_decision = evaluate_policy_decision(db, execution_create)
-    values = execution_create.model_dump(exclude_none=True)
-    status = execution_create.status or ExecutionStatus.PENDING
-
-    if execution_create.approval_id is not None:
-        validate_approval(db, execution_create.agent_id, execution_create.approval_id)
-
-    if policy_decision.decision == PolicyRuleEffect.BLOCK:
-        status = ExecutionStatus.BLOCKED
-    elif (
-        policy_decision.decision == PolicyRuleEffect.REQUIRE_APPROVAL
-        and execution_create.approval_id is None
-    ):
-        status = ExecutionStatus.REQUIRES_APPROVAL
-
-    values["status"] = status
-    values["policy_decision"] = policy_decision.decision
-    values["policy_decision_reason"] = policy_decision.reason
-    values["policy_rule_id"] = policy_decision.matched_rule_id
-    if status in TERMINAL_STATUSES:
-        values["completed_at"] = utc_now()
-
-    execution = execution_repository.create_execution(db, values)
     try:
+        if agent_repository.get_agent_by_id(db, execution_create.agent_id) is None:
+            raise ExecutionAgentNotFoundError
+
+        policy_decision = evaluate_policy_decision(db, execution_create)
+        values = execution_create.model_dump(exclude_none=True)
+        status = execution_create.status or ExecutionStatus.PENDING
+
+        if execution_create.approval_id is not None:
+            validate_approval(db, execution_create.agent_id, execution_create.approval_id)
+
+        if policy_decision.decision == PolicyRuleEffect.BLOCK:
+            status = ExecutionStatus.BLOCKED
+        elif (
+            policy_decision.decision == PolicyRuleEffect.REQUIRE_APPROVAL
+            and execution_create.approval_id is None
+        ):
+            status = ExecutionStatus.REQUIRES_APPROVAL
+
+        values["status"] = status
+        values["policy_decision"] = policy_decision.decision
+        values["policy_decision_reason"] = policy_decision.reason
+        values["policy_rule_id"] = policy_decision.matched_rule_id
+        if status in TERMINAL_STATUSES:
+            values["completed_at"] = utc_now()
+
+        execution = execution_repository.create_execution_pending(db, values)
         audit_log_service.create_critical_audit_log(
             db,
             AuditLogCreate(
@@ -89,9 +89,10 @@ def create_execution(db: Session, execution_create: ExecutionCreate) -> Executio
                 after=serialize_execution(execution),
             ),
         )
-    except audit_log_service.AuditLoggingError:
-        db.delete(execution)
         db.commit()
+        db.refresh(execution)
+    except Exception:
+        db.rollback()
         raise
     return execution
 
@@ -109,6 +110,7 @@ def evaluate_policy_decision(
                 requested_action=execution_create.action_name,
                 risk_level=execution_create.risk_level,
             ),
+            commit=False,
         )
     except policy_decision_service.PolicyDecisionAgentNotFoundError as exc:
         raise ExecutionAgentNotFoundError from exc
@@ -148,6 +150,8 @@ def list_executions(
     status: ExecutionStatus | None = None,
     risk_level: AgentRiskLevel | None = None,
     approval_id: UUID | None = None,
+    limit: int,
+    offset: int,
 ) -> tuple[list[Execution], int]:
     return execution_repository.list_executions(
         db,
@@ -155,6 +159,8 @@ def list_executions(
         status=status,
         risk_level=risk_level,
         approval_id=approval_id,
+        limit=limit,
+        offset=offset,
     )
 
 

@@ -20,8 +20,9 @@ def count_users(db: Session, *, active_only: bool = False) -> int:
     return db.scalar(statement) or 0
 
 
-def list_users(db: Session) -> tuple[list[User], int]:
-    return list(db.scalars(select(User).order_by(User.created_at.desc())).all()), count_users(db)
+def list_users(db: Session, *, limit: int, offset: int) -> tuple[list[User], int]:
+    statement = select(User).order_by(User.created_at.desc()).limit(limit).offset(offset)
+    return list(db.scalars(statement).all()), count_users(db)
 
 
 def get_user_by_id(db: Session, user_id: UUID) -> User | None:
@@ -38,4 +39,12 @@ def update_user(db: Session, user: User, values: dict[str, object]) -> User:
     db.add(user)
     db.commit()
     db.refresh(user)
+    return user
+
+
+def update_user_pending(db: Session, user: User, values: dict[str, object]) -> User:
+    for field, value in values.items():
+        setattr(user, field, value)
+    db.add(user)
+    db.flush()
     return user

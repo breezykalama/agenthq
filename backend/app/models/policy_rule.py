@@ -71,3 +71,10 @@ Index(
     postgresql_where=PolicyRule.deleted_at.is_(None),
     sqlite_where=PolicyRule.deleted_at.is_(None),
 )
+Index(
+    "ix_policy_rules_scope_agent_id_tool_id_priority",
+    PolicyRule.scope,
+    PolicyRule.agent_id,
+    PolicyRule.tool_id,
+    PolicyRule.priority,
+)

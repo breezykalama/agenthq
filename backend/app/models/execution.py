@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, Uuid
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, Numeric, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -66,3 +66,8 @@ class Execution(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+Index("ix_executions_created_at", Execution.created_at)
+Index("ix_executions_agent_id_created_at", Execution.agent_id, Execution.created_at)
+Index("ix_executions_status_created_at", Execution.status, Execution.created_at)

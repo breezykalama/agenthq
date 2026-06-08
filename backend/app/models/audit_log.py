@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, DateTime, Enum, String, Uuid
+from sqlalchemy import JSON, DateTime, Enum, Index, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -62,3 +62,9 @@ class AuditLog(Base):
     before: Mapped[JsonObject | None] = mapped_column(JSON, nullable=True)
     after: Mapped[JsonObject | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+Index("ix_audit_logs_created_at", AuditLog.created_at)
+Index("ix_audit_logs_entity_type_entity_id", AuditLog.entity_type, AuditLog.entity_id)
+Index("ix_audit_logs_action", AuditLog.action)
+Index("ix_audit_logs_actor", AuditLog.actor)

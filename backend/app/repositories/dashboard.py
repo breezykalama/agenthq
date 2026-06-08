@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
@@ -12,79 +13,141 @@ from app.models.mcp_server import MCPServer, MCPServerStatus
 from app.models.user import User
 
 
-def count_agents(db: Session, status: AgentStatus | None = None) -> int:
-    statement = select(func.count()).select_from(Agent).where(Agent.deleted_at.is_(None))
-    if status is not None:
-        statement = statement.where(Agent.status == status)
-    return db.scalar(statement) or 0
+@dataclass(frozen=True)
+class AgentMetrics:
+    total: int
+    active: int
+    disabled: int
+    archived: int
 
 
-def count_executions(
+@dataclass(frozen=True)
+class ExecutionMetrics:
+    total: int
+    today: int
+    succeeded: int
+    failed: int
+    blocked: int
+    requires_approval: int
+    total_cost_usd: Decimal
+    average_latency_ms: float
+
+
+@dataclass(frozen=True)
+class ApprovalMetrics:
+    pending: int
+    approved: int
+    rejected: int
+
+
+@dataclass(frozen=True)
+class IncidentMetrics:
+    open: int
+    investigating: int
+    resolved: int
+    critical: int
+
+
+@dataclass(frozen=True)
+class MCPServerMetrics:
+    total: int
+    connected: int
+    disconnected: int
+
+
+@dataclass(frozen=True)
+class UserMetrics:
+    total: int
+    active: int
+
+
+def get_agent_metrics(db: Session) -> AgentMetrics:
+    row = db.execute(
+        select(
+            func.count(),
+            func.count().filter(Agent.status == AgentStatus.ACTIVE),
+            func.count().filter(Agent.status == AgentStatus.DISABLED),
+            func.count().filter(Agent.status == AgentStatus.ARCHIVED),
+        ).where(Agent.deleted_at.is_(None))
+    ).one()
+    return AgentMetrics(*row)
+
+
+def get_execution_metrics(
     db: Session,
     *,
-    status: ExecutionStatus | None = None,
-    created_at_start: datetime | None = None,
-    created_at_end: datetime | None = None,
-) -> int:
-    statement = select(func.count()).select_from(Execution)
-    if status is not None:
-        statement = statement.where(Execution.status == status)
-    if created_at_start is not None:
-        statement = statement.where(Execution.created_at >= created_at_start)
-    if created_at_end is not None:
-        statement = statement.where(Execution.created_at < created_at_end)
-    return db.scalar(statement) or 0
-
-
-def count_approvals(db: Session, status: ApprovalStatus | None = None) -> int:
-    statement = select(func.count()).select_from(Approval)
-    if status is not None:
-        statement = statement.where(Approval.status == status)
-    return db.scalar(statement) or 0
-
-
-def count_incidents(
-    db: Session,
-    *,
-    status: IncidentStatus | None = None,
-    severity: AgentRiskLevel | None = None,
-) -> int:
-    statement = select(func.count()).select_from(Incident)
-    if status is not None:
-        statement = statement.where(Incident.status == status)
-    if severity is not None:
-        statement = statement.where(Incident.severity == severity)
-    return db.scalar(statement) or 0
-
-
-def count_mcp_servers(db: Session, status: MCPServerStatus | None = None) -> int:
-    statement = select(func.count()).select_from(MCPServer).where(MCPServer.deleted_at.is_(None))
-    if status is not None:
-        statement = statement.where(MCPServer.status == status)
-    return db.scalar(statement) or 0
-
-
-def count_users(db: Session, *, active_only: bool = False) -> int:
-    statement = select(func.count()).select_from(User)
-    if active_only:
-        statement = statement.where(User.is_active.is_(True))
-    return db.scalar(statement) or 0
-
-
-def total_execution_cost_usd(db: Session) -> Decimal:
-    total = db.scalar(select(func.sum(Execution.cost_usd)).where(Execution.cost_usd.is_not(None)))
-    if total is None:
-        return Decimal("0")
-    return Decimal(str(total))
-
-
-def average_execution_latency_ms(db: Session) -> float:
-    average = db.scalar(
-        select(func.avg(Execution.latency_ms)).where(Execution.latency_ms.is_not(None))
+    today_start: datetime,
+    tomorrow_start: datetime,
+) -> ExecutionMetrics:
+    row = db.execute(
+        select(
+            func.count(),
+            func.count().filter(
+                Execution.created_at >= today_start,
+                Execution.created_at < tomorrow_start,
+            ),
+            func.count().filter(Execution.status == ExecutionStatus.SUCCEEDED),
+            func.count().filter(Execution.status == ExecutionStatus.FAILED),
+            func.count().filter(Execution.status == ExecutionStatus.BLOCKED),
+            func.count().filter(Execution.status == ExecutionStatus.REQUIRES_APPROVAL),
+            func.sum(Execution.cost_usd),
+            func.avg(Execution.latency_ms),
+        )
+    ).one()
+    return ExecutionMetrics(
+        total=row[0],
+        today=row[1],
+        succeeded=row[2],
+        failed=row[3],
+        blocked=row[4],
+        requires_approval=row[5],
+        total_cost_usd=Decimal("0") if row[6] is None else Decimal(str(row[6])),
+        average_latency_ms=0.0 if row[7] is None else float(row[7]),
     )
-    if average is None:
-        return 0.0
-    return float(average)
+
+
+def get_approval_metrics(db: Session) -> ApprovalMetrics:
+    row = db.execute(
+        select(
+            func.count().filter(Approval.status == ApprovalStatus.PENDING),
+            func.count().filter(Approval.status == ApprovalStatus.APPROVED),
+            func.count().filter(Approval.status == ApprovalStatus.REJECTED),
+        )
+    ).one()
+    return ApprovalMetrics(*row)
+
+
+def get_incident_metrics(db: Session) -> IncidentMetrics:
+    row = db.execute(
+        select(
+            func.count().filter(Incident.status == IncidentStatus.OPEN),
+            func.count().filter(Incident.status == IncidentStatus.INVESTIGATING),
+            func.count().filter(Incident.status == IncidentStatus.RESOLVED),
+            func.count().filter(Incident.severity == AgentRiskLevel.CRITICAL),
+        )
+    ).one()
+    return IncidentMetrics(*row)
+
+
+def get_mcp_server_metrics(db: Session) -> MCPServerMetrics:
+    row = db.execute(
+        select(
+            func.count(),
+            func.count().filter(MCPServer.status == MCPServerStatus.CONNECTED),
+            func.count().filter(MCPServer.status == MCPServerStatus.DISCONNECTED),
+        ).where(MCPServer.deleted_at.is_(None))
+    ).one()
+    return MCPServerMetrics(*row)
+
+
+def get_user_metrics(db: Session) -> UserMetrics:
+    row = db.execute(
+        select(
+            func.count(),
+            func.count().filter(User.is_active.is_(True)),
+        )
+    ).one()
+    return UserMetrics(*row)
 
 
 def count_agents_by_risk(db: Session) -> dict[AgentRiskLevel, int]:

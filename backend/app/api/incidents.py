@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.pagination import PaginationParams
 from app.core.security import require_roles
 from app.db.session import get_db
 from app.models.agent import AgentRiskLevel
@@ -50,6 +51,7 @@ def create_incident(incident_create: IncidentCreate, db: DatabaseSession) -> Inc
 @router.get("", response_model=IncidentListResponse)
 def list_incidents(
     db: DatabaseSession,
+    pagination: PaginationParams,
     agent_id: Annotated[UUID | None, Query()] = None,
     execution_id: Annotated[UUID | None, Query()] = None,
     severity: Annotated[AgentRiskLevel | None, Query()] = None,
@@ -65,6 +67,8 @@ def list_incidents(
         status=status,
         reported_by=reported_by,
         assigned_to=assigned_to,
+        limit=pagination.limit,
+        offset=pagination.offset,
     )
     return IncidentListResponse(
         items=[IncidentRead.model_validate(incident) for incident in incidents],

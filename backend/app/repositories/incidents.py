@@ -25,6 +25,8 @@ def list_incidents(
     status: IncidentStatus | None = None,
     reported_by: str | None = None,
     assigned_to: str | None = None,
+    limit: int,
+    offset: int,
 ) -> tuple[list[Incident], int]:
     filters = []
     if agent_id is not None:
@@ -40,7 +42,13 @@ def list_incidents(
     if assigned_to is not None:
         filters.append(Incident.assigned_to == assigned_to)
 
-    statement = select(Incident).where(*filters).order_by(Incident.created_at.desc())
+    statement = (
+        select(Incident)
+        .where(*filters)
+        .order_by(Incident.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     count_statement = select(func.count()).select_from(Incident).where(*filters)
 
     incidents = list(db.scalars(statement).all())

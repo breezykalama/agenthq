@@ -50,8 +50,8 @@ def register_user(db: Session, registration: UserRegister) -> User:
     return user
 
 
-def list_users(db: Session) -> tuple[list[User], int]:
-    return user_repository.list_users(db)
+def list_users(db: Session, *, limit: int, offset: int) -> tuple[list[User], int]:
+    return user_repository.list_users(db, limit=limit, offset=offset)
 
 
 def get_user_by_id(db: Session, user_id: UUID) -> User:
@@ -65,12 +65,33 @@ def update_user(db: Session, user_id: UUID, update: UserUpdate, actor: User) -> 
     user = get_user_by_id(db, user_id)
     before = serialize_user(user)
     values = update.model_dump(exclude_unset=True)
-    updated_user = user_repository.update_user(db, user, values)
     action = (
         AuditAction.USER_DEACTIVATED
         if values.get("is_active") is False and before["is_active"] is True
         else AuditAction.USER_UPDATED
     )
+    if action == AuditAction.USER_DEACTIVATED:
+        try:
+            updated_user = user_repository.update_user_pending(db, user, values)
+            audit_log_service.create_critical_audit_log(
+                db,
+                AuditLogCreate(
+                    actor=actor.email,
+                    action=action,
+                    entity_type="user",
+                    entity_id=updated_user.id,
+                    before=before,
+                    after=serialize_user(updated_user),
+                ),
+            )
+            db.commit()
+            db.refresh(updated_user)
+        except Exception:
+            db.rollback()
+            raise
+        return updated_user
+
+    updated_user = user_repository.update_user(db, user, values)
     audit_create = AuditLogCreate(
         actor=actor.email,
         action=action,
@@ -79,12 +100,5 @@ def update_user(db: Session, user_id: UUID, update: UserUpdate, actor: User) -> 
         before=before,
         after=serialize_user(updated_user),
     )
-    if action == AuditAction.USER_DEACTIVATED:
-        try:
-            audit_log_service.create_critical_audit_log(db, audit_create)
-        except audit_log_service.AuditLoggingError:
-            user_repository.update_user(db, updated_user, {"is_active": before["is_active"]})
-            raise
-    else:
-        audit_log_service.create_audit_log(db, audit_create)
+    audit_log_service.create_audit_log(db, audit_create)
     return updated_user

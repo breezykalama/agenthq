@@ -199,7 +199,7 @@ def seed_approvals_executions_and_incidents(
     agents: dict[str, Agent],
     tools: dict[tuple[str, str], AgentTool],
 ) -> None:
-    _, existing_executions = execution_service.list_executions(db)
+    _, existing_executions = execution_service.list_executions(db, limit=1, offset=0)
     if existing_executions > 0:
         return
 

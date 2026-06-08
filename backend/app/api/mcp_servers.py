@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.adapters.mcp_discovery import MCPDiscoveryAdapter, get_mcp_discovery_adapter
+from app.api.pagination import PaginationParams
 from app.core.security import require_roles
 from app.db.session import get_db
 from app.models.user import UserRole
@@ -43,8 +44,12 @@ def create_mcp_server(
 
 
 @router.get("", response_model=MCPServerListResponse)
-def list_mcp_servers(db: DatabaseSession) -> MCPServerListResponse:
-    mcp_servers, total = mcp_server_service.list_mcp_servers(db)
+def list_mcp_servers(db: DatabaseSession, pagination: PaginationParams) -> MCPServerListResponse:
+    mcp_servers, total = mcp_server_service.list_mcp_servers(
+        db,
+        limit=pagination.limit,
+        offset=pagination.offset,
+    )
     return MCPServerListResponse(
         items=[MCPServerRead.model_validate(mcp_server) for mcp_server in mcp_servers],
         total=total,

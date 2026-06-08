@@ -65,6 +65,8 @@ def list_incidents(
     status: IncidentStatus | None = None,
     reported_by: str | None = None,
     assigned_to: str | None = None,
+    limit: int,
+    offset: int,
 ) -> tuple[list[Incident], int]:
     return incident_repository.list_incidents(
         db,
@@ -74,6 +76,8 @@ def list_incidents(
         status=status,
         reported_by=reported_by,
         assigned_to=assigned_to,
+        limit=limit,
+        offset=offset,
     )
 
 

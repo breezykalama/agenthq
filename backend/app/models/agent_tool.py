@@ -57,3 +57,4 @@ Index(
     postgresql_where=AgentTool.deleted_at.is_(None),
     sqlite_where=AgentTool.deleted_at.is_(None),
 )
+Index("ix_agent_tools_agent_id_created_at", AgentTool.agent_id, AgentTool.created_at)

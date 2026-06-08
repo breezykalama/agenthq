@@ -60,9 +60,15 @@ def create_agent_tool(
     return agent_tool
 
 
-def list_agent_tools(db: Session, agent_id: UUID) -> tuple[list[AgentTool], int]:
+def list_agent_tools(
+    db: Session,
+    agent_id: UUID,
+    *,
+    limit: int,
+    offset: int,
+) -> tuple[list[AgentTool], int]:
     ensure_agent_exists(db, agent_id)
-    return agent_tool_repository.list_agent_tools(db, agent_id)
+    return agent_tool_repository.list_agent_tools(db, agent_id, limit=limit, offset=offset)
 
 
 def get_agent_tool_by_id(db: Session, agent_id: UUID, tool_id: UUID) -> AgentTool:

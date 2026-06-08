@@ -2,11 +2,9 @@ from datetime import UTC, datetime, time, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.models.agent import AgentRiskLevel, AgentStatus
+from app.models.agent import AgentRiskLevel
 from app.models.approval import ApprovalStatus
 from app.models.execution import ExecutionStatus
-from app.models.incident import IncidentStatus
-from app.models.mcp_server import MCPServerStatus
 from app.repositories import dashboard as dashboard_repository
 from app.schemas.dashboard import (
     AgentsByRisk,
@@ -19,60 +17,42 @@ from app.schemas.dashboard import (
 def get_summary(db: Session) -> DashboardSummary:
     today_start = datetime.combine(datetime.now(UTC).date(), time.min, tzinfo=UTC)
     tomorrow_start = today_start + timedelta(days=1)
+    agents = dashboard_repository.get_agent_metrics(db)
+    executions = dashboard_repository.get_execution_metrics(
+        db,
+        today_start=today_start,
+        tomorrow_start=tomorrow_start,
+    )
+    approvals = dashboard_repository.get_approval_metrics(db)
+    incidents = dashboard_repository.get_incident_metrics(db)
+    mcp_servers = dashboard_repository.get_mcp_server_metrics(db)
+    users = dashboard_repository.get_user_metrics(db)
 
     return DashboardSummary(
-        total_agents=dashboard_repository.count_agents(db),
-        active_agents=dashboard_repository.count_agents(db, AgentStatus.ACTIVE),
-        disabled_agents=dashboard_repository.count_agents(db, AgentStatus.DISABLED),
-        archived_agents=dashboard_repository.count_agents(db, AgentStatus.ARCHIVED),
-        total_executions=dashboard_repository.count_executions(db),
-        executions_today=dashboard_repository.count_executions(
-            db,
-            created_at_start=today_start,
-            created_at_end=tomorrow_start,
-        ),
-        succeeded_executions=dashboard_repository.count_executions(
-            db,
-            status=ExecutionStatus.SUCCEEDED,
-        ),
-        failed_executions=dashboard_repository.count_executions(db, status=ExecutionStatus.FAILED),
-        blocked_executions=dashboard_repository.count_executions(
-            db,
-            status=ExecutionStatus.BLOCKED,
-        ),
-        requires_approval_executions=dashboard_repository.count_executions(
-            db,
-            status=ExecutionStatus.REQUIRES_APPROVAL,
-        ),
-        pending_approvals=dashboard_repository.count_approvals(db, ApprovalStatus.PENDING),
-        approved_approvals=dashboard_repository.count_approvals(db, ApprovalStatus.APPROVED),
-        rejected_approvals=dashboard_repository.count_approvals(db, ApprovalStatus.REJECTED),
-        open_incidents=dashboard_repository.count_incidents(db, status=IncidentStatus.OPEN),
-        investigating_incidents=dashboard_repository.count_incidents(
-            db,
-            status=IncidentStatus.INVESTIGATING,
-        ),
-        resolved_incidents=dashboard_repository.count_incidents(
-            db,
-            status=IncidentStatus.RESOLVED,
-        ),
-        critical_incidents=dashboard_repository.count_incidents(
-            db,
-            severity=AgentRiskLevel.CRITICAL,
-        ),
-        total_mcp_servers=dashboard_repository.count_mcp_servers(db),
-        connected_mcp_servers=dashboard_repository.count_mcp_servers(
-            db,
-            MCPServerStatus.CONNECTED,
-        ),
-        disconnected_mcp_servers=dashboard_repository.count_mcp_servers(
-            db,
-            MCPServerStatus.DISCONNECTED,
-        ),
-        total_users=dashboard_repository.count_users(db),
-        active_users=dashboard_repository.count_users(db, active_only=True),
-        total_cost_usd=dashboard_repository.total_execution_cost_usd(db),
-        average_latency_ms=dashboard_repository.average_execution_latency_ms(db),
+        total_agents=agents.total,
+        active_agents=agents.active,
+        disabled_agents=agents.disabled,
+        archived_agents=agents.archived,
+        total_executions=executions.total,
+        executions_today=executions.today,
+        succeeded_executions=executions.succeeded,
+        failed_executions=executions.failed,
+        blocked_executions=executions.blocked,
+        requires_approval_executions=executions.requires_approval,
+        pending_approvals=approvals.pending,
+        approved_approvals=approvals.approved,
+        rejected_approvals=approvals.rejected,
+        open_incidents=incidents.open,
+        investigating_incidents=incidents.investigating,
+        resolved_incidents=incidents.resolved,
+        critical_incidents=incidents.critical,
+        total_mcp_servers=mcp_servers.total,
+        connected_mcp_servers=mcp_servers.connected,
+        disconnected_mcp_servers=mcp_servers.disconnected,
+        total_users=users.total,
+        active_users=users.active,
+        total_cost_usd=executions.total_cost_usd,
+        average_latency_ms=executions.average_latency_ms,
     )
 
 

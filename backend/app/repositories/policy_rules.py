@@ -27,6 +27,8 @@ def list_policy_rules(
     risk_level: AgentRiskLevel | None = None,
     effect: PolicyRuleEffect | None = None,
     is_enabled: bool | None = None,
+    limit: int,
+    offset: int,
 ) -> tuple[list[PolicyRule], int]:
     filters: list[ColumnElement[bool]] = [PolicyRule.deleted_at.is_(None)]
     if scope is not None:
@@ -42,7 +44,13 @@ def list_policy_rules(
     if is_enabled is not None:
         filters.append(PolicyRule.is_enabled == is_enabled)
 
-    statement = select(PolicyRule).where(*filters).order_by(PolicyRule.priority.asc())
+    statement = (
+        select(PolicyRule)
+        .where(*filters)
+        .order_by(PolicyRule.priority.asc())
+        .limit(limit)
+        .offset(offset)
+    )
     count_statement = select(func.count()).select_from(PolicyRule).where(*filters)
 
     policy_rules = list(db.scalars(statement).all())

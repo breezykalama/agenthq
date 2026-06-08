@@ -24,6 +24,8 @@ def list_approvals(
     risk_level: AgentRiskLevel | None = None,
     requested_by: str | None = None,
     approver: str | None = None,
+    limit: int,
+    offset: int,
 ) -> tuple[list[Approval], int]:
     filters = []
     if agent_id is not None:
@@ -37,7 +39,13 @@ def list_approvals(
     if approver is not None:
         filters.append(Approval.approver == approver)
 
-    statement = select(Approval).where(*filters).order_by(Approval.requested_at.desc())
+    statement = (
+        select(Approval)
+        .where(*filters)
+        .order_by(Approval.requested_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     count_statement = select(func.count()).select_from(Approval).where(*filters)
 
     approvals = list(db.scalars(statement).all())
@@ -54,4 +62,10 @@ def update_approval(db: Session, approval: Approval) -> Approval:
     db.add(approval)
     db.commit()
     db.refresh(approval)
+    return approval
+
+
+def update_approval_pending(db: Session, approval: Approval) -> Approval:
+    db.add(approval)
+    db.flush()
     return approval

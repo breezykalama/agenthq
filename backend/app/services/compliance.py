@@ -5,9 +5,6 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.models.agent import AgentRiskLevel
-from app.models.approval import ApprovalStatus
-from app.models.audit_log import AuditAction
-from app.models.execution import ExecutionStatus
 from app.models.incident import Incident, IncidentStatus
 from app.repositories import compliance as compliance_repository
 from app.schemas.agent import AgentRead
@@ -41,99 +38,24 @@ def get_summary(
     agent_id: UUID | None = None,
 ) -> ComplianceSummary:
     date_range = build_date_range(start_date, end_date)
-    return ComplianceSummary(
-        total_agents=compliance_repository.count_agents(
-            db,
-            start_at=date_range.start_at,
-            end_at=date_range.end_at,
-            agent_id=agent_id,
-        ),
-        total_executions=compliance_repository.count_executions(
-            db,
-            start_at=date_range.start_at,
-            end_at=date_range.end_at,
-            agent_id=agent_id,
-        ),
-        blocked_executions=compliance_repository.count_executions(
-            db,
-            start_at=date_range.start_at,
-            end_at=date_range.end_at,
-            agent_id=agent_id,
-            status=ExecutionStatus.BLOCKED,
-        ),
-        executions_requiring_approval=compliance_repository.count_executions(
-            db,
-            start_at=date_range.start_at,
-            end_at=date_range.end_at,
-            agent_id=agent_id,
-            status=ExecutionStatus.REQUIRES_APPROVAL,
-        ),
-        approved_approvals=compliance_repository.count_approvals(
-            db,
-            start_at=date_range.start_at,
-            end_at=date_range.end_at,
-            agent_id=agent_id,
-            status=ApprovalStatus.APPROVED,
-        ),
-        rejected_approvals=compliance_repository.count_approvals(
-            db,
-            start_at=date_range.start_at,
-            end_at=date_range.end_at,
-            agent_id=agent_id,
-            status=ApprovalStatus.REJECTED,
-        ),
-        open_incidents=compliance_repository.count_incidents(
-            db,
-            start_at=date_range.start_at,
-            end_at=date_range.end_at,
-            agent_id=agent_id,
-            status=IncidentStatus.OPEN,
-        ),
-        critical_incidents=compliance_repository.count_incidents(
-            db,
-            start_at=date_range.start_at,
-            end_at=date_range.end_at,
-            agent_id=agent_id,
-            severity=AgentRiskLevel.CRITICAL,
-        ),
-        policy_decisions_evaluated=compliance_repository.count_audit_events(
-            db,
-            start_at=date_range.start_at,
-            end_at=date_range.end_at,
-            action=AuditAction.POLICY_DECISION_EVALUATED,
-        ),
-        audit_events=compliance_repository.count_audit_events(
-            db,
-            start_at=date_range.start_at,
-            end_at=date_range.end_at,
-        ),
+    metrics = compliance_repository.get_summary_metrics(
+        db,
+        start_at=date_range.start_at,
+        end_at=date_range.end_at,
+        agent_id=agent_id,
     )
+    return ComplianceSummary(**metrics.__dict__)
 
 
 def get_agent_report(db: Session, agent_id: UUID) -> AgentComplianceReport:
     agent = compliance_repository.get_agent(db, agent_id)
     if agent is None:
         raise ComplianceAgentNotFoundError
+    metrics = compliance_repository.get_agent_report_metrics(db, agent_id)
 
     return AgentComplianceReport(
         agent=AgentRead.model_validate(agent),
-        tools_count=compliance_repository.count_tools_for_agent(db, agent_id),
-        policy_rules_count=compliance_repository.count_policy_rules_for_agent(db, agent_id),
-        executions_count=compliance_repository.count_executions(db, agent_id=agent_id),
-        blocked_executions=compliance_repository.count_executions(
-            db,
-            agent_id=agent_id,
-            status=ExecutionStatus.BLOCKED,
-        ),
-        failed_executions=compliance_repository.count_executions(
-            db,
-            agent_id=agent_id,
-            status=ExecutionStatus.FAILED,
-        ),
-        approvals_count=compliance_repository.count_approvals(db, agent_id=agent_id),
-        incidents_count=compliance_repository.count_incidents(db, agent_id=agent_id),
-        latest_execution_at=compliance_repository.latest_execution_at(db, agent_id),
-        latest_incident_at=compliance_repository.latest_incident_at(db, agent_id),
+        **metrics.__dict__,
     )
 
 
@@ -145,6 +67,8 @@ def list_incidents(
     severity: AgentRiskLevel | None = None,
     status: IncidentStatus | None = None,
     agent_id: UUID | None = None,
+    limit: int,
+    offset: int,
 ) -> ComplianceIncidentListResponse:
     date_range = build_date_range(start_date, end_date)
     incidents, total = compliance_repository.list_incidents(
@@ -154,6 +78,8 @@ def list_incidents(
         severity=severity,
         status=status,
         agent_id=agent_id,
+        limit=limit,
+        offset=offset,
     )
     return ComplianceIncidentListResponse(
         items=[incident_to_read(incident) for incident in incidents],

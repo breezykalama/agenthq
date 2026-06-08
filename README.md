@@ -14,7 +14,7 @@ Backend API:
 
 ## Current Version
 
-AgentHQ v0.3.0
+AgentHQ v0.3.2
 
 ## Project Status
 
@@ -115,6 +115,70 @@ Added:
 * Total users
 * Active users
 
+## AgentHQ v0.3.2
+
+AgentHQ v0.3.2 focuses on reliability, performance, and production hardening.
+
+### Pagination
+
+Added bounded pagination to:
+
+* Agents
+* Agent Tools
+* MCP Servers
+* Policy Rules
+* Approvals
+* Executions
+* Incidents
+* Audit Logs
+* Users
+* Compliance Incidents
+
+Default:
+
+* `limit = 50`
+* `max limit = 200`
+
+### Database Performance
+
+Added production indexes for:
+
+* Audit Logs
+* Executions
+* Incidents
+* Approvals
+* Agent Tools
+* Policy Rules
+* MCP Servers
+
+### Query Optimization
+
+Reduced query fan-out:
+
+Dashboard Summary:
+
+* 24 → 6 queries
+
+Compliance Summary:
+
+* 10 → 5 queries
+
+Agent Compliance Report:
+
+* 10 → 2 queries
+
+### Transaction Safety
+
+Added service-owned atomic transactions for:
+
+* Execution Creation
+* Approval Decisions
+* MCP Sync
+* User Deactivation
+* Policy Decision Evaluation
+
+Critical governance actions now commit business mutations and audit logs atomically.
+
 ## Architecture
 
 ![AgentHQ Architecture](docs/images/agenthq-architecture.png)
@@ -162,7 +226,7 @@ The architecture now includes a JWT authentication layer, reusable RBAC enforcem
 
 ## Quality
 
-* 183 automated tests passing
+* 201 automated tests passing
 * Ruff clean
 * MyPy clean
 * Dockerized deployment
@@ -170,6 +234,8 @@ The architecture now includes a JWT authentication layer, reusable RBAC enforcem
 * Supabase PostgreSQL
 * Render backend
 * Vercel frontend
+* Atomic transaction safety
+* Query-count regression tests
 * Seed/demo data included
 
 ## Repository Structure
@@ -374,6 +440,16 @@ Completed in v0.3.0:
 * JWT Authentication
 * User Management
 * Agent Ownership Enforcement
+
+### Completed Hardening
+
+* Pagination
+* Database Indexing
+* Dashboard Optimization
+* Compliance Optimization
+* Atomic Transactions
+* Rollback Testing
+* Failure Handling
 
 ### Upcoming
 

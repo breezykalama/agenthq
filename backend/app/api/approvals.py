@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.pagination import PaginationParams
 from app.core.security import require_roles
 from app.db.session import get_db
 from app.models.agent import AgentRiskLevel
@@ -39,6 +40,7 @@ def create_approval(approval_create: ApprovalCreate, db: DatabaseSession) -> App
 @router.get("", response_model=ApprovalListResponse)
 def list_approvals(
     db: DatabaseSession,
+    pagination: PaginationParams,
     agent_id: Annotated[UUID | None, Query()] = None,
     status: Annotated[ApprovalStatus | None, Query()] = None,
     risk_level: Annotated[AgentRiskLevel | None, Query()] = None,
@@ -52,6 +54,8 @@ def list_approvals(
         risk_level=risk_level,
         requested_by=requested_by,
         approver=approver,
+        limit=pagination.limit,
+        offset=pagination.offset,
     )
     return ApprovalListResponse(
         items=[ApprovalRead.model_validate(approval) for approval in approvals],

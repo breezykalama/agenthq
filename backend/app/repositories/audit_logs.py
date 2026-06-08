@@ -15,6 +15,13 @@ def create_audit_log(db: Session, audit_log_create: AuditLogCreate) -> AuditLog:
     return audit_log
 
 
+def create_audit_log_pending(db: Session, audit_log_create: AuditLogCreate) -> AuditLog:
+    audit_log = AuditLog(**audit_log_create.model_dump())
+    db.add(audit_log)
+    db.flush()
+    return audit_log
+
+
 def list_audit_logs(
     db: Session,
     *,
@@ -22,6 +29,8 @@ def list_audit_logs(
     entity_id: UUID | None = None,
     action: AuditAction | None = None,
     actor: str | None = None,
+    limit: int,
+    offset: int,
 ) -> tuple[list[AuditLog], int]:
     filters = []
     if entity_type is not None:
@@ -33,7 +42,13 @@ def list_audit_logs(
     if actor is not None:
         filters.append(AuditLog.actor == actor)
 
-    statement = select(AuditLog).where(*filters).order_by(AuditLog.created_at.desc())
+    statement = (
+        select(AuditLog)
+        .where(*filters)
+        .order_by(AuditLog.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     count_statement = select(func.count()).select_from(AuditLog).where(*filters)
 
     audit_logs = list(db.scalars(statement).all())

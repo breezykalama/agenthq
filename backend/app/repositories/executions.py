@@ -15,6 +15,13 @@ def create_execution(db: Session, values: dict[str, object]) -> Execution:
     return execution
 
 
+def create_execution_pending(db: Session, values: dict[str, object]) -> Execution:
+    execution = Execution(**values)
+    db.add(execution)
+    db.flush()
+    return execution
+
+
 def list_executions(
     db: Session,
     *,
@@ -22,6 +29,8 @@ def list_executions(
     status: ExecutionStatus | None = None,
     risk_level: AgentRiskLevel | None = None,
     approval_id: UUID | None = None,
+    limit: int,
+    offset: int,
 ) -> tuple[list[Execution], int]:
     filters = []
     if agent_id is not None:
@@ -33,7 +42,13 @@ def list_executions(
     if approval_id is not None:
         filters.append(Execution.approval_id == approval_id)
 
-    statement = select(Execution).where(*filters).order_by(Execution.created_at.desc())
+    statement = (
+        select(Execution)
+        .where(*filters)
+        .order_by(Execution.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     count_statement = select(func.count()).select_from(Execution).where(*filters)
 
     executions = list(db.scalars(statement).all())
