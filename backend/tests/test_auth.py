@@ -92,7 +92,7 @@ def test_admin_can_manage_users(client: TestClient, unauthenticated_client: Test
     assert response.json()["role"] == "auditor"
 
 
-def test_deactivated_user_token_is_rejected(
+def test_deactivated_membership_does_not_deactivate_global_user(
     client: TestClient,
     unauthenticated_client: TestClient,
 ) -> None:
@@ -100,12 +100,18 @@ def test_deactivated_user_token_is_rejected(
     token = login(unauthenticated_client, "owner@example.com")
     client.post(f"/api/v1/users/{user['id']}/deactivate")
 
-    response = unauthenticated_client.get(
+    me_response = unauthenticated_client.get(
         "/api/v1/auth/me",
         headers={"Authorization": f"Bearer {token}"},
     )
+    dashboard_response = unauthenticated_client.get(
+        "/api/v1/dashboard/summary",
+        headers={"Authorization": f"Bearer {token}"},
+    )
 
-    assert response.status_code == 401
+    assert me_response.status_code == 200
+    assert me_response.json()["is_active"] is True
+    assert dashboard_response.status_code == 403
 
 
 def test_auditor_can_access_audit_logs_but_not_executions(
@@ -181,7 +187,7 @@ def test_user_actions_create_audit_logs(
 ) -> None:
     user = register(unauthenticated_client)
     login(unauthenticated_client, "owner@example.com")
-    client.patch(f"/api/v1/users/{user['id']}", json={"full_name": "Updated Owner"})
+    client.patch(f"/api/v1/users/{user['id']}", json={"role": "operator"})
     client.post(f"/api/v1/users/{user['id']}/deactivate")
 
     response = client.get("/api/v1/audit-logs", params={"entity_id": user["id"]})
@@ -205,5 +211,5 @@ def test_dashboard_counts_total_and_active_users(
     response = client.get("/api/v1/dashboard/summary")
 
     assert response.status_code == 200
-    assert response.json()["total_users"] == 2
+    assert response.json()["total_users"] == 1
     assert response.json()["active_users"] == 1

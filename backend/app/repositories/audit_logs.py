@@ -3,6 +3,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.audit_redaction import redact_audit_snapshot
 from app.core.tenancy import get_optional_organization_id
 from app.models.audit_log import AuditAction, AuditLog
 from app.schemas.audit_log import AuditLogCreate
@@ -10,6 +11,8 @@ from app.schemas.audit_log import AuditLogCreate
 
 def create_audit_log(db: Session, audit_log_create: AuditLogCreate) -> AuditLog:
     values = audit_log_create.model_dump()
+    values["before"] = redact_audit_snapshot(audit_log_create.before)
+    values["after"] = redact_audit_snapshot(audit_log_create.after)
     values["organization_id"] = values["organization_id"] or get_optional_organization_id(db)
     audit_log = AuditLog(**values)
     db.add(audit_log)
@@ -20,6 +23,8 @@ def create_audit_log(db: Session, audit_log_create: AuditLogCreate) -> AuditLog:
 
 def create_audit_log_pending(db: Session, audit_log_create: AuditLogCreate) -> AuditLog:
     values = audit_log_create.model_dump()
+    values["before"] = redact_audit_snapshot(audit_log_create.before)
+    values["after"] = redact_audit_snapshot(audit_log_create.after)
     values["organization_id"] = values["organization_id"] or get_optional_organization_id(db)
     audit_log = AuditLog(**values)
     db.add(audit_log)

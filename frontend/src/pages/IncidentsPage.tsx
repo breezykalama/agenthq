@@ -3,6 +3,8 @@ import { FormEvent } from "react";
 
 import { api, getErrorMessage } from "../api/client";
 import { endpoints } from "../api/queries";
+import { useAuth } from "../auth/context";
+import { getEffectiveRole } from "../auth/roles";
 import {
   Badge,
   Card,
@@ -21,6 +23,8 @@ function formString(form: FormData, key: string) {
 }
 
 export function IncidentsPage() {
+  const { user } = useAuth();
+  const canMutate = ["admin", "operator"].includes(getEffectiveRole(user) ?? "");
   const queryClient = useQueryClient();
   const incidents = useQuery({ queryKey: ["incidents"], queryFn: endpoints.incidents });
   const createIncident = useMutation({
@@ -66,7 +70,7 @@ export function IncidentsPage() {
                       <td>{incident.severity}</td>
                       <td>{incident.assigned_to ?? "-"}</td>
                       <td className="flex gap-2 py-2">
-                        {incident.status === "open" || incident.status === "investigating" ? (
+                        {canMutate && (incident.status === "open" || incident.status === "investigating") ? (
                           <>
                             <SecondaryButton onClick={() => decide.mutate({ id: incident.id, verb: "resolve" })}>Resolve</SecondaryButton>
                             <SecondaryButton onClick={() => decide.mutate({ id: incident.id, verb: "dismiss" })}>Dismiss</SecondaryButton>
@@ -88,7 +92,7 @@ export function IncidentsPage() {
           ) : null}
         </DataState>
         </Card>
-        <Card>
+        {canMutate ? <Card>
           <h3 className="mb-3 font-semibold">Create Incident</h3>
           <form onSubmit={submit} className="space-y-3">
             <Field label="Agent ID"><input name="agent_id" required className={inputClass} placeholder="Paste an agent UUID" /></Field>
@@ -105,7 +109,14 @@ export function IncidentsPage() {
             {createIncident.error ? <p className="text-sm text-red-600">{getErrorMessage(createIncident.error)}</p> : null}
             {decide.error ? <p className="text-sm text-red-600">{getErrorMessage(decide.error)}</p> : null}
           </form>
-        </Card>
+        </Card> : (
+          <Card>
+            <h3 className="font-semibold">Read-only incident access</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Auditors can review incidents but cannot create or change them.
+            </p>
+          </Card>
+        )}
       </div>
     </>
   );

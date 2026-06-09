@@ -11,13 +11,13 @@ class ApprovalCreate(BaseModel):
     agent_id: UUID
     requested_action: str = Field(min_length=1, max_length=255)
     requested_by: str = Field(default="system", min_length=1, max_length=255)
-    reason: str | None = None
+    reason: str | None = Field(default=None, max_length=2000)
     risk_level: AgentRiskLevel
 
 
 class ApprovalDecision(BaseModel):
     approver: str | None = Field(default=None, max_length=255)
-    decision_reason: str | None = None
+    decision_reason: str | None = Field(default=None, max_length=2000)
 
 
 class ApprovalRead(BaseModel):

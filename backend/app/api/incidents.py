@@ -30,7 +30,12 @@ router = APIRouter(
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
 
-@router.post("", response_model=IncidentRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=IncidentRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.OPERATOR))],
+)
 def create_incident(incident_create: IncidentCreate, db: DatabaseSession) -> IncidentRead:
     try:
         return IncidentRead.model_validate(incident_service.create_incident(db, incident_create))
@@ -90,7 +95,11 @@ def get_incident(incident_id: UUID, db: DatabaseSession) -> IncidentRead:
         ) from exc
 
 
-@router.patch("/{incident_id}", response_model=IncidentRead)
+@router.patch(
+    "/{incident_id}",
+    response_model=IncidentRead,
+    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.OPERATOR))],
+)
 def update_incident(
     incident_id: UUID,
     incident_update: IncidentUpdate,
@@ -117,7 +126,11 @@ def update_incident(
         ) from exc
 
 
-@router.post("/{incident_id}/resolve", response_model=IncidentRead)
+@router.post(
+    "/{incident_id}/resolve",
+    response_model=IncidentRead,
+    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.OPERATOR))],
+)
 def resolve_incident(
     incident_id: UUID,
     db: DatabaseSession,
@@ -144,7 +157,11 @@ def resolve_incident(
         ) from exc
 
 
-@router.post("/{incident_id}/dismiss", response_model=IncidentRead)
+@router.post(
+    "/{incident_id}/dismiss",
+    response_model=IncidentRead,
+    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.OPERATOR))],
+)
 def dismiss_incident(
     incident_id: UUID,
     db: DatabaseSession,

@@ -210,3 +210,201 @@ def test_user_administration_is_tenant_scoped() -> None:
         assert users_a.json()["items"][0]["id"] != user_b_id
         assert cross_tenant_get.status_code == 404
         assert cross_tenant_update.status_code == 404
+
+
+def test_mcp_server_cannot_link_cross_tenant_or_soft_deleted_agent() -> None:
+    with tenant_clients() as tenants:
+        agent_b = create_agent(tenants.client, tenants.headers_b, "Organization B MCP Agent")
+        deleted_agent = create_agent(tenants.client, tenants.headers_a, "Deleted MCP Agent")
+        server_a = tenants.client.post(
+            "/api/v1/mcp-servers",
+            headers=tenants.headers_a,
+            json={
+                "name": "Organization A MCP",
+                "server_url": "https://mcp.example.com/a",
+            },
+        ).json()
+        tenants.client.delete(
+            f"/api/v1/agents/{deleted_agent['id']}",
+            headers=tenants.headers_a,
+        )
+
+        cross_tenant = tenants.client.post(
+            "/api/v1/mcp-servers",
+            headers=tenants.headers_a,
+            json={
+                "name": "Cross Tenant MCP",
+                "server_url": "https://mcp.example.com/cross",
+                "agent_id": agent_b["id"],
+            },
+        )
+        soft_deleted = tenants.client.post(
+            "/api/v1/mcp-servers",
+            headers=tenants.headers_a,
+            json={
+                "name": "Deleted Agent MCP",
+                "server_url": "https://mcp.example.com/deleted",
+                "agent_id": deleted_agent["id"],
+            },
+        )
+        cross_tenant_update = tenants.client.patch(
+            f"/api/v1/mcp-servers/{server_a['id']}",
+            headers=tenants.headers_a,
+            json={"agent_id": agent_b["id"]},
+        )
+
+        assert cross_tenant.status_code == 422
+        assert soft_deleted.status_code == 422
+        assert cross_tenant_update.status_code == 422
+
+
+def test_organization_admin_changes_membership_not_global_user() -> None:
+    with tenant_clients() as tenants:
+        with tenants.session_local() as db:
+            organization_a = db.get(Organization, UUID(tenants.organization_a_id))
+            member = User(
+                email="member-a@example.com",
+                full_name="Member A",
+                password_hash=hash_password("StrongPassword123!"),
+                role=UserRole.AGENT_OWNER,
+            )
+            db.add(member)
+            db.flush()
+            db.add(
+                OrganizationMembership(
+                    organization_id=UUID(tenants.organization_a_id),
+                    user_id=member.id,
+                    role=UserRole.AGENT_OWNER,
+                )
+            )
+            db.commit()
+            member_id = member.id
+            assert organization_a is not None
+
+        role_update = tenants.client.patch(
+            f"/api/v1/users/{member_id}",
+            headers=tenants.headers_a,
+            json={"role": "auditor"},
+        )
+        deactivation = tenants.client.post(
+            f"/api/v1/users/{member_id}/deactivate",
+            headers=tenants.headers_a,
+        )
+
+        assert role_update.status_code == 200
+        assert role_update.json()["role"] == "auditor"
+        assert deactivation.status_code == 200
+        assert deactivation.json()["is_active"] is False
+        with tenants.session_local() as db:
+            persisted_user = db.get(User, member_id)
+            persisted_membership = db.scalar(
+                select(OrganizationMembership).where(
+                    OrganizationMembership.organization_id
+                    == UUID(tenants.organization_a_id),
+                    OrganizationMembership.user_id == member_id,
+                )
+            )
+            assert persisted_user is not None
+            assert persisted_user.role == UserRole.AGENT_OWNER
+            assert persisted_user.is_active is True
+            assert persisted_membership is not None
+            assert persisted_membership.role == UserRole.AUDITOR
+            assert persisted_membership.is_active is False
+
+
+def test_last_active_organization_admin_cannot_be_demoted_or_deactivated() -> None:
+    with tenant_clients() as tenants:
+        current_admin = tenants.client.get("/api/v1/users", headers=tenants.headers_a).json()[
+            "items"
+        ][0]
+
+        demote = tenants.client.patch(
+            f"/api/v1/users/{current_admin['id']}",
+            headers=tenants.headers_a,
+            json={"role": "operator"},
+        )
+        deactivate = tenants.client.post(
+            f"/api/v1/users/{current_admin['id']}/deactivate",
+            headers=tenants.headers_a,
+        )
+
+        assert demote.status_code == 409
+        assert deactivate.status_code == 409
+
+
+def test_auditor_incident_access_is_read_only() -> None:
+    with tenant_clients() as tenants:
+        agent = create_agent(tenants.client, tenants.headers_a, "Incident Agent")
+        incident = tenants.client.post(
+            "/api/v1/incidents",
+            headers=tenants.headers_a,
+            json={
+                "agent_id": agent["id"],
+                "title": "Review incident",
+                "description": "Requires auditor review.",
+                "severity": "high",
+            },
+        ).json()
+        with tenants.session_local() as db:
+            auditor = User(
+                email="auditor-a@example.com",
+                full_name="Auditor A",
+                password_hash=hash_password("StrongPassword123!"),
+                role=UserRole.AGENT_OWNER,
+            )
+            db.add(auditor)
+            db.flush()
+            db.add(
+                OrganizationMembership(
+                    organization_id=UUID(tenants.organization_a_id),
+                    user_id=auditor.id,
+                    role=UserRole.AUDITOR,
+                )
+            )
+            db.commit()
+            auditor_headers = {"Authorization": f"Bearer {create_access_token(auditor)}"}
+
+        assert tenants.client.get("/api/v1/incidents", headers=auditor_headers).status_code == 200
+        assert (
+            tenants.client.get(
+                f"/api/v1/incidents/{incident['id']}",
+                headers=auditor_headers,
+            ).status_code
+            == 200
+        )
+        assert (
+            tenants.client.post(
+                "/api/v1/incidents",
+                headers=auditor_headers,
+                json={
+                    "agent_id": agent["id"],
+                    "title": "Forbidden incident",
+                    "description": "Auditor cannot create.",
+                    "severity": "low",
+                },
+            ).status_code
+            == 403
+        )
+        assert (
+            tenants.client.patch(
+                f"/api/v1/incidents/{incident['id']}",
+                headers=auditor_headers,
+                json={"assigned_to": "auditor"},
+            ).status_code
+            == 403
+        )
+        assert (
+            tenants.client.post(
+                f"/api/v1/incidents/{incident['id']}/resolve",
+                headers=auditor_headers,
+                json={"resolution_notes": "Forbidden."},
+            ).status_code
+            == 403
+        )
+        assert (
+            tenants.client.post(
+                f"/api/v1/incidents/{incident['id']}/dismiss",
+                headers=auditor_headers,
+            ).status_code
+            == 403
+        )

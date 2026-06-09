@@ -1,28 +1,39 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.mcp_urls import validate_mcp_server_url
 from app.models.mcp_server import MCPServerStatus
 
 
 class MCPServerCreate(BaseModel):
     agent_id: UUID | None = None
     name: str = Field(min_length=1, max_length=255)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=5000)
     server_url: str = Field(min_length=1, max_length=2048)
     status: MCPServerStatus = MCPServerStatus.DISCONNECTED
     last_sync_at: datetime | None = None
+
+    @field_validator("server_url")
+    @classmethod
+    def validate_server_url(cls, value: str) -> str:
+        return validate_mcp_server_url(value)
 
 
 class MCPServerUpdate(BaseModel):
     agent_id: UUID | None = None
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=5000)
     server_url: str | None = Field(default=None, min_length=1, max_length=2048)
     status: MCPServerStatus | None = None
     last_sync_at: datetime | None = None
-    last_error: str | None = None
+    last_error: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("server_url")
+    @classmethod
+    def validate_server_url(cls, value: str | None) -> str | None:
+        return validate_mcp_server_url(value) if value is not None else None
 
 
 class MCPServerRead(BaseModel):

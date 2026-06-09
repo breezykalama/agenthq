@@ -1,10 +1,11 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.pagination import PaginationParams
+from app.core.rate_limit import enforce_auth_rate_limit
 from app.core.security import CurrentOrganizationContext, require_current_organization_admin
 from app.db.session import get_db
 from app.models.organization_invite import OrganizationInviteStatus
@@ -92,8 +93,10 @@ def revoke_invite(
 @router.post("/accept", response_model=BootstrapTokenResponse)
 def accept_invite(
     accept: OrganizationInviteAccept,
+    request: Request,
     db: DatabaseSession,
 ) -> BootstrapTokenResponse:
+    enforce_auth_rate_limit(request, "invite_accept")
     try:
         return invite_service.accept_invite(db, accept)
     except invite_service.InviteFullNameRequiredError as exc:

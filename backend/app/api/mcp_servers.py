@@ -41,6 +41,11 @@ def create_mcp_server(
             status_code=status.HTTP_409_CONFLICT,
             detail="An MCP server with this name already exists.",
         ) from exc
+    except mcp_server_service.InvalidMCPServerAgentError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Linked agent must exist in the current organization.",
+        ) from exc
 
 
 @router.get("", response_model=MCPServerListResponse)
@@ -89,6 +94,11 @@ def update_mcp_server(
             status_code=status.HTTP_409_CONFLICT,
             detail="An MCP server with this name already exists.",
         ) from exc
+    except mcp_server_service.InvalidMCPServerAgentError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Linked agent must exist in the current organization.",
+        ) from exc
 
 
 @router.delete("/{mcp_server_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -118,5 +128,10 @@ def sync_mcp_server(
     except mcp_server_service.MCPServerSyncError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
+            detail=mcp_server_service.MCP_DISCOVERY_FAILURE_MESSAGE,
+        ) from exc
+    except mcp_server_service.InvalidMCPServerAgentError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Linked agent must exist in the current organization.",
         ) from exc

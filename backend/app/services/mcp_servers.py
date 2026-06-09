@@ -36,11 +36,21 @@ class MCPServerSyncError(Exception):
     pass
 
 
+class InvalidMCPServerAgentError(Exception):
+    pass
+
+
+MCP_DISCOVERY_FAILURE_MESSAGE = (
+    "MCP discovery failed. Check server connectivity and configuration."
+)
+
+
 def serialize_mcp_server(mcp_server: MCPServer) -> JsonObject:
     return MCPServerRead.model_validate(mcp_server).model_dump(mode="json")
 
 
 def create_mcp_server(db: Session, mcp_server_create: MCPServerCreate) -> MCPServer:
+    validate_linked_agent(db, mcp_server_create.agent_id)
     validate_unique_name(db, mcp_server_create.name)
     mcp_server = mcp_server_repository.create_mcp_server(db, mcp_server_create)
     audit_log_service.create_audit_log(
@@ -75,6 +85,9 @@ def update_mcp_server(
     mcp_server = get_mcp_server_by_id(db, mcp_server_id)
     before = serialize_mcp_server(mcp_server)
     update_values = mcp_server_update.model_dump(exclude_unset=True)
+    if "agent_id" in update_values:
+        agent_id = update_values["agent_id"]
+        validate_linked_agent(db, agent_id if isinstance(agent_id, UUID) else None)
     updated_name = update_values.get("name")
     if isinstance(updated_name, str) and updated_name != mcp_server.name:
         validate_unique_name(db, updated_name)
@@ -120,12 +133,14 @@ def sync_mcp_server(
     try:
         discovered_tools = adapter.discover_tools(mcp_server.server_url)
     except Exception as exc:
-        error_message = str(exc) or type(exc).__name__
         try:
             failed_server = mcp_server_repository.update_mcp_server_state_pending(
                 db,
                 mcp_server,
-                {"status": MCPServerStatus.ERROR, "last_error": error_message},
+                {
+                    "status": MCPServerStatus.ERROR,
+                    "last_error": MCP_DISCOVERY_FAILURE_MESSAGE,
+                },
             )
             audit_log_service.create_critical_audit_log(
                 db,
@@ -141,7 +156,7 @@ def sync_mcp_server(
         except Exception:
             db.rollback()
             raise
-        raise MCPServerSyncError(error_message) from exc
+        raise MCPServerSyncError from exc
 
     try:
         agent_id = ensure_linked_agent(db, mcp_server)
@@ -215,8 +230,9 @@ def sync_mcp_server(
 def ensure_linked_agent(db: Session, mcp_server: MCPServer) -> UUID:
     if mcp_server.agent_id is not None:
         linked_agent = agent_repository.get_agent_by_id(db, mcp_server.agent_id)
-        if linked_agent is not None:
-            return linked_agent.id
+        if linked_agent is None:
+            raise InvalidMCPServerAgentError
+        return linked_agent.id
 
     existing_agent = agent_repository.get_agent_by_name(db, mcp_server.name)
     if existing_agent is not None:
@@ -250,3 +266,8 @@ def ensure_linked_agent(db: Session, mcp_server: MCPServer) -> UUID:
 def validate_unique_name(db: Session, name: str) -> None:
     if mcp_server_repository.get_mcp_server_by_name(db, name) is not None:
         raise DuplicateMCPServerNameError
+
+
+def validate_linked_agent(db: Session, agent_id: UUID | None) -> None:
+    if agent_id is not None and agent_repository.get_agent_by_id(db, agent_id) is None:
+        raise InvalidMCPServerAgentError

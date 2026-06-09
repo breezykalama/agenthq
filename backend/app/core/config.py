@@ -1,7 +1,17 @@
 from functools import lru_cache
 
-from pydantic import Field, PostgresDsn
+from pydantic import Field, PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_JWT_SECRET_KEY = "change-me-in-production-at-least-32-bytes"
+WEAK_SECRET_PREFIXES = (
+    "change-me",
+    "changeme",
+    "default",
+    "password",
+    "replace-me",
+    "replace-with",
+)
 
 
 def normalize_database_url(database_url: str) -> str:
@@ -31,11 +41,23 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: PostgresDsn = Field(alias="DATABASE_URL")
     jwt_secret_key: str = Field(
-        default="change-me-in-production-at-least-32-bytes",
+        default=DEFAULT_JWT_SECRET_KEY,
         alias="JWT_SECRET_KEY",
     )
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    bootstrap_secret: str | None = Field(default=None, alias="BOOTSTRAP_SECRET")
+    allow_public_registration: bool | None = Field(
+        default=None,
+        alias="ALLOW_PUBLIC_REGISTRATION",
+    )
+    allow_private_mcp_urls: bool | None = Field(default=None, alias="ALLOW_PRIVATE_MCP_URLS")
+    auth_rate_limit_attempts: int = Field(default=10, ge=1, alias="AUTH_RATE_LIMIT_ATTEMPTS")
+    auth_rate_limit_window_seconds: int = Field(
+        default=60,
+        ge=1,
+        alias="AUTH_RATE_LIMIT_WINDOW_SECONDS",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -46,6 +68,41 @@ class Settings(BaseSettings):
     @property
     def sqlalchemy_database_uri(self) -> str:
         return normalize_database_url(str(self.database_url))
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.strip().lower() == "production"
+
+    @property
+    def public_registration_enabled(self) -> bool:
+        if self.allow_public_registration is not None:
+            return self.allow_public_registration
+        return not self.is_production
+
+    @property
+    def private_mcp_urls_allowed(self) -> bool:
+        if self.allow_private_mcp_urls is not None:
+            return self.allow_private_mcp_urls
+        return not self.is_production
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        if not self.is_production:
+            return self
+
+        secret = self.jwt_secret_key.strip()
+        normalized_secret = secret.lower()
+        if (
+            not secret
+            or secret == DEFAULT_JWT_SECRET_KEY
+            or len(secret) < 32
+            or normalized_secret.startswith(WEAK_SECRET_PREFIXES)
+            or len(set(secret)) < 8
+        ):
+            raise ValueError(
+                "Production requires a strong JWT_SECRET_KEY of at least 32 characters."
+            )
+        return self
 
 
 @lru_cache

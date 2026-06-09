@@ -41,15 +41,13 @@ def list_users(
         limit=pagination.limit,
         offset=pagination.offset,
     )
-    return UserListResponse(items=[UserRead.model_validate(user) for user in users], total=total)
+    return UserListResponse(items=users, total=total)
 
 
 @router.get("/{user_id}", response_model=UserRead)
 def get_user(user_id: UUID, db: DatabaseSession, context: OrganizationContext) -> UserRead:
     try:
-        return UserRead.model_validate(
-            user_service.get_user_by_id(db, current_organization_id(context), user_id)
-        )
+        return user_service.get_user_by_id(db, current_organization_id(context), user_id)
     except user_service.UserNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -66,19 +64,27 @@ def update_user(
     context: OrganizationContext,
 ) -> UserRead:
     try:
-        return UserRead.model_validate(
-            user_service.update_user(
-                db,
-                current_organization_id(context),
-                user_id,
-                update,
-                current_user,
-            )
+        return user_service.update_user(
+            db,
+            current_organization_id(context),
+            user_id,
+            update,
+            current_user,
         )
     except user_service.UserNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found.",
+        ) from exc
+    except user_service.LastOrganizationAdminError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An organization must have at least one active admin.",
+        ) from exc
+    except user_service.GlobalUserIdentityUpdateNotAllowedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization admins cannot update global user identity fields.",
         ) from exc
 
 
@@ -90,19 +96,22 @@ def deactivate_user(
     context: OrganizationContext,
 ) -> UserRead:
     try:
-        return UserRead.model_validate(
-            user_service.update_user(
-                db,
-                current_organization_id(context),
-                user_id,
-                UserUpdate(is_active=False),
-                current_user,
-            )
+        return user_service.update_user(
+            db,
+            current_organization_id(context),
+            user_id,
+            UserUpdate(is_active=False),
+            current_user,
         )
     except user_service.UserNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found.",
+        ) from exc
+    except user_service.LastOrganizationAdminError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An organization must have at least one active admin.",
         ) from exc
 
 

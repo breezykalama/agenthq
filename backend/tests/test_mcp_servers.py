@@ -1,6 +1,13 @@
 from typing import Any, cast
 
+import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
+
+from app.adapters.mcp_discovery import get_mcp_discovery_adapter
+from app.core.config import get_settings
+from app.schemas.mcp_server import MCPServerCreate
 
 JsonResponse = dict[str, Any]
 
@@ -46,6 +53,67 @@ def test_create_mcp_server_requires_server_url(client: TestClient) -> None:
     del payload["server_url"]
 
     response = client.post("/api/v1/mcp-servers", json=payload)
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "server_url",
+    [
+        "mcp.example.com/server",
+        "ftp://mcp.example.com/server",
+        "not a url",
+        "https://user:password@mcp.example.com/server",
+    ],
+)
+def test_create_mcp_server_rejects_malformed_or_credentialed_urls(
+    client: TestClient,
+    server_url: str,
+) -> None:
+    payload = mcp_server_payload()
+    payload["server_url"] = server_url
+
+    response = client.post("/api/v1/mcp-servers", json=payload)
+
+    assert response.status_code == 422
+
+
+def test_development_allows_private_mcp_url(client: TestClient) -> None:
+    payload = mcp_server_payload()
+    payload["server_url"] = "http://127.0.0.1:9000/mcp"
+
+    response = client.post("/api/v1/mcp-servers", json=payload)
+
+    assert response.status_code == 201
+
+
+def test_production_rejects_private_mcp_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("JWT_SECRET_KEY", "A-strong-production-secret-with-32-characters!")
+    monkeypatch.setenv("ALLOW_PRIVATE_MCP_URLS", "false")
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(
+            ValidationError,
+            match="Private network MCP server URLs are not allowed",
+        ):
+            MCPServerCreate.model_validate(
+                {
+                    "name": "Private MCP",
+                    "server_url": "http://127.0.0.1:9000/mcp",
+                }
+            )
+    finally:
+        get_settings.cache_clear()
+
+
+def test_update_mcp_server_rejects_url_with_credentials(client: TestClient) -> None:
+    mcp_server = create_mcp_server(client)
+
+    response = client.patch(
+        f"/api/v1/mcp-servers/{mcp_server['id']}",
+        json={"server_url": "https://user:password@mcp.example.com/server"},
+    )
 
     assert response.status_code == 422
 
@@ -280,8 +348,13 @@ def test_sync_failure_sets_status_error_and_last_error(client: TestClient) -> No
     server = client.get(f"/api/v1/mcp-servers/{response.json()['id']}").json()
 
     assert sync_response.status_code == 502
+    assert sync_response.json()["detail"] == (
+        "MCP discovery failed. Check server connectivity and configuration."
+    )
     assert server["status"] == "error"
-    assert server["last_error"] == "Mock MCP discovery failed."
+    assert server["last_error"] == (
+        "MCP discovery failed. Check server connectivity and configuration."
+    )
 
 
 def test_sync_failure_preserves_existing_agent_tools_and_last_sync(client: TestClient) -> None:
@@ -302,7 +375,9 @@ def test_sync_failure_preserves_existing_agent_tools_and_last_sync(client: TestC
     assert after_server["agent_id"] == before_server["agent_id"]
     assert after_server["last_sync_at"] == before_server["last_sync_at"]
     assert after_server["status"] == "error"
-    assert after_server["last_error"] == "Mock MCP discovery failed."
+    assert after_server["last_error"] == (
+        "MCP discovery failed. Check server connectivity and configuration."
+    )
     assert after_tools == before_tools
 
 
@@ -347,4 +422,31 @@ def test_audit_log_created_on_sync_failure(client: TestClient) -> None:
     assert len(logs) == 1
     assert logs[0]["before"]["status"] == "disconnected"
     assert logs[0]["after"]["status"] == "error"
-    assert logs[0]["after"]["last_error"] == "Mock MCP discovery failed."
+    assert logs[0]["after"]["last_error"] == (
+        "MCP discovery failed. Check server connectivity and configuration."
+    )
+
+
+def test_sync_failure_does_not_expose_adapter_details(client: TestClient) -> None:
+    class SensitiveFailureAdapter:
+        def discover_tools(self, server_url: str) -> list[object]:
+            raise RuntimeError(
+                "Connection failed for https://user:password@internal.example/mcp?token=secret"
+            )
+
+    mcp_server = create_mcp_server(client, "Safe Failure MCP")
+    app = cast(FastAPI, client.app)
+    app.dependency_overrides[get_mcp_discovery_adapter] = lambda: SensitiveFailureAdapter()
+    try:
+        response = client.post(f"/api/v1/mcp-servers/{mcp_server['id']}/sync")
+    finally:
+        app.dependency_overrides.pop(get_mcp_discovery_adapter, None)
+    server = client.get(f"/api/v1/mcp-servers/{mcp_server['id']}").json()
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == (
+        "MCP discovery failed. Check server connectivity and configuration."
+    )
+    assert server["last_error"] == response.json()["detail"]
+    assert "password" not in str(response.json()).lower()
+    assert "internal.example" not in str(server).lower()

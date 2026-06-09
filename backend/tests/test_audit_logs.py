@@ -1,6 +1,15 @@
 from typing import Any, cast
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from sqlalchemy import StaticPool, create_engine
+from sqlalchemy.orm import Session
+
+from app.core.audit_redaction import REDACTED, redact_audit_snapshot
+from app.db.base import Base
+from app.models.audit_log import AuditAction, JsonObject
+from app.repositories import audit_logs as audit_log_repository
+from app.schemas.audit_log import AuditLogCreate
 
 JsonResponse = dict[str, Any]
 
@@ -142,3 +151,63 @@ def test_filter_audit_logs_by_action(client: TestClient) -> None:
 
     assert len(logs) == 1
     assert logs[0]["action"] == "agent.updated"
+
+
+def test_audit_redaction_redacts_top_level_and_nested_secrets() -> None:
+    snapshot: JsonObject = {
+        "name": "Safe Agent",
+        "password_hash": "argon-secret",
+        "TOKEN_HASH": "invite-secret",
+        "nested": {
+            "api_key": "provider-secret",
+            "Authorization": "Bearer sensitive-token",
+            "safe_status": "connected",
+        },
+        "items": [{"bootstrap-secret": "bootstrap-value"}, {"risk_level": "high"}],
+        "invite_url": "/accept-invite?token=raw-invite-token",
+    }
+
+    redacted = redact_audit_snapshot(snapshot)
+
+    assert redacted is not None
+    assert redacted["name"] == "Safe Agent"
+    assert redacted["password_hash"] == REDACTED
+    assert redacted["TOKEN_HASH"] == REDACTED
+    assert redacted["nested"]["api_key"] == REDACTED  # type: ignore[index]
+    assert redacted["nested"]["Authorization"] == REDACTED  # type: ignore[index]
+    assert redacted["nested"]["safe_status"] == "connected"  # type: ignore[index]
+    assert redacted["items"][0]["bootstrap-secret"] == REDACTED  # type: ignore[index]
+    assert redacted["items"][1]["risk_level"] == "high"  # type: ignore[index]
+    assert redacted["invite_url"] == REDACTED
+
+
+def test_audit_repository_redacts_snapshots_before_storage() -> None:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        audit_log = audit_log_repository.create_audit_log(
+            db,
+            AuditLogCreate(
+                action=AuditAction.AGENT_UPDATED,
+                entity_type="agent",
+                entity_id=uuid4(),
+                before={"password_hash": "secret", "name": "Safe Agent"},
+                after={
+                    "nested": {"token_hash": "secret"},
+                    "endpoint": "https://user:password@example.com/mcp",
+                    "status": "active",
+                },
+            ),
+        )
+
+        assert audit_log.before == {"password_hash": REDACTED, "name": "Safe Agent"}
+        assert audit_log.after == {
+            "nested": {"token_hash": REDACTED},
+            "endpoint": REDACTED,
+            "status": "active",
+        }
+    engine.dispose()

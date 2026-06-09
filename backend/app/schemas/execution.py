@@ -12,28 +12,28 @@ from app.models.policy_rule import PolicyRuleEffect
 class ExecutionCreate(BaseModel):
     agent_id: UUID
     action_name: str = Field(min_length=1, max_length=255)
-    input_summary: str | None = None
-    output_summary: str | None = None
+    input_summary: str | None = Field(default=None, max_length=5000)
+    output_summary: str | None = Field(default=None, max_length=5000)
     status: ExecutionStatus | None = None
     risk_level: AgentRiskLevel
     tool_id: UUID | None = None
     approval_id: UUID | None = None
     cost_usd: Decimal | None = Field(default=None, ge=0)
     latency_ms: int | None = Field(default=None, ge=0)
-    error_message: str | None = None
+    error_message: str | None = Field(default=None, max_length=2000)
 
 
 class ExecutionUpdate(BaseModel):
     action_name: str | None = Field(default=None, min_length=1, max_length=255)
-    input_summary: str | None = None
-    output_summary: str | None = None
+    input_summary: str | None = Field(default=None, max_length=5000)
+    output_summary: str | None = Field(default=None, max_length=5000)
     status: ExecutionStatus | None = None
     risk_level: AgentRiskLevel | None = None
     tool_id: UUID | None = None
     approval_id: UUID | None = None
     cost_usd: Decimal | None = Field(default=None, ge=0)
     latency_ms: int | None = Field(default=None, ge=0)
-    error_message: str | None = None
+    error_message: str | None = Field(default=None, max_length=2000)
 
 
 class ExecutionRead(BaseModel):

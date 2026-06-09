@@ -149,6 +149,16 @@ def require_current_organization(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Organization membership required.",
             )
+        existing_membership = organization_repository.get_membership(
+            db,
+            organization.id,
+            context.current_user.id,
+        )
+        if existing_membership is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Organization membership required.",
+            )
         membership = organization_repository.create_membership_pending(
             db,
             OrganizationMembership(
