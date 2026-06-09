@@ -105,3 +105,46 @@ Compliance Summary:
 
 Agent Compliance Report:
 10 → 2 queries
+
+# AgentHQ v0.4.0 - Multi-Tenant Foundations
+
+## Highlights
+
+### Organizations
+
+* Organization workspaces
+* Memberships
+* Bootstrap organization creation
+
+### User Management
+
+* Organization invitations
+* Invite acceptance
+* Membership roles
+
+### Tenant Isolation
+
+* Organization-scoped governance resources
+* Cross-organization access protection
+* Tenant-aware dashboards and compliance reports
+
+### User Experience
+
+* Organization-aware onboarding
+* Organization-aware navigation
+* Audit Logs UI
+* Invite management UI
+
+### Reliability
+
+* Atomic transactions
+* Failure handling
+* Query optimization
+* Pagination
+* PostgreSQL indexes
+
+### Quality
+
+* 220 automated tests passing
+* Ruff clean
+* MyPy clean

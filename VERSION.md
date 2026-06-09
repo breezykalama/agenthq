@@ -1,7 +1,7 @@
 # AgentHQ Version
 
 Current Version:
-v0.3.2
+v0.4.0
 
 Release Date:
 June 2026
@@ -9,14 +9,17 @@ June 2026
 Status:
 Live
 
-Release:
-Reliability & Performance Hardening
+Release Name:
+Multi-Tenant Foundations
+
+Quality:
+220 tests passing
+
+Key Theme:
+Organization-based AI Agent Governance
 
 Frontend:
 https://agenthq-seven.vercel.app/
 
 Backend:
 https://agenthq.onrender.com/docs
-
-Test Coverage:
-201 tests passing

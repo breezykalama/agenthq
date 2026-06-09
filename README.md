@@ -1,8 +1,8 @@
 # AgentHQ
 
-Enterprise AI Agent Governance Platform.
+AgentHQ is a multi-tenant AI Agent Governance Platform that helps organizations safely operate, monitor, and govern AI agents through policies, approvals, audit trails, compliance reporting, incident management, and MCP integrations.
 
-AgentHQ provides visibility, governance, approvals, policy enforcement, execution tracking, incident management, auditability, and compliance reporting for AI agents.
+Organizations can create dedicated governance workspaces, invite users, assign roles, onboard MCP servers, and maintain visibility into AI agent activity across their environment.
 
 ## Live Demo
 
@@ -14,12 +14,15 @@ Backend API:
 
 ## Current Version
 
-AgentHQ v0.3.2
+AgentHQ v0.4.0
 
 ## Project Status
 
-AgentHQ is a live Enterprise AI Agent Governance Platform focused on:
+AgentHQ is a live, multi-tenant Enterprise AI Agent Governance Platform focused on:
 
+* Organization Workspaces
+* Membership-Based Access
+* Tenant Isolation
 * Agent Governance
 * Policy Enforcement
 * Approval Workflows
@@ -179,27 +182,80 @@ Added service-owned atomic transactions for:
 
 Critical governance actions now commit business mutations and audit logs atomically.
 
+## AgentHQ v0.4.0
+
+AgentHQ v0.4.0 introduces multi-tenant organization foundations for independently governed enterprise workspaces.
+
+Highlights:
+
+* Organization workspaces and membership-based roles
+* Organization bootstrap and administrator creation
+* Organization invitations and invite acceptance
+* Tenant-isolated governance resources
+* Organization-aware dashboards, compliance reports, navigation, and onboarding
+* Audit Logs frontend for organization admins and auditors
+
+See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the complete v0.4.0 release summary.
+
+## Architecture Overview
+
+```text
+Organization
+|-- Memberships
+|-- Agents
+|-- MCP Servers
+|-- Policy Rules
+|-- Executions
+|-- Incidents
+|-- Audit Logs
+`-- Compliance Reports
+```
+
+Organizations own governance resources, while memberships define each user's organization role. Tenant isolation prevents cross-organization access, audit logs provide governance visibility, policies govern execution behavior, and MCP integrations connect external agent ecosystems to the AgentHQ governance layer.
+
 ## Architecture
 
 ![AgentHQ Architecture](docs/images/agenthq-architecture.png)
 
-AgentHQ uses a React frontend for the governance console, a FastAPI backend for API workflows, modular governance services for policy decisions and lifecycle rules, PostgreSQL persistence for operational records, and audit/compliance capabilities for reporting and review.
+AgentHQ uses a React frontend for the tenant-aware governance console, a FastAPI backend for API workflows, modular governance services for policy decisions and lifecycle rules, PostgreSQL persistence for organization-scoped operational records, and audit/compliance capabilities for reporting and review.
 
-The architecture now includes a JWT authentication layer, reusable RBAC enforcement layer, MCP Server Registry, and MCP Discovery Layer that synchronizes discovered tools into the governance layer.
+The architecture includes organization and membership context, tenant-isolation enforcement, JWT authentication, reusable RBAC enforcement, an MCP Server Registry, and an MCP Discovery Layer that synchronizes discovered tools into the governance layer.
 
 ## Core Capabilities
 
-* **Agent Registry**: Maintain a catalog of governed agents, ownership, status, department, and risk level.
-* **Policy Enforcement**: Evaluate active policy rules to allow, require approval, or block requested actions.
-* **Approval Workflows**: Track human approval requests for high-risk or policy-controlled actions.
-* **Execution Tracking**: Record simulated agent actions, status, cost, latency, policy decisions, and outcomes.
-* **Incident Management**: Capture and resolve incidents related to failed executions, blocked actions, or policy violations.
-* **Audit Logging**: Preserve structured before/after audit events across governance workflows.
-* **Compliance Reporting**: Generate read-only summaries for auditors and managers.
-* **MCP Server Registration**: Register MCP servers and track connection, synchronization, and error status.
-* **MCP Tool Discovery**: Discover tools through an adapter-based integration and sync them into the Agent Tools Registry.
-* **Linked Agent Creation**: Automatically create or reuse the governed agent associated with an MCP server.
-* **Tool Sync Auditing**: Record successful and failed MCP synchronization events with before/after snapshots.
+### Multi-Tenant Organizations
+
+* Organization workspaces
+* Membership-based access
+* Tenant isolation
+
+### Governance
+
+* Policy Rules
+* Policy Decision Engine
+* Approval Workflows
+* Execution Tracking
+
+### Operations
+
+* Incident Management
+* Compliance Reporting
+* Dashboard Monitoring
+
+### MCP Integration
+
+* MCP Server Registration
+* Tool Discovery
+* Tool Governance
+
+### Security & Reliability
+
+* RBAC
+* Audit Logging
+* Atomic Transactions
+* Failure Handling
+* Pagination
+* Performance Optimization
 
 ## Tech Stack
 
@@ -226,17 +282,35 @@ The architecture now includes a JWT authentication layer, reusable RBAC enforcem
 
 ## Quality
 
-* 201 automated tests passing
+* 220 automated tests passing
 * Ruff clean
 * MyPy clean
+* PostgreSQL migrations verified
 * Dockerized deployment
-* Live deployment
-* Supabase PostgreSQL
 * Render backend
 * Vercel frontend
-* Atomic transaction safety
+* Supabase PostgreSQL
 * Query-count regression tests
-* Seed/demo data included
+* Atomic transaction safety
+* Tenant isolation tests
+
+## Organization Onboarding
+
+```text
+Create Organization
+        |
+Create Organization Admin
+        |
+Invite Users
+        |
+Accept Invite
+        |
+Assign Roles
+        |
+Govern AI Agents
+```
+
+Each organization operates as an independently governed workspace. Membership roles control access, and tenant isolation ensures that users and governance resources remain separated across organizations.
 
 ## Repository Structure
 
@@ -310,7 +384,7 @@ Backend:  DATABASE_URL, BACKEND_CORS_ORIGINS
 Frontend: VITE_API_BASE_URL
 ```
 
-Use exact HTTPS origins in `BACKEND_CORS_ORIGINS`, keep `DATABASE_URL` in backend secret storage, apply migrations before serving a new version, and never seed production automatically. FastAPI interactive docs remain enabled for this MVP and can be restricted at the edge when needed.
+Use exact HTTPS origins in `BACKEND_CORS_ORIGINS`, keep `DATABASE_URL` in backend secret storage, apply migrations before serving a new version, and never seed production automatically. FastAPI interactive docs remain enabled for the current release and can be restricted at the edge when needed.
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for the complete deployment guide.
 
@@ -427,22 +501,27 @@ Screenshots can be added here once the visual demo flow stabilizes:
 
 ## Roadmap
 
-Completed in v0.2.0:
+### Completed
 
+* Organizations
+* Memberships
+* Organization Bootstrap
+* Organization Invitations
+* Invite Acceptance
+* Tenant Isolation
+* Tenant-Aware UX
+* Audit Logs UI
 * MCP Server Registration
 * MCP Tool Discovery
 * Linked Agent Creation
 * Tool Sync Auditing
-
-Completed in v0.3.0:
-
 * Authentication & RBAC
 * JWT Authentication
 * User Management
 * Agent Ownership Enforcement
-
-### Completed Hardening
-
+* Governance Workflows
+* Compliance Reporting
+* Performance Hardening
 * Pagination
 * Database Indexing
 * Dashboard Optimization
@@ -458,7 +537,6 @@ Completed in v0.3.0:
 * Copilot Studio Agent Registration
 * Cost Tracking
 * Notifications
-* Multi-tenancy
 
 ## Health Check
 
