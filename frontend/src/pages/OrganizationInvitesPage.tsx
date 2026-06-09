@@ -19,6 +19,7 @@ import {
 } from "../components/Ui";
 import { useAuth } from "../auth/context";
 import type { OrganizationInviteCreateResponse, UserRole } from "../types/api";
+import { formatRole } from "../utils/format";
 
 const roles: UserRole[] = ["admin", "auditor", "operator", "agent_owner"];
 
@@ -227,11 +228,4 @@ function toPublicInviteUrl(inviteUrl: string): string {
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString();
-}
-
-function formatRole(role: UserRole): string {
-  return role
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 }

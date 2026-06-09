@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { api, getErrorMessage } from "../api/client";
 import { endpoints } from "../api/queries";
 import { useAuth } from "../auth/context";
+import { getEffectiveRole } from "../auth/roles";
 import {
   Badge,
   Card,
@@ -28,7 +29,7 @@ function formatDate(value: string | null) {
 export function MCPServersPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const isAdmin = user?.organization_membership?.role === "admin";
+  const isAdmin = getEffectiveRole(user) === "admin";
   const [syncResult, setSyncResult] = useState<MCPServerSyncResponse | null>(null);
   const [copiedAgentId, setCopiedAgentId] = useState<string | null>(null);
   const servers = useQuery({ queryKey: ["mcp-servers"], queryFn: endpoints.mcpServers });

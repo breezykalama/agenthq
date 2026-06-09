@@ -1,33 +1,49 @@
 import { NavLink, Outlet } from "react-router-dom";
 
 import { useAuth } from "../auth/context";
+import { getEffectiveRole } from "../auth/roles";
+import type { UserRole } from "../types/api";
+import { formatRole } from "../utils/format";
 import { TemporaryOnboarding } from "./Onboarding";
 
 const baseNavItems = [
-  { to: "/", label: "Dashboard" },
-  { to: "/mcp-servers", label: "MCP Servers" },
-  { to: "/agents", label: "Agents" },
-  { to: "/policy-rules", label: "Policy Rules" },
-  { to: "/policy-decisions", label: "Decision Tester" },
-  { to: "/approvals", label: "Approvals" },
-  { to: "/executions", label: "Executions" },
-  { to: "/incidents", label: "Incidents" },
-  { to: "/compliance", label: "Compliance" }
-];
+  { to: "/", label: "Dashboard", roles: ["admin", "auditor", "operator", "agent_owner"] },
+  { to: "/mcp-servers", label: "MCP Servers", roles: ["admin"] },
+  { to: "/agents", label: "Agents", roles: ["admin", "agent_owner"] },
+  { to: "/policy-rules", label: "Policy Rules", roles: ["admin"] },
+  { to: "/policy-decisions", label: "Decision Tester", roles: ["admin", "operator"] },
+  { to: "/approvals", label: "Approvals", roles: ["admin", "operator"] },
+  { to: "/executions", label: "Executions", roles: ["admin", "operator"] },
+  { to: "/incidents", label: "Incidents", roles: ["admin", "auditor", "operator"] },
+  { to: "/compliance", label: "Compliance", roles: ["admin", "auditor"] },
+  { to: "/audit-logs", label: "Audit Logs", roles: ["admin", "auditor"] }
+] satisfies Array<{ to: string; label: string; roles: UserRole[] }>;
+
+const inviteNavItem = {
+  to: "/organization/invites",
+  label: "Invites",
+  roles: ["admin"] as UserRole[]
+};
+
+function canAccess(role: UserRole | undefined, allowedRoles: UserRole[]) {
+  return role !== undefined && allowedRoles.includes(role);
+}
+
+function navigationForRole(role: UserRole | undefined, hasMembership: boolean) {
+  return [
+    ...baseNavItems.filter((item) => canAccess(role, item.roles)),
+    ...(hasMembership && canAccess(role, inviteNavItem.roles) ? [inviteNavItem] : [])
+  ];
+}
 
 export function Layout() {
   const { user, logout } = useAuth();
   const membership = user?.organization_membership;
-  const isOrganizationAdmin = membership?.role === "admin";
-  const canViewAuditLogs = membership?.role === "admin" || membership?.role === "auditor";
-  const navItems = [
-    ...baseNavItems,
-    ...(canViewAuditLogs ? [{ to: "/audit-logs", label: "Audit Logs" }] : []),
-    ...(isOrganizationAdmin ? [{ to: "/organization/invites", label: "Invites" }] : [])
-  ];
+  const role = getEffectiveRole(user);
+  const navItems = navigationForRole(role, membership !== null && membership !== undefined);
   const workspaceIdentity = membership
     ? `${membership.organization.name} \u00b7 ${formatRole(membership.role)}`
-    : formatRole(user?.role);
+    : formatRole(role);
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -115,12 +131,4 @@ export function Layout() {
       </div>
     </div>
   );
-}
-
-function formatRole(role: string | undefined): string {
-  if (!role) return "";
-  return role
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 }

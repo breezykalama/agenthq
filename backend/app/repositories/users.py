@@ -26,11 +26,6 @@ def count_users(db: Session, *, active_only: bool = False) -> int:
     return db.scalar(statement) or 0
 
 
-def list_users(db: Session, *, limit: int, offset: int) -> tuple[list[User], int]:
-    statement = select(User).order_by(User.created_at.desc()).limit(limit).offset(offset)
-    return list(db.scalars(statement).all()), count_users(db)
-
-
 def get_user_by_id(db: Session, user_id: UUID) -> User | None:
     return db.scalar(select(User).where(User.id == user_id))
 

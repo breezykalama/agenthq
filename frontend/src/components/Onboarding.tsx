@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import { endpoints } from "../api/queries";
 import { useAuth } from "../auth/context";
+import { getEffectiveRole } from "../auth/roles";
 import {
   hasCompletedOnboardingStep,
   ONBOARDING_PROGRESS_EVENT,
@@ -58,7 +59,8 @@ export function TemporaryOnboarding() {
   const [dismissed, setDismissed] = useState(
     () => Boolean(user && localStorage.getItem(onboardingDismissedKey(user.id)))
   );
-  const isAdmin = user?.role === "admin";
+  const role = getEffectiveRole(user);
+  const isAdmin = role === "admin";
   const servers = useQuery({
     queryKey: ["mcp-servers"],
     queryFn: endpoints.mcpServers,
@@ -118,7 +120,7 @@ export function TemporaryOnboarding() {
       roles: ["admin", "auditor"] as UserRole[]
     }
   ];
-  const nextStep = steps.find((step) => !step.complete && step.roles.includes(user.role));
+  const nextStep = steps.find((step) => !step.complete && role && step.roles.includes(role));
   const dismiss = () => {
     localStorage.setItem(onboardingDismissedKey(user.id), "true");
     setDismissed(true);
@@ -199,7 +201,10 @@ export function GuidedTour({ open, onFinish }: { open: boolean; onFinish: () => 
   const { user } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
-  const availableSteps = tourSteps.filter((tourStep) => !tourStep.roles || (user && tourStep.roles.includes(user.role)));
+  const role = getEffectiveRole(user);
+  const availableSteps = tourSteps.filter(
+    (tourStep) => !tourStep.roles || (role && tourStep.roles.includes(role))
+  );
   const current = availableSteps[step];
 
   useEffect(() => {

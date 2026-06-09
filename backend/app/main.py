@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="AgentHQ", version="0.3.0", lifespan=lifespan)
+    app = FastAPI(title="AgentHQ", version="0.4.0", lifespan=lifespan)
 
     @app.exception_handler(AuditLoggingError)
     async def audit_logging_error_handler(

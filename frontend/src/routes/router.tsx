@@ -2,7 +2,7 @@ import { createBrowserRouter } from "react-router-dom";
 
 import { ProtectedRoute } from "../auth/ProtectedRoute";
 import { OrganizationAdminRoute } from "../auth/OrganizationAdminRoute";
-import { OrganizationAuditRoute } from "../auth/OrganizationAuditRoute";
+import { RoleRoute } from "../auth/RoleRoute";
 import { Layout } from "../components/Layout";
 import { AcceptInvitePage } from "../pages/AcceptInvitePage";
 import { AgentsPage } from "../pages/AgentsPage";
@@ -33,22 +33,40 @@ export const router = createBrowserRouter([
         element: <Layout />,
         children: [
           { index: true, element: <DashboardPage /> },
-          { path: "mcp-servers", element: <MCPServersPage /> },
-          { path: "agents", element: <AgentsPage /> },
-          { path: "policy-rules", element: <PolicyRulesPage /> },
-          { path: "policy-decision", element: <PolicyDecisionPage /> },
-          { path: "policy-decisions", element: <PolicyDecisionPage /> },
-          { path: "approvals", element: <ApprovalsPage /> },
-          { path: "executions", element: <ExecutionsPage /> },
-          { path: "incidents", element: <IncidentsPage /> },
-          { path: "compliance", element: <CompliancePage /> },
+          {
+            element: <RoleRoute allowedRoles={["admin"]} />,
+            children: [
+              { path: "mcp-servers", element: <MCPServersPage /> },
+              { path: "policy-rules", element: <PolicyRulesPage /> }
+            ]
+          },
+          {
+            element: <RoleRoute allowedRoles={["admin", "agent_owner"]} />,
+            children: [{ path: "agents", element: <AgentsPage /> }]
+          },
+          {
+            element: <RoleRoute allowedRoles={["admin", "operator"]} />,
+            children: [
+              { path: "policy-decision", element: <PolicyDecisionPage /> },
+              { path: "policy-decisions", element: <PolicyDecisionPage /> },
+              { path: "approvals", element: <ApprovalsPage /> },
+              { path: "executions", element: <ExecutionsPage /> }
+            ]
+          },
+          {
+            element: <RoleRoute allowedRoles={["admin", "auditor", "operator"]} />,
+            children: [{ path: "incidents", element: <IncidentsPage /> }]
+          },
+          {
+            element: <RoleRoute allowedRoles={["admin", "auditor"]} />,
+            children: [
+              { path: "compliance", element: <CompliancePage /> },
+              { path: "audit-logs", element: <AuditLogsPage /> }
+            ]
+          },
           {
             element: <OrganizationAdminRoute />,
             children: [{ path: "organization/invites", element: <OrganizationInvitesPage /> }]
-          },
-          {
-            element: <OrganizationAuditRoute />,
-            children: [{ path: "audit-logs", element: <AuditLogsPage /> }]
           }
         ]
       }

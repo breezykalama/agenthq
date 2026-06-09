@@ -81,6 +81,7 @@ export interface ListResponse<T> {
 
 export interface AuditLog {
   id: string;
+  organization_id: string | null;
   actor: string;
   action: string;
   entity_type: string;

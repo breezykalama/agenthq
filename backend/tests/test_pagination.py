@@ -1,3 +1,5 @@
+from typing import cast
+
 from fastapi.testclient import TestClient
 
 from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, get_pagination
@@ -16,7 +18,7 @@ def create_agent(client: TestClient, name: str) -> dict[str, object]:
         },
     )
     assert response.status_code == 201
-    return response.json()
+    return cast(dict[str, object], response.json())
 
 
 def test_pagination_defaults_and_clamps_limit() -> None:

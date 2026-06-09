@@ -5,6 +5,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api, getErrorMessage } from "../api/client";
 import { endpoints } from "../api/queries";
 import { useAuth } from "../auth/context";
+import { getEffectiveRole } from "../auth/roles";
 import { markOnboardingStepComplete } from "../onboarding/progress";
 import {
   Badge,
@@ -41,7 +42,7 @@ export function AgentsPage() {
     queryFn: () => endpoints.agentTools(selectedAgent?.id ?? ""),
     enabled: Boolean(selectedAgent?.id)
   });
-  const isOrganizationAdmin = user?.organization_membership?.role === "admin";
+  const isOrganizationAdmin = getEffectiveRole(user) === "admin";
   const mcpServers = useQuery({
     queryKey: ["mcp-servers"],
     queryFn: endpoints.mcpServers,

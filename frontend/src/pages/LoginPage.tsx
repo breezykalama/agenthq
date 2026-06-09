@@ -62,9 +62,9 @@ export function LoginPage() {
         </PrimaryButton>
       </form>
       <p className="mt-6 text-sm text-slate-500">
-        Need an account?{" "}
+        Need legacy or demo access?{" "}
         <Link className="font-medium text-slate-950 underline" to="/register">
-          Register
+          Create a legacy account
         </Link>
       </p>
       <p className="mt-3 text-sm text-slate-500">

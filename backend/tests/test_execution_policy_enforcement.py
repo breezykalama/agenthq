@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.services import audit_logs as audit_log_service
-from app.services import executions as execution_service
+from app.services import policy_decisions as policy_decision_service
 
 JsonResponse = dict[str, Any]
 
@@ -291,7 +291,7 @@ def test_policy_decision_failure_fails_closed(
         raise RuntimeError("Policy database unavailable")
 
     monkeypatch.setattr(
-        execution_service.policy_decision_service,
+        policy_decision_service,
         "evaluate_policy_decision",
         fail_policy_evaluation,
     )

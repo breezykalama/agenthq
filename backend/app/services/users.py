@@ -74,27 +74,45 @@ def register_user(db: Session, registration: UserRegister) -> User:
     return user
 
 
-def list_users(db: Session, *, limit: int, offset: int) -> tuple[list[User], int]:
-    return user_repository.list_users(db, limit=limit, offset=offset)
+def list_users(
+    db: Session,
+    organization_id: UUID,
+    *,
+    limit: int,
+    offset: int,
+) -> tuple[list[User], int]:
+    return organization_repository.list_active_membership_users(
+        db,
+        organization_id,
+        limit=limit,
+        offset=offset,
+    )
 
 
-def get_user_by_id(db: Session, user_id: UUID) -> User:
-    user = user_repository.get_user_by_id(db, user_id)
+def get_user_by_id(db: Session, organization_id: UUID, user_id: UUID) -> User:
+    user = organization_repository.get_active_membership_user(db, organization_id, user_id)
     if user is None:
         raise UserNotFoundError
     return user
 
 
-def update_user(db: Session, user_id: UUID, update: UserUpdate, actor: User) -> User:
-    user = get_user_by_id(db, user_id)
+def update_user(
+    db: Session,
+    organization_id: UUID,
+    user_id: UUID,
+    update: UserUpdate,
+    actor: User,
+) -> User:
+    user = get_user_by_id(db, organization_id, user_id)
     before = serialize_user(user)
     values = update.model_dump(exclude_unset=True)
     updated_role = values.get("role")
     if isinstance(updated_role, UserRole):
-        memberships = organization_repository.list_active_memberships_for_user(db, user.id)
-        if len(memberships) == 1 and memberships[0][1].slug == "default-organization":
-            memberships[0][0].role = updated_role
-            db.add(memberships[0][0])
+        membership = organization_repository.get_active_membership(db, organization_id, user.id)
+        if membership is None:
+            raise UserNotFoundError
+        membership.role = updated_role
+        db.add(membership)
     action = (
         AuditAction.USER_DEACTIVATED
         if values.get("is_active") is False and before["is_active"] is True

@@ -187,3 +187,26 @@ def test_audit_dashboard_and_compliance_are_tenant_scoped() -> None:
         assert audits_a.json()["items"][0]["organization_id"] == tenants.organization_a_id
         assert dashboard_a.json()["total_agents"] == 1
         assert compliance_a.json()["total_agents"] == 1
+
+
+def test_user_administration_is_tenant_scoped() -> None:
+    with tenant_clients() as tenants:
+        users_a = tenants.client.get("/api/v1/users", headers=tenants.headers_a)
+        users_b = tenants.client.get("/api/v1/users", headers=tenants.headers_b)
+        user_b_id = users_b.json()["items"][0]["id"]
+
+        cross_tenant_get = tenants.client.get(
+            f"/api/v1/users/{user_b_id}",
+            headers=tenants.headers_a,
+        )
+        cross_tenant_update = tenants.client.patch(
+            f"/api/v1/users/{user_b_id}",
+            headers=tenants.headers_a,
+            json={"role": "auditor"},
+        )
+
+        assert users_a.json()["total"] == 1
+        assert users_b.json()["total"] == 1
+        assert users_a.json()["items"][0]["id"] != user_b_id
+        assert cross_tenant_get.status_code == 404
+        assert cross_tenant_update.status_code == 404

@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.organization import Organization, OrganizationMembership
+from app.models.user import User
 
 
 def count_active_organizations(db: Session) -> int:
@@ -81,3 +82,46 @@ def list_active_memberships_for_user(
         )
     )
     return list(db.execute(statement).tuples().all())
+
+
+def list_active_membership_users(
+    db: Session,
+    organization_id: UUID,
+    *,
+    limit: int,
+    offset: int,
+) -> tuple[list[User], int]:
+    filters = [
+        OrganizationMembership.organization_id == organization_id,
+        OrganizationMembership.is_active.is_(True),
+    ]
+    statement = (
+        select(User)
+        .join(OrganizationMembership, OrganizationMembership.user_id == User.id)
+        .where(*filters)
+        .order_by(User.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    count_statement = (
+        select(func.count())
+        .select_from(OrganizationMembership)
+        .where(*filters)
+    )
+    return list(db.scalars(statement).all()), db.scalar(count_statement) or 0
+
+
+def get_active_membership_user(
+    db: Session,
+    organization_id: UUID,
+    user_id: UUID,
+) -> User | None:
+    return db.scalar(
+        select(User)
+        .join(OrganizationMembership, OrganizationMembership.user_id == User.id)
+        .where(
+            User.id == user_id,
+            OrganizationMembership.organization_id == organization_id,
+            OrganizationMembership.is_active.is_(True),
+        )
+    )
