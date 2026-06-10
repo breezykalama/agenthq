@@ -148,7 +148,7 @@ def get_or_create_default_organization(bind: sa.Connection) -> UUID:
         )
     ).scalar_one_or_none()
     if existing is not None:
-        return existing
+        return UUID(str(existing))
 
     organization_id = uuid4()
     now = datetime.now(UTC)

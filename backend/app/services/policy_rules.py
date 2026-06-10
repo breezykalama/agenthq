@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.security import assert_resource_in_org, log_resource_access_denied
 from app.models.agent import AgentRiskLevel
 from app.models.audit_log import AuditAction, JsonObject
 from app.models.policy_rule import PolicyRule, PolicyRuleEffect, PolicyRuleScope
@@ -80,7 +81,13 @@ def list_policy_rules(
 def get_policy_rule_by_id(db: Session, rule_id: UUID) -> PolicyRule:
     policy_rule = policy_rule_repository.get_policy_rule_by_id(db, rule_id)
     if policy_rule is None:
+        log_resource_access_denied(
+            db,
+            attempted_action="access_policy_rule",
+            target_resource=f"policy_rule:{rule_id}",
+        )
         raise PolicyRuleNotFoundError
+    assert_resource_in_org(db, policy_rule, resource_name="Policy rule")
     return policy_rule
 
 

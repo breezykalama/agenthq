@@ -5,11 +5,10 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.pagination import PaginationParams
-from app.core.security import require_current_organization, require_roles
+from app.core.security import OrgPermission, require_current_organization, require_org_permission
 from app.db.session import get_db
 from app.models.agent import AgentRiskLevel
 from app.models.incident import IncidentStatus
-from app.models.user import UserRole
 from app.schemas.incident import (
     IncidentCreate,
     IncidentDecision,
@@ -24,7 +23,7 @@ router = APIRouter(
     tags=["incidents"],
     dependencies=[
         Depends(require_current_organization),
-        Depends(require_roles(UserRole.ADMIN, UserRole.AUDITOR, UserRole.OPERATOR)),
+        Depends(require_org_permission(OrgPermission.VIEW_INCIDENTS)),
     ],
 )
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -34,7 +33,7 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
     "",
     response_model=IncidentRead,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.OPERATOR))],
+    dependencies=[Depends(require_org_permission(OrgPermission.MANAGE_INCIDENTS))],
 )
 def create_incident(incident_create: IncidentCreate, db: DatabaseSession) -> IncidentRead:
     try:
@@ -98,7 +97,7 @@ def get_incident(incident_id: UUID, db: DatabaseSession) -> IncidentRead:
 @router.patch(
     "/{incident_id}",
     response_model=IncidentRead,
-    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.OPERATOR))],
+    dependencies=[Depends(require_org_permission(OrgPermission.MANAGE_INCIDENTS))],
 )
 def update_incident(
     incident_id: UUID,
@@ -129,7 +128,7 @@ def update_incident(
 @router.post(
     "/{incident_id}/resolve",
     response_model=IncidentRead,
-    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.OPERATOR))],
+    dependencies=[Depends(require_org_permission(OrgPermission.MANAGE_INCIDENTS))],
 )
 def resolve_incident(
     incident_id: UUID,
@@ -160,7 +159,7 @@ def resolve_incident(
 @router.post(
     "/{incident_id}/dismiss",
     response_model=IncidentRead,
-    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.OPERATOR))],
+    dependencies=[Depends(require_org_permission(OrgPermission.MANAGE_INCIDENTS))],
 )
 def dismiss_incident(
     incident_id: UUID,

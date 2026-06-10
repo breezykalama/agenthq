@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.security import assert_resource_in_org, log_resource_access_denied
 from app.models.agent import AgentRiskLevel, utc_now
 from app.models.audit_log import AuditAction, JsonObject
 from app.models.incident import Incident, IncidentStatus
@@ -84,7 +85,13 @@ def list_incidents(
 def get_incident_by_id(db: Session, incident_id: UUID) -> Incident:
     incident = incident_repository.get_incident_by_id(db, incident_id)
     if incident is None:
+        log_resource_access_denied(
+            db,
+            attempted_action="access_incident",
+            target_resource=f"incident:{incident_id}",
+        )
         raise IncidentNotFoundError
+    assert_resource_in_org(db, incident, resource_name="Incident")
     return incident
 
 

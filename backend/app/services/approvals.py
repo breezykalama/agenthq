@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.security import assert_resource_in_org, log_resource_access_denied
 from app.models.agent import AgentRiskLevel, utc_now
 from app.models.approval import Approval, ApprovalStatus
 from app.models.audit_log import AuditAction, JsonObject
@@ -72,7 +73,13 @@ def list_approvals(
 def get_approval_by_id(db: Session, approval_id: UUID) -> Approval:
     approval = approval_repository.get_approval_by_id(db, approval_id)
     if approval is None:
+        log_resource_access_denied(
+            db,
+            attempted_action="access_approval",
+            target_resource=f"approval:{approval_id}",
+        )
         raise ApprovalNotFoundError
+    assert_resource_in_org(db, approval, resource_name="Approval")
     return approval
 
 

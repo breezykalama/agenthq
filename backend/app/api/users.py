@@ -7,19 +7,23 @@ from sqlalchemy.orm import Session
 from app.api.pagination import PaginationParams
 from app.core.security import (
     CurrentOrganizationContext,
+    OrgPermission,
     get_current_user,
     require_current_organization,
-    require_roles,
+    require_org_permission,
 )
 from app.db.session import get_db
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.schemas.user import UserListResponse, UserRead, UserUpdate
 from app.services import users as user_service
 
 router = APIRouter(
     prefix="/api/v1/users",
     tags=["users"],
-    dependencies=[Depends(require_current_organization), Depends(require_roles(UserRole.ADMIN))],
+    dependencies=[
+        Depends(require_current_organization),
+        Depends(require_org_permission(OrgPermission.MANAGE_MEMBERS)),
+    ],
 )
 DatabaseSession = Annotated[Session, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]

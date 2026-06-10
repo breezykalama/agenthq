@@ -3,9 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.core.security import require_current_organization, require_roles
+from app.core.security import OrgPermission, require_current_organization, require_org_permission
 from app.db.session import get_db
-from app.models.user import UserRole
 from app.schemas.dashboard import (
     AgentsByRisk,
     ApprovalsByStatus,
@@ -17,7 +16,10 @@ from app.services import dashboard as dashboard_service
 router = APIRouter(
     prefix="/api/v1/dashboard",
     tags=["dashboard"],
-    dependencies=[Depends(require_current_organization), Depends(require_roles(*UserRole))],
+    dependencies=[
+        Depends(require_current_organization),
+        Depends(require_org_permission(OrgPermission.VIEW_DASHBOARD)),
+    ],
 )
 DatabaseSession = Annotated[Session, Depends(get_db)]
 

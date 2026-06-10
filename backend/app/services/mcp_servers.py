@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.adapters.mcp_discovery import MCPDiscoveryAdapter
+from app.core.security import assert_resource_in_org, log_resource_access_denied
 from app.models.agent import AgentRiskLevel, AgentStatus
 from app.models.agent_tool import AgentToolPermission
 from app.models.audit_log import AuditAction, JsonObject
@@ -73,7 +74,13 @@ def list_mcp_servers(db: Session, *, limit: int, offset: int) -> tuple[list[MCPS
 def get_mcp_server_by_id(db: Session, mcp_server_id: UUID) -> MCPServer:
     mcp_server = mcp_server_repository.get_mcp_server_by_id(db, mcp_server_id)
     if mcp_server is None:
+        log_resource_access_denied(
+            db,
+            attempted_action="access_mcp_server",
+            target_resource=f"mcp_server:{mcp_server_id}",
+        )
         raise MCPServerNotFoundError
+    assert_resource_in_org(db, mcp_server, resource_name="MCP server")
     return mcp_server
 
 

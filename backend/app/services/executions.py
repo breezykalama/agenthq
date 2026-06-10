@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.security import assert_resource_in_org, log_resource_access_denied
 from app.models.agent import AgentRiskLevel, utc_now
 from app.models.approval import ApprovalStatus
 from app.models.audit_log import AuditAction, JsonObject
@@ -167,7 +168,13 @@ def list_executions(
 def get_execution_by_id(db: Session, execution_id: UUID) -> Execution:
     execution = execution_repository.get_execution_by_id(db, execution_id)
     if execution is None:
+        log_resource_access_denied(
+            db,
+            attempted_action="access_execution",
+            target_resource=f"execution:{execution_id}",
+        )
         raise ExecutionNotFoundError
+    assert_resource_in_org(db, execution, resource_name="Execution")
     return execution
 
 

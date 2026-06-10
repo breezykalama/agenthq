@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.security import assert_resource_in_org, log_resource_access_denied
 from app.models.agent import Agent
 from app.models.audit_log import AuditAction, JsonObject
 from app.repositories import agents as agent_repository
@@ -53,7 +54,13 @@ def list_agents(
 def get_agent_by_id(db: Session, agent_id: UUID) -> Agent:
     agent = agent_repository.get_agent_by_id(db, agent_id)
     if agent is None:
+        log_resource_access_denied(
+            db,
+            attempted_action="access_agent",
+            target_resource=f"agent:{agent_id}",
+        )
         raise AgentNotFoundError
+    assert_resource_in_org(db, agent, resource_name="Agent")
     return agent
 
 

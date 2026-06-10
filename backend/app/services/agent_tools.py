@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.security import assert_resource_in_org, log_resource_access_denied
 from app.models.agent_tool import AgentTool
 from app.models.audit_log import AuditAction, JsonObject
 from app.repositories import agent_tools as agent_tool_repository
@@ -29,6 +30,11 @@ def serialize_agent_tool(agent_tool: AgentTool) -> JsonObject:
 
 def ensure_agent_exists(db: Session, agent_id: UUID) -> None:
     if agent_repository.get_agent_by_id(db, agent_id) is None:
+        log_resource_access_denied(
+            db,
+            attempted_action="access_agent_tools",
+            target_resource=f"agent:{agent_id}",
+        )
         raise AgentToolAgentNotFoundError
 
 
@@ -75,7 +81,13 @@ def get_agent_tool_by_id(db: Session, agent_id: UUID, tool_id: UUID) -> AgentToo
     ensure_agent_exists(db, agent_id)
     agent_tool = agent_tool_repository.get_agent_tool_by_id(db, agent_id, tool_id)
     if agent_tool is None:
+        log_resource_access_denied(
+            db,
+            attempted_action="access_agent_tool",
+            target_resource=f"agent_tool:{tool_id}",
+        )
         raise AgentToolNotFoundError
+    assert_resource_in_org(db, agent_tool, resource_name="Tool")
     return agent_tool
 
 

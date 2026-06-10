@@ -4,7 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.audit_redaction import redact_audit_snapshot
-from app.core.tenancy import get_optional_organization_id
+from app.core.tenancy import get_current_organization_id, get_optional_organization_id
 from app.models.audit_log import AuditAction, AuditLog
 from app.schemas.audit_log import AuditLogCreate
 
@@ -42,8 +42,8 @@ def list_audit_logs(
     limit: int,
     offset: int,
 ) -> tuple[list[AuditLog], int]:
-    organization_id = get_optional_organization_id(db)
-    filters = [AuditLog.organization_id == organization_id] if organization_id else []
+    organization_id = get_current_organization_id(db)
+    filters = [AuditLog.organization_id == organization_id]
     if entity_type is not None:
         filters.append(AuditLog.entity_type == entity_type)
     if entity_id is not None:
@@ -68,8 +68,9 @@ def list_audit_logs(
 
 
 def get_audit_log_by_id(db: Session, audit_log_id: UUID) -> AuditLog | None:
-    organization_id = get_optional_organization_id(db)
-    statement = select(AuditLog).where(AuditLog.id == audit_log_id)
-    if organization_id is not None:
-        statement = statement.where(AuditLog.organization_id == organization_id)
+    organization_id = get_current_organization_id(db)
+    statement = select(AuditLog).where(
+        AuditLog.id == audit_log_id,
+        AuditLog.organization_id == organization_id,
+    )
     return db.scalar(statement)

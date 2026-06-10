@@ -108,6 +108,36 @@ def create_agent(client: TestClient, headers: dict[str, str], name: str) -> dict
     return cast(dict[str, Any], response.json())
 
 
+def create_tenant_user(
+    tenants: TenantClients,
+    *,
+    organization_id: str,
+    email: str,
+    role: UserRole,
+    is_active: bool = True,
+) -> dict[str, str]:
+    with tenants.session_local() as db:
+        user = User(
+            email=email,
+            full_name=email,
+            password_hash=hash_password("StrongPassword123!"),
+            role=UserRole.AGENT_OWNER,
+        )
+        db.add(user)
+        db.flush()
+        db.add(
+            OrganizationMembership(
+                organization_id=UUID(organization_id),
+                user_id=user.id,
+                role=role,
+                is_active=is_active,
+            )
+        )
+        db.commit()
+        token = create_access_token(user)
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_agents_are_created_and_read_within_current_organization() -> None:
     with tenant_clients() as tenants:
         agent_a = create_agent(tenants.client, tenants.headers_a, "Shared Agent Name")
@@ -408,3 +438,152 @@ def test_auditor_incident_access_is_read_only() -> None:
             ).status_code
             == 403
         )
+
+
+def test_cross_tenant_resource_ids_are_safely_hidden() -> None:
+    with tenant_clients() as tenants:
+        agent_b = create_agent(tenants.client, tenants.headers_b, "Organization B Resources")
+        tool_b = tenants.client.post(
+            f"/api/v1/agents/{agent_b['id']}/tools",
+            headers=tenants.headers_b,
+            json={"name": "org_b_tool", "permission": "execute", "risk_level": "medium"},
+        ).json()
+        mcp_b = tenants.client.post(
+            "/api/v1/mcp-servers",
+            headers=tenants.headers_b,
+            json={"name": "Organization B MCP", "server_url": "https://mcp.example.com/b"},
+        ).json()
+        approval_b = tenants.client.post(
+            "/api/v1/approvals",
+            headers=tenants.headers_b,
+            json={
+                "agent_id": agent_b["id"],
+                "requested_action": "sensitive_action",
+                "risk_level": "high",
+            },
+        ).json()
+        execution_b = tenants.client.post(
+            "/api/v1/executions",
+            headers=tenants.headers_b,
+            json={
+                "agent_id": agent_b["id"],
+                "action_name": "tenant_b_action",
+                "risk_level": "low",
+            },
+        ).json()
+        incident_b = tenants.client.post(
+            "/api/v1/incidents",
+            headers=tenants.headers_b,
+            json={
+                "agent_id": agent_b["id"],
+                "execution_id": execution_b["id"],
+                "title": "Organization B incident",
+                "description": "Must remain private to Organization B.",
+                "severity": "high",
+            },
+        ).json()
+
+        responses = [
+            tenants.client.patch(
+                f"/api/v1/agents/{agent_b['id']}/tools/{tool_b['id']}",
+                headers=tenants.headers_a,
+                json={"description": "cross-tenant update"},
+            ),
+            tenants.client.delete(
+                f"/api/v1/agents/{agent_b['id']}/tools/{tool_b['id']}",
+                headers=tenants.headers_a,
+            ),
+            tenants.client.get(
+                f"/api/v1/mcp-servers/{mcp_b['id']}",
+                headers=tenants.headers_a,
+            ),
+            tenants.client.get(
+                f"/api/v1/executions/{execution_b['id']}",
+                headers=tenants.headers_a,
+            ),
+            tenants.client.post(
+                f"/api/v1/approvals/{approval_b['id']}/approve",
+                headers=tenants.headers_a,
+            ),
+            tenants.client.get(
+                f"/api/v1/incidents/{incident_b['id']}",
+                headers=tenants.headers_a,
+            ),
+        ]
+
+        assert all(response.status_code == 404 for response in responses)
+
+
+def test_inactive_membership_is_denied() -> None:
+    with tenant_clients() as tenants:
+        inactive_headers = create_tenant_user(
+            tenants,
+            organization_id=tenants.organization_a_id,
+            email="inactive-member@example.com",
+            role=UserRole.ADMIN,
+            is_active=False,
+        )
+
+        response = tenants.client.get("/api/v1/dashboard/summary", headers=inactive_headers)
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Organization membership required."
+
+
+def test_auditor_and_agent_owner_cannot_mutate_privileged_resources() -> None:
+    with tenant_clients() as tenants:
+        auditor_headers = create_tenant_user(
+            tenants,
+            organization_id=tenants.organization_a_id,
+            email="viewer-auditor@example.com",
+            role=UserRole.AUDITOR,
+        )
+        agent_owner_headers = create_tenant_user(
+            tenants,
+            organization_id=tenants.organization_a_id,
+            email="member-agent-owner@example.com",
+            role=UserRole.AGENT_OWNER,
+        )
+
+        auditor_agent_create = tenants.client.post(
+            "/api/v1/agents",
+            headers=auditor_headers,
+            json={
+                "name": "Forbidden Auditor Agent",
+                "owner": "viewer-auditor@example.com",
+                "department": "governance",
+                "risk_level": "low",
+            },
+        )
+        owner_policy_create = tenants.client.post(
+            "/api/v1/policy-rules",
+            headers=agent_owner_headers,
+            json={
+                "name": "Forbidden Owner Policy",
+                "scope": "global",
+                "risk_level": "high",
+                "effect": "block",
+            },
+        )
+        owner_users = tenants.client.get("/api/v1/users", headers=agent_owner_headers)
+        owner_invites = tenants.client.get(
+            "/api/v1/organization-invites",
+            headers=agent_owner_headers,
+        )
+
+        assert auditor_agent_create.status_code == 403
+        assert owner_policy_create.status_code == 403
+        assert owner_users.status_code == 403
+        assert owner_invites.status_code == 403
+
+
+def test_admin_can_manage_resources_but_no_organization_delete_endpoint_exists() -> None:
+    with tenant_clients() as tenants:
+        created = create_agent(tenants.client, tenants.headers_a, "Admin Managed Agent")
+        delete_organization = tenants.client.delete(
+            f"/api/v1/organizations/{tenants.organization_a_id}",
+            headers=tenants.headers_a,
+        )
+
+        assert created["name"] == "Admin Managed Agent"
+        assert delete_organization.status_code in {404, 405}

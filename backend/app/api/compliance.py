@@ -6,11 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.pagination import PaginationParams
-from app.core.security import require_current_organization, require_roles
+from app.core.security import OrgPermission, require_current_organization, require_org_permission
 from app.db.session import get_db
 from app.models.agent import AgentRiskLevel
 from app.models.incident import IncidentStatus
-from app.models.user import UserRole
 from app.schemas.compliance import (
     AgentComplianceReport,
     ComplianceIncidentListResponse,
@@ -23,7 +22,7 @@ router = APIRouter(
     tags=["compliance"],
     dependencies=[
         Depends(require_current_organization),
-        Depends(require_roles(UserRole.ADMIN, UserRole.AUDITOR)),
+        Depends(require_org_permission(OrgPermission.VIEW_COMPLIANCE)),
     ],
 )
 DatabaseSession = Annotated[Session, Depends(get_db)]

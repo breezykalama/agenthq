@@ -7,11 +7,12 @@ from sqlalchemy.orm import Session
 from app.api.pagination import PaginationParams
 from app.core.security import (
     CurrentOrganizationContext,
+    OrgPermission,
     ensure_agent_access,
     get_current_organization_context,
     get_current_user,
     require_current_organization,
-    require_roles,
+    require_org_permission,
 )
 from app.db.session import get_db
 from app.models.user import User, UserRole
@@ -23,7 +24,7 @@ router = APIRouter(
     tags=["agents"],
     dependencies=[
         Depends(require_current_organization),
-        Depends(require_roles(UserRole.ADMIN, UserRole.AGENT_OWNER)),
+        Depends(require_org_permission(OrgPermission.MANAGE_AGENTS)),
     ],
 )
 DatabaseSession = Annotated[Session, Depends(get_db)]
