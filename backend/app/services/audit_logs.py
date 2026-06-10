@@ -1,14 +1,39 @@
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
-from app.models.audit_log import AuditAction, AuditLog
+from app.models.audit_log import AuditAction, AuditLog, AuditOutcome, JsonObject
 from app.repositories import audit_logs as audit_log_repository
 from app.schemas.audit_log import AuditLogCreate
 
 
 class AuditLoggingError(Exception):
     pass
+
+
+def record_event(
+    db: Session,
+    *,
+    action: AuditAction,
+    resource_type: str,
+    resource_id: UUID | None = None,
+    outcome: AuditOutcome = AuditOutcome.SUCCESS,
+    reason: str | None = None,
+    metadata: JsonObject | None = None,
+    actor: str = "system",
+) -> AuditLog:
+    return create_audit_log(
+        db,
+        AuditLogCreate(
+            actor=actor,
+            action=action,
+            entity_type=resource_type,
+            entity_id=resource_id or uuid4(),
+            outcome=outcome,
+            reason=reason,
+            metadata=metadata,
+        ),
+    )
 
 
 def create_audit_log(db: Session, audit_log_create: AuditLogCreate) -> AuditLog:

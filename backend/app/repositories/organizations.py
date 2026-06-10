@@ -122,6 +122,21 @@ def list_active_memberships_for_user(
     return list(db.execute(statement).tuples().all())
 
 
+def list_memberships_for_user(
+    db: Session,
+    user_id: UUID,
+) -> list[tuple[OrganizationMembership, Organization]]:
+    statement = (
+        select(OrganizationMembership, Organization)
+        .join(Organization, Organization.id == OrganizationMembership.organization_id)
+        .where(
+            OrganizationMembership.user_id == user_id,
+            Organization.deleted_at.is_(None),
+        )
+    )
+    return list(db.execute(statement).tuples().all())
+
+
 def list_active_membership_users(
     db: Session,
     organization_id: UUID,

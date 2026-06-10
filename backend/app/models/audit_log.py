@@ -2,8 +2,8 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Index, String, Uuid
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Index, String, Uuid, event
+from sqlalchemy.orm import Mapped, Mapper, mapped_column
 
 from app.db.base import Base
 from app.models.agent import utc_now
@@ -19,6 +19,9 @@ class AuditAction(StrEnum):
     APPROVAL_CANCELLED = "approval.cancelled"
     EXECUTION_CREATED = "execution.created"
     EXECUTION_UPDATED = "execution.updated"
+    EXECUTION_STARTED = "execution.started"
+    EXECUTION_COMPLETED = "execution.completed"
+    EXECUTION_FAILED = "execution.failed"
     AGENT_TOOL_CREATED = "agent_tool.created"
     AGENT_TOOL_UPDATED = "agent_tool.updated"
     AGENT_TOOL_DELETED = "agent_tool.deleted"
@@ -44,6 +47,18 @@ class AuditAction(StrEnum):
     ORGANIZATION_INVITE_CREATED = "organization_invite.created"
     ORGANIZATION_INVITE_ACCEPTED = "organization_invite.accepted"
     ORGANIZATION_INVITE_REVOKED = "organization_invite.revoked"
+    AUTH_LOGIN_FAILED = "auth.login_failed"
+    SECURITY_ACCESS_DENIED = "security.access_denied"
+    SECURITY_CROSS_ORG_ACCESS_DENIED = "security.cross_org_access_denied"
+    SECURITY_INACTIVE_MEMBERSHIP_DENIED = "security.inactive_membership_denied"
+    SECURITY_RATE_LIMITED = "security.rate_limited"
+    COMPLIANCE_REPORT_ACCESSED = "compliance.report_accessed"
+
+
+class AuditOutcome(StrEnum):
+    SUCCESS = "success"
+    DENIED = "denied"
+    FAILED = "failed"
 
 
 JsonObject = dict[str, object]
@@ -58,6 +73,8 @@ class AuditLog(Base):
         nullable=True,
     )
     actor: Mapped[str] = mapped_column(String(255), nullable=False, default="system")
+    actor_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    actor_role: Mapped[str | None] = mapped_column(String(50), nullable=True)
     action: Mapped[AuditAction] = mapped_column(
         Enum(
             AuditAction,
@@ -70,6 +87,20 @@ class AuditLog(Base):
     entity_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     before: Mapped[JsonObject | None] = mapped_column(JSON, nullable=True)
     after: Mapped[JsonObject | None] = mapped_column(JSON, nullable=True)
+    outcome: Mapped[AuditOutcome] = mapped_column(
+        Enum(
+            AuditOutcome,
+            name="audit_outcome",
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        nullable=False,
+        default=AuditOutcome.SUCCESS,
+    )
+    reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    request_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    event_metadata: Mapped[JsonObject | None] = mapped_column("metadata", JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
@@ -78,3 +109,14 @@ Index("ix_audit_logs_entity_type_entity_id", AuditLog.entity_type, AuditLog.enti
 Index("ix_audit_logs_action", AuditLog.action)
 Index("ix_audit_logs_actor", AuditLog.actor)
 Index("ix_audit_logs_organization_id_created_at", AuditLog.organization_id, AuditLog.created_at)
+Index("ix_audit_logs_outcome_created_at", AuditLog.outcome, AuditLog.created_at)
+
+
+@event.listens_for(AuditLog, "before_update")
+@event.listens_for(AuditLog, "before_delete")
+def prevent_audit_log_mutation(
+    mapper: Mapper[AuditLog],
+    connection: object,
+    target: AuditLog,
+) -> None:
+    raise ValueError("Audit logs are append-only.")

@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.audit_context import set_actor_audit_context
 from app.core.security import hash_password
 from app.core.tenancy import get_current_organization_id, set_current_organization_id
 from app.models.audit_log import AuditAction, JsonObject
@@ -97,6 +98,7 @@ def register_user(db: Session, registration: UserRegister) -> User:
         )
         db.commit()
         set_current_organization_id(db, organization_id)
+    set_actor_audit_context(db, user_id=user.id, role=role)
     audit_log_service.create_audit_log(
         db,
         AuditLogCreate(

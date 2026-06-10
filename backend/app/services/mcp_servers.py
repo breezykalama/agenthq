@@ -7,7 +7,7 @@ from app.adapters.mcp_discovery import MCPDiscoveryAdapter
 from app.core.security import assert_resource_in_org, log_resource_access_denied
 from app.models.agent import AgentRiskLevel, AgentStatus
 from app.models.agent_tool import AgentToolPermission
-from app.models.audit_log import AuditAction, JsonObject
+from app.models.audit_log import AuditAction, AuditOutcome, JsonObject
 from app.models.mcp_server import MCPServer, MCPServerStatus
 from app.repositories import agent_tools as agent_tool_repository
 from app.repositories import agents as agent_repository
@@ -157,6 +157,8 @@ def sync_mcp_server(
                     entity_id=failed_server.id,
                     before=before,
                     after=serialize_mcp_server(failed_server),
+                    outcome=AuditOutcome.FAILED,
+                    reason=MCP_DISCOVERY_FAILURE_MESSAGE,
                 ),
             )
             db.commit()

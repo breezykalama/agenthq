@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.audit_context import set_actor_audit_context
 from app.core.security import create_access_token, hash_password
+from app.core.tenancy import set_current_organization_id
 from app.models.audit_log import AuditAction, JsonObject
 from app.models.organization import Organization, OrganizationMembership
 from app.models.user import User, UserRole
@@ -125,6 +127,8 @@ def bootstrap_organization(
                 role=UserRole.ADMIN,
             ),
         )
+        set_current_organization_id(db, organization.id)
+        set_actor_audit_context(db, user_id=user.id, role=membership.role)
         audit_log_service.create_critical_audit_log(
             db,
             AuditLogCreate(

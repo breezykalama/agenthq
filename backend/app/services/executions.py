@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.security import assert_resource_in_org, log_resource_access_denied
 from app.models.agent import AgentRiskLevel, utc_now
 from app.models.approval import ApprovalStatus
-from app.models.audit_log import AuditAction, JsonObject
+from app.models.audit_log import AuditAction, AuditOutcome, JsonObject
 from app.models.execution import Execution, ExecutionStatus
 from app.models.policy_rule import PolicyRuleEffect
 from app.repositories import agents as agent_repository
@@ -57,12 +57,12 @@ def create_execution(db: Session, execution_create: ExecutionCreate) -> Executio
         if agent_repository.get_agent_by_id(db, execution_create.agent_id) is None:
             raise ExecutionAgentNotFoundError
 
+        if execution_create.approval_id is not None:
+            validate_approval(db, execution_create.agent_id, execution_create.approval_id)
+
         policy_decision = evaluate_policy_decision(db, execution_create)
         values = execution_create.model_dump(exclude_none=True)
         status = execution_create.status or ExecutionStatus.PENDING
-
-        if execution_create.approval_id is not None:
-            validate_approval(db, execution_create.agent_id, execution_create.approval_id)
 
         if policy_decision.decision == PolicyRuleEffect.BLOCK:
             status = ExecutionStatus.BLOCKED
@@ -88,8 +88,15 @@ def create_execution(db: Session, execution_create: ExecutionCreate) -> Executio
                 entity_id=execution.id,
                 before=None,
                 after=serialize_execution(execution),
+                outcome=(
+                    AuditOutcome.FAILED
+                    if execution.status == ExecutionStatus.FAILED
+                    else AuditOutcome.SUCCESS
+                ),
+                metadata={"status": execution.status.value},
             ),
         )
+        audit_execution_state_event(db, execution, critical=True)
         db.commit()
         db.refresh(execution)
     except Exception:
@@ -204,9 +211,53 @@ def update_execution(
             entity_id=updated_execution.id,
             before=before,
             after=serialize_execution(updated_execution),
+            outcome=(
+                AuditOutcome.FAILED
+                if updated_execution.status == ExecutionStatus.FAILED
+                else AuditOutcome.SUCCESS
+            ),
+            metadata={"status": updated_execution.status.value},
         ),
     )
+    audit_execution_state_event(db, updated_execution)
     return updated_execution
+
+
+def audit_execution_state_event(
+    db: Session,
+    execution: Execution,
+    *,
+    critical: bool = False,
+) -> None:
+    action: AuditAction | None = None
+    if execution.status == ExecutionStatus.RUNNING:
+        action = AuditAction.EXECUTION_STARTED
+    elif execution.status == ExecutionStatus.FAILED:
+        action = AuditAction.EXECUTION_FAILED
+    elif execution.status in {ExecutionStatus.SUCCEEDED, ExecutionStatus.BLOCKED}:
+        action = AuditAction.EXECUTION_COMPLETED
+    if action is None:
+        return
+    create = (
+        audit_log_service.create_critical_audit_log
+        if critical
+        else audit_log_service.create_audit_log
+    )
+    create(
+        db,
+        AuditLogCreate(
+            action=action,
+            entity_type="execution",
+            entity_id=execution.id,
+            outcome=(
+                AuditOutcome.FAILED
+                if execution.status == ExecutionStatus.FAILED
+                else AuditOutcome.SUCCESS
+            ),
+            reason=f"Execution entered {execution.status.value} status.",
+            metadata={"status": execution.status.value},
+        ),
+    )
 
 
 def validate_approval(db: Session, agent_id: UUID, approval_id: UUID) -> None:
@@ -216,4 +267,13 @@ def validate_approval(db: Session, agent_id: UUID, approval_id: UUID) -> None:
         or approval.agent_id != agent_id
         or approval.status != ApprovalStatus.APPROVED
     ):
+        audit_log_service.record_event(
+            db,
+            action=AuditAction.SECURITY_ACCESS_DENIED,
+            resource_type="approval",
+            resource_id=approval_id,
+            outcome=AuditOutcome.DENIED,
+            reason="Approval was invalid for the requested execution.",
+            metadata={"attempted_action": "create_execution"},
+        )
         raise InvalidExecutionApprovalError

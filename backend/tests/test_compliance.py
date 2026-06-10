@@ -276,3 +276,19 @@ def test_incidents_report_date_filtering(client: TestClient) -> None:
     assert tomorrow_response.status_code == 200
     assert today_response.json()["total"] == 1
     assert tomorrow_response.json()["total"] == 0
+
+
+def test_compliance_report_access_is_audited(client: TestClient) -> None:
+    response = client.get(
+        "/api/v1/compliance/summary",
+        headers={"X-Request-ID": "compliance-audit-request"},
+    )
+    audits = client.get(
+        "/api/v1/audit-logs",
+        params={"action": "compliance.report_accessed"},
+    ).json()
+
+    assert response.status_code == 200
+    assert audits["total"] == 1
+    assert audits["items"][0]["resource_type"] == "compliance_summary"
+    assert audits["items"][0]["request_id"] == "compliance-audit-request"

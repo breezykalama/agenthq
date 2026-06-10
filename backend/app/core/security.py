@@ -13,9 +13,16 @@ from jwt import InvalidTokenError
 from pwdlib import PasswordHash
 from sqlalchemy.orm import Session
 
+from app.core.audit_context import (
+    AUDIT_ACTOR_USER_ID,
+    AUDIT_REQUEST_ID,
+    set_actor_audit_context,
+    set_request_audit_context,
+)
 from app.core.config import get_settings
 from app.core.tenancy import get_current_organization_id, set_current_organization_id
 from app.db.session import get_db
+from app.models.audit_log import AuditAction
 from app.models.organization import Organization, OrganizationMembership
 from app.models.user import User, UserRole
 from app.repositories import organizations as organization_repository
@@ -24,8 +31,6 @@ from app.repositories import users as user_repository
 password_hash = PasswordHash.recommended()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 security_logger = logging.getLogger("agenthq.security")
-AUTH_ACTOR_USER_ID_KEY = "authorization_actor_user_id"
-AUTH_REQUEST_ID_KEY = "authorization_request_id"
 
 
 class OrgPermission(StrEnum):
@@ -148,6 +153,7 @@ def require_org_role(*roles: UserRole) -> Callable[..., User]:
     def dependency(
         request: Request,
         context: Annotated[CurrentOrganizationContext, Depends(require_org_member)],
+        db: Annotated[Session, Depends(get_db)],
     ) -> User:
         if context.current_role not in allowed_roles:
             _log_access_denied(
@@ -156,6 +162,13 @@ def require_org_role(*roles: UserRole) -> Callable[..., User]:
                 attempted_action=(
                     f"require_org_role:{','.join(sorted(role.value for role in roles))}"
                 ),
+            )
+            record_denied_event(
+                db,
+                action=AuditAction.SECURITY_ACCESS_DENIED,
+                attempted_action="require_org_role",
+                target_resource=request.url.path,
+                reason="Insufficient organization role.",
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -170,9 +183,17 @@ def require_org_permission(permission: OrgPermission) -> Callable[..., User]:
     def dependency(
         request: Request,
         context: Annotated[CurrentOrganizationContext, Depends(require_org_member)],
+        db: Annotated[Session, Depends(get_db)],
     ) -> User:
         if permission not in ROLE_PERMISSIONS[context.current_role]:
             _log_access_denied(request, context, attempted_action=permission.value)
+            record_denied_event(
+                db,
+                action=AuditAction.SECURITY_ACCESS_DENIED,
+                attempted_action=permission.value,
+                target_resource=request.url.path,
+                reason="Insufficient organization permission.",
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions.",
@@ -213,10 +234,14 @@ def require_org_member(
     context: Annotated[CurrentOrganizationContext, Depends(get_current_organization_context)],
     db: Annotated[Session, Depends(get_db)],
 ) -> CurrentOrganizationContext:
+    set_request_audit_context(db, request)
+    set_actor_audit_context(
+        db,
+        user_id=context.current_user.id,
+        role=context.current_role,
+    )
     if context.current_organization is not None and context.current_membership is not None:
         set_current_organization_id(db, context.current_organization.id)
-        db.info[AUTH_ACTOR_USER_ID_KEY] = context.current_user.id
-        db.info[AUTH_REQUEST_ID_KEY] = request.headers.get("X-Request-ID", "none")
         return context
 
     if not get_settings().is_production:
@@ -244,8 +269,6 @@ def require_org_member(
                 )
                 db.commit()
                 set_current_organization_id(db, organization.id)
-                db.info[AUTH_ACTOR_USER_ID_KEY] = context.current_user.id
-                db.info[AUTH_REQUEST_ID_KEY] = request.headers.get("X-Request-ID", "none")
                 security_logger.warning(
                     "security_legacy_default_membership_created actor_user_id=%s "
                     "organization_id=%s",
@@ -260,6 +283,17 @@ def require_org_member(
                 )
 
     _log_access_denied(request, context, attempted_action="require_org_member")
+    memberships = organization_repository.list_memberships_for_user(db, context.current_user.id)
+    if len(memberships) == 1:
+        membership, organization = memberships[0]
+        set_current_organization_id(db, organization.id)
+        record_denied_event(
+            db,
+            action=AuditAction.SECURITY_INACTIVE_MEMBERSHIP_DENIED,
+            attempted_action="require_org_member",
+            target_resource=request.url.path,
+            reason="Active organization membership required.",
+        )
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Organization membership required.",
@@ -276,9 +310,17 @@ def require_current_organization(
 def require_current_organization_admin(
     request: Request,
     context: Annotated[CurrentOrganizationContext, Depends(require_org_member)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> CurrentOrganizationContext:
     if context.current_role != UserRole.ADMIN:
         _log_access_denied(request, context, attempted_action=OrgPermission.MANAGE_INVITES.value)
+        record_denied_event(
+            db,
+            action=AuditAction.SECURITY_ACCESS_DENIED,
+            attempted_action=OrgPermission.MANAGE_INVITES.value,
+            target_resource=request.url.path,
+            reason="Organization admin access required.",
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Organization admin access required.",
@@ -312,11 +354,54 @@ def log_resource_access_denied(
     security_logger.warning(
         "security_resource_access_denied actor_user_id=%s attempted_action=%s "
         "target_resource=%s organization_id=%s request_id=%s",
-        db.info.get(AUTH_ACTOR_USER_ID_KEY, "unknown"),
+        db.info.get(AUDIT_ACTOR_USER_ID, "unknown"),
         attempted_action,
         target_resource,
         organization_id,
-        db.info.get(AUTH_REQUEST_ID_KEY, "none"),
+        db.info.get(AUDIT_REQUEST_ID, "none"),
+    )
+    resource_type, separator, raw_resource_id = target_resource.partition(":")
+    resource_id: UUID | None = None
+    if separator:
+        try:
+            resource_id = UUID(raw_resource_id)
+        except ValueError:
+            resource_id = None
+    record_denied_event(
+        db,
+        action=AuditAction.SECURITY_CROSS_ORG_ACCESS_DENIED,
+        attempted_action=attempted_action,
+        target_resource=target_resource,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        reason="Resource was not available in the current organization.",
+    )
+
+
+def record_denied_event(
+    db: Session,
+    *,
+    action: AuditAction,
+    attempted_action: str,
+    target_resource: str,
+    reason: str,
+    resource_type: str = "api",
+    resource_id: UUID | None = None,
+) -> None:
+    from app.models.audit_log import AuditOutcome
+    from app.services import audit_logs as audit_log_service
+
+    audit_log_service.record_event(
+        db,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        outcome=AuditOutcome.DENIED,
+        reason=reason,
+        metadata={
+            "attempted_action": attempted_action,
+            "target_resource": target_resource,
+        },
     )
 
 
@@ -341,6 +426,15 @@ def ensure_agent_access(
             detail="Agent not found.",
         )
     if agent.owner.lower() != context.current_user.email.lower():
+        record_denied_event(
+            db,
+            action=AuditAction.SECURITY_ACCESS_DENIED,
+            attempted_action="access_agent",
+            target_resource=f"agent:{agent_id}",
+            resource_type="agent",
+            resource_id=agent_id,
+            reason="Agent is not assigned to the current user.",
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Agent access denied.",

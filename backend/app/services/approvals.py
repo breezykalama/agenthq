@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.security import assert_resource_in_org, log_resource_access_denied
 from app.models.agent import AgentRiskLevel, utc_now
 from app.models.approval import Approval, ApprovalStatus
-from app.models.audit_log import AuditAction, JsonObject
+from app.models.audit_log import AuditAction, AuditOutcome, JsonObject
 from app.repositories import agents as agent_repository
 from app.repositories import approvals as approval_repository
 from app.schemas.approval import ApprovalCreate, ApprovalDecision, ApprovalRead
@@ -125,6 +125,15 @@ def decide_approval(
     audit_action: AuditAction,
 ) -> Approval:
     if approval.status != ApprovalStatus.PENDING:
+        audit_log_service.record_event(
+            db,
+            action=AuditAction.SECURITY_ACCESS_DENIED,
+            resource_type="approval",
+            resource_id=approval.id,
+            outcome=AuditOutcome.DENIED,
+            reason="Only pending approvals can be changed.",
+            metadata={"attempted_action": audit_action.value},
+        )
         raise InvalidApprovalTransitionError
 
     before = serialize_approval(approval)

@@ -512,6 +512,20 @@ def test_cross_tenant_resource_ids_are_safely_hidden() -> None:
         ]
 
         assert all(response.status_code == 404 for response in responses)
+        security_events = tenants.client.get(
+            "/api/v1/audit-logs",
+            headers=tenants.headers_a,
+            params={"action": "security.cross_org_access_denied"},
+        ).json()
+        assert security_events["total"] >= 6
+        assert all(
+            event["organization_id"] == tenants.organization_a_id
+            for event in security_events["items"]
+        )
+        assert all(
+            tenants.organization_b_id not in str(event)
+            for event in security_events["items"]
+        )
 
 
 def test_inactive_membership_is_denied() -> None:

@@ -3,6 +3,13 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.audit_context import (
+    AUDIT_ACTOR_ROLE,
+    AUDIT_ACTOR_USER_ID,
+    AUDIT_IP_ADDRESS,
+    AUDIT_REQUEST_ID,
+    AUDIT_USER_AGENT,
+)
 from app.core.audit_redaction import redact_audit_snapshot
 from app.core.tenancy import get_current_organization_id, get_optional_organization_id
 from app.models.audit_log import AuditAction, AuditLog
@@ -10,10 +17,7 @@ from app.schemas.audit_log import AuditLogCreate
 
 
 def create_audit_log(db: Session, audit_log_create: AuditLogCreate) -> AuditLog:
-    values = audit_log_create.model_dump()
-    values["before"] = redact_audit_snapshot(audit_log_create.before)
-    values["after"] = redact_audit_snapshot(audit_log_create.after)
-    values["organization_id"] = values["organization_id"] or get_optional_organization_id(db)
+    values = audit_values(db, audit_log_create)
     audit_log = AuditLog(**values)
     db.add(audit_log)
     db.commit()
@@ -22,14 +26,26 @@ def create_audit_log(db: Session, audit_log_create: AuditLogCreate) -> AuditLog:
 
 
 def create_audit_log_pending(db: Session, audit_log_create: AuditLogCreate) -> AuditLog:
-    values = audit_log_create.model_dump()
-    values["before"] = redact_audit_snapshot(audit_log_create.before)
-    values["after"] = redact_audit_snapshot(audit_log_create.after)
-    values["organization_id"] = values["organization_id"] or get_optional_organization_id(db)
+    values = audit_values(db, audit_log_create)
     audit_log = AuditLog(**values)
     db.add(audit_log)
     db.flush()
     return audit_log
+
+
+def audit_values(db: Session, audit_log_create: AuditLogCreate) -> dict[str, object]:
+    values = audit_log_create.model_dump()
+    values["before"] = redact_audit_snapshot(audit_log_create.before)
+    values["after"] = redact_audit_snapshot(audit_log_create.after)
+    values["event_metadata"] = redact_audit_snapshot(audit_log_create.metadata)
+    values.pop("metadata")
+    values["organization_id"] = values["organization_id"] or get_optional_organization_id(db)
+    values["actor_user_id"] = values["actor_user_id"] or db.info.get(AUDIT_ACTOR_USER_ID)
+    values["actor_role"] = values["actor_role"] or db.info.get(AUDIT_ACTOR_ROLE)
+    values["request_id"] = values["request_id"] or db.info.get(AUDIT_REQUEST_ID)
+    values["ip_address"] = values["ip_address"] or db.info.get(AUDIT_IP_ADDRESS)
+    values["user_agent"] = values["user_agent"] or db.info.get(AUDIT_USER_AGENT)
+    return values
 
 
 def list_audit_logs(

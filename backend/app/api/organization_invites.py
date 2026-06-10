@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.pagination import PaginationParams
+from app.core.audit_context import set_request_audit_context
 from app.core.rate_limit import enforce_auth_rate_limit
 from app.core.security import CurrentOrganizationContext, require_current_organization_admin
 from app.db.session import get_db
@@ -96,7 +97,8 @@ def accept_invite(
     request: Request,
     db: DatabaseSession,
 ) -> BootstrapTokenResponse:
-    enforce_auth_rate_limit(request, "invite_accept")
+    set_request_audit_context(db, request)
+    enforce_auth_rate_limit(request, "invite_accept", db=db)
     try:
         return invite_service.accept_invite(db, accept)
     except invite_service.InviteFullNameRequiredError as exc:

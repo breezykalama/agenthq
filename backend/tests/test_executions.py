@@ -305,3 +305,18 @@ def test_audit_log_created_after_execution_update(client: TestClient) -> None:
     assert logs[0]["before"]["status"] == "running"
     assert logs[0]["after"]["status"] == "blocked"
     assert logs[0]["after"]["completed_at"] is not None
+
+
+def test_execution_state_changes_create_semantic_audit_events(client: TestClient) -> None:
+    agent = create_agent(client)
+    execution = create_execution(client, str(agent["id"]), status="running")
+
+    client.patch(f"/api/v1/executions/{execution['id']}", json={"status": "failed"})
+
+    started = audit_logs(client, "execution.started")
+    failed = audit_logs(client, "execution.failed")
+    assert len(started) == 1
+    assert started[0]["entity_id"] == execution["id"]
+    assert len(failed) == 1
+    assert failed[0]["entity_id"] == execution["id"]
+    assert failed[0]["outcome"] == "failed"

@@ -6,12 +6,14 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.audit_context import set_actor_audit_context
 from app.core.security import (
     CurrentOrganizationContext,
     create_access_token,
     hash_password,
     verify_password,
 )
+from app.core.tenancy import set_current_organization_id
 from app.models.audit_log import AuditAction, JsonObject
 from app.models.organization import OrganizationMembership
 from app.models.organization_invite import OrganizationInvite, OrganizationInviteStatus
@@ -200,6 +202,7 @@ def accept_invite(
     organization = organization_repository.get_organization_by_id(db, invite.organization_id)
     if organization is None:
         raise InvalidInviteTokenError
+    set_current_organization_id(db, organization.id)
 
     user = user_repository.get_user_by_email(db, invite.email)
     is_new_user = user is None
@@ -218,6 +221,7 @@ def accept_invite(
             password_hash=hash_password(accept.password),
             role=UserRole.AGENT_OWNER,
         )
+    set_actor_audit_context(db, user_id=user.id, role=invite.role)
 
     before = serialize_invite(invite)
     try:

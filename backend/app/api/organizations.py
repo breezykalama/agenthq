@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app.core.audit_context import set_request_audit_context
 from app.core.config import get_settings
 from app.core.rate_limit import enforce_auth_rate_limit, get_client_ip
 from app.db.session import get_db
@@ -29,13 +30,14 @@ def bootstrap_organization(
     db: DatabaseSession,
     bootstrap_secret: Annotated[str | None, Header(alias="X-Bootstrap-Secret")] = None,
 ) -> BootstrapTokenResponse:
+    set_request_audit_context(db, request)
     if organization_repository.count_active_organizations(db) > 0:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="An active organization already exists.",
         )
 
-    enforce_auth_rate_limit(request, "bootstrap")
+    enforce_auth_rate_limit(request, "bootstrap", db=db)
     settings = get_settings()
     if settings.is_production and (
         settings.bootstrap_secret is None

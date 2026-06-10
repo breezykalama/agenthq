@@ -5,6 +5,7 @@ from threading import Lock
 from time import monotonic
 
 from fastapi import HTTPException, Request, status
+from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 
@@ -49,6 +50,7 @@ def enforce_auth_rate_limit(
     scope: str,
     *,
     identifier: str | None = None,
+    db: Session | None = None,
 ) -> None:
     settings = get_settings()
     client_ip = get_client_ip(request)
@@ -70,6 +72,18 @@ def enforce_auth_rate_limit(
         scope,
         client_ip,
     )
+    if db is not None:
+        from app.models.audit_log import AuditAction, AuditOutcome
+        from app.services import audit_logs as audit_log_service
+
+        audit_log_service.record_event(
+            db,
+            action=AuditAction.SECURITY_RATE_LIMITED,
+            resource_type="authentication",
+            outcome=AuditOutcome.DENIED,
+            reason="Authentication rate limit exceeded.",
+            metadata={"scope": scope},
+        )
     raise HTTPException(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         detail="Too many requests. Please try again later.",

@@ -9,12 +9,14 @@ from app.api.pagination import PaginationParams
 from app.core.security import OrgPermission, require_current_organization, require_org_permission
 from app.db.session import get_db
 from app.models.agent import AgentRiskLevel
+from app.models.audit_log import AuditAction
 from app.models.incident import IncidentStatus
 from app.schemas.compliance import (
     AgentComplianceReport,
     ComplianceIncidentListResponse,
     ComplianceSummary,
 )
+from app.services import audit_logs as audit_log_service
 from app.services import compliance as compliance_service
 
 router = APIRouter(
@@ -36,12 +38,23 @@ def get_compliance_summary(
     agent_id: Annotated[UUID | None, Query()] = None,
 ) -> ComplianceSummary:
     try:
-        return compliance_service.get_summary(
+        result = compliance_service.get_summary(
             db,
             start_date=start_date,
             end_date=end_date,
             agent_id=agent_id,
         )
+        audit_log_service.record_event(
+            db,
+            action=AuditAction.COMPLIANCE_REPORT_ACCESSED,
+            resource_type="compliance_summary",
+            metadata={
+                "start_date": start_date.isoformat() if start_date else None,
+                "end_date": end_date.isoformat() if end_date else None,
+                "agent_id": str(agent_id) if agent_id else None,
+            },
+        )
+        return result
     except compliance_service.InvalidComplianceDateRangeError as exc:
         raise invalid_date_range_error() from exc
 
@@ -49,7 +62,14 @@ def get_compliance_summary(
 @router.get("/agent/{agent_id}", response_model=AgentComplianceReport)
 def get_agent_compliance(agent_id: UUID, db: DatabaseSession) -> AgentComplianceReport:
     try:
-        return compliance_service.get_agent_report(db, agent_id)
+        result = compliance_service.get_agent_report(db, agent_id)
+        audit_log_service.record_event(
+            db,
+            action=AuditAction.COMPLIANCE_REPORT_ACCESSED,
+            resource_type="agent_compliance_report",
+            resource_id=agent_id,
+        )
+        return result
     except compliance_service.ComplianceAgentNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -68,7 +88,7 @@ def list_compliance_incidents(
     agent_id: Annotated[UUID | None, Query()] = None,
 ) -> ComplianceIncidentListResponse:
     try:
-        return compliance_service.list_incidents(
+        result = compliance_service.list_incidents(
             db,
             start_date=start_date,
             end_date=end_date,
@@ -78,6 +98,19 @@ def list_compliance_incidents(
             limit=pagination.limit,
             offset=pagination.offset,
         )
+        audit_log_service.record_event(
+            db,
+            action=AuditAction.COMPLIANCE_REPORT_ACCESSED,
+            resource_type="compliance_incidents",
+            metadata={
+                "start_date": start_date.isoformat() if start_date else None,
+                "end_date": end_date.isoformat() if end_date else None,
+                "severity": severity.value if severity else None,
+                "status": status.value if status else None,
+                "agent_id": str(agent_id) if agent_id else None,
+            },
+        )
+        return result
     except compliance_service.InvalidComplianceDateRangeError as exc:
         raise invalid_date_range_error() from exc
 
