@@ -18,6 +18,7 @@ def configure_production(
 ) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("JWT_SECRET_KEY", STRONG_JWT_SECRET)
+    monkeypatch.setenv("RATE_LIMITS_ENABLED", "false")
     if bootstrap_secret is None:
         monkeypatch.delenv("BOOTSTRAP_SECRET", raising=False)
     else:

@@ -2,10 +2,11 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.pagination import PaginationParams
+from app.core.rate_limit import enforce_authenticated_rate_limit
 from app.core.security import OrgPermission, require_current_organization, require_org_permission
 from app.db.session import get_db
 from app.models.agent import AgentRiskLevel
@@ -32,11 +33,18 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 
 @router.get("/summary", response_model=ComplianceSummary)
 def get_compliance_summary(
+    request: Request,
     db: DatabaseSession,
     start_date: Annotated[date | None, Query()] = None,
     end_date: Annotated[date | None, Query()] = None,
     agent_id: Annotated[UUID | None, Query()] = None,
 ) -> ComplianceSummary:
+    enforce_authenticated_rate_limit(
+        request,
+        db,
+        "compliance_access",
+        resource_type="compliance_summary",
+    )
     try:
         result = compliance_service.get_summary(
             db,
@@ -60,7 +68,18 @@ def get_compliance_summary(
 
 
 @router.get("/agent/{agent_id}", response_model=AgentComplianceReport)
-def get_agent_compliance(agent_id: UUID, db: DatabaseSession) -> AgentComplianceReport:
+def get_agent_compliance(
+    agent_id: UUID,
+    request: Request,
+    db: DatabaseSession,
+) -> AgentComplianceReport:
+    enforce_authenticated_rate_limit(
+        request,
+        db,
+        "compliance_access",
+        resource_type="agent_compliance_report",
+        resource_id=agent_id,
+    )
     try:
         result = compliance_service.get_agent_report(db, agent_id)
         audit_log_service.record_event(
@@ -79,6 +98,7 @@ def get_agent_compliance(agent_id: UUID, db: DatabaseSession) -> AgentCompliance
 
 @router.get("/incidents", response_model=ComplianceIncidentListResponse)
 def list_compliance_incidents(
+    request: Request,
     db: DatabaseSession,
     pagination: PaginationParams,
     start_date: Annotated[date | None, Query()] = None,
@@ -87,6 +107,12 @@ def list_compliance_incidents(
     status: Annotated[IncidentStatus | None, Query()] = None,
     agent_id: Annotated[UUID | None, Query()] = None,
 ) -> ComplianceIncidentListResponse:
+    enforce_authenticated_rate_limit(
+        request,
+        db,
+        "compliance_access",
+        resource_type="compliance_incidents",
+    )
     try:
         result = compliance_service.list_incidents(
             db,

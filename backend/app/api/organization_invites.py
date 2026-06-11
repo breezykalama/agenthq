@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.pagination import PaginationParams
 from app.core.audit_context import set_request_audit_context
-from app.core.rate_limit import enforce_auth_rate_limit
+from app.core.rate_limit import enforce_auth_rate_limit, enforce_authenticated_rate_limit
 from app.core.security import CurrentOrganizationContext, require_current_organization_admin
 from app.db.session import get_db
 from app.models.organization_invite import OrganizationInviteStatus
@@ -35,9 +35,16 @@ OrganizationAdmin = Annotated[
 )
 def create_invite(
     invite_create: OrganizationInviteCreate,
+    request: Request,
     db: DatabaseSession,
     context: OrganizationAdmin,
 ) -> OrganizationInviteCreateResponse:
+    enforce_authenticated_rate_limit(
+        request,
+        db,
+        "invite_create",
+        resource_type="organization_invite",
+    )
     try:
         return invite_service.create_invite(db, context, invite_create)
     except invite_service.DuplicatePendingInviteError as exc:
@@ -72,9 +79,17 @@ def list_invites(
 @router.post("/{invite_id}/revoke", response_model=OrganizationInviteRead)
 def revoke_invite(
     invite_id: UUID,
+    request: Request,
     db: DatabaseSession,
     context: OrganizationAdmin,
 ) -> OrganizationInviteRead:
+    enforce_authenticated_rate_limit(
+        request,
+        db,
+        "invite_revoke",
+        resource_type="organization_invite",
+        resource_id=invite_id,
+    )
     try:
         return OrganizationInviteRead.model_validate(
             invite_service.revoke_invite(db, context, invite_id)
@@ -98,7 +113,7 @@ def accept_invite(
     db: DatabaseSession,
 ) -> BootstrapTokenResponse:
     set_request_audit_context(db, request)
-    enforce_auth_rate_limit(request, "invite_accept", db=db)
+    enforce_auth_rate_limit(request, "invite_accept", identifier=accept.token, db=db)
     try:
         return invite_service.accept_invite(db, accept)
     except invite_service.InviteFullNameRequiredError as exc:

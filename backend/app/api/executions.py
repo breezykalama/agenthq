@@ -1,10 +1,11 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.pagination import PaginationParams
+from app.core.rate_limit import enforce_authenticated_rate_limit
 from app.core.security import OrgPermission, require_current_organization, require_org_permission
 from app.db.session import get_db
 from app.models.agent import AgentRiskLevel
@@ -29,7 +30,17 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 
 
 @router.post("", response_model=ExecutionRead, status_code=status.HTTP_201_CREATED)
-def create_execution(execution_create: ExecutionCreate, db: DatabaseSession) -> ExecutionRead:
+def create_execution(
+    execution_create: ExecutionCreate,
+    request: Request,
+    db: DatabaseSession,
+) -> ExecutionRead:
+    enforce_authenticated_rate_limit(
+        request,
+        db,
+        "execution_create",
+        resource_type="execution",
+    )
     try:
         return ExecutionRead.model_validate(
             execution_service.create_execution(db, execution_create)
@@ -95,8 +106,16 @@ def get_execution(execution_id: UUID, db: DatabaseSession) -> ExecutionRead:
 def update_execution(
     execution_id: UUID,
     execution_update: ExecutionUpdate,
+    request: Request,
     db: DatabaseSession,
 ) -> ExecutionRead:
+    enforce_authenticated_rate_limit(
+        request,
+        db,
+        "execution_update",
+        resource_type="execution",
+        resource_id=execution_id,
+    )
     try:
         return ExecutionRead.model_validate(
             execution_service.update_execution(db, execution_id, execution_update)

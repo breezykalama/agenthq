@@ -10,6 +10,8 @@ Backend:
 | --- | --- | --- |
 | `DATABASE_URL` | `postgresql://postgres.project-ref:password@aws-0-region.pooler.supabase.com:5432/postgres?sslmode=require` | Supabase PostgreSQL connection string. AgentHQ automatically selects the psycopg 3 SQLAlchemy driver. |
 | `BACKEND_CORS_ORIGINS` | `https://agenthq.example.com,https://agenthq-git-main-team.vercel.app` | Comma-separated exact frontend origins. Do not use `*` in production. |
+| `JWT_SECRET_KEY` | Strong random value of at least 32 characters | Signs access tokens. Never reuse another service secret. |
+| `REDIS_URL` | `rediss://...` | Shared Redis service used for production rate limiting. Protected endpoints fail closed when Redis is unavailable. |
 
 Frontend:
 
@@ -36,6 +38,8 @@ The repository includes [render.yaml](render.yaml) and a Dockerfile at `backend/
 3. Set the secret environment variables:
    * `DATABASE_URL`: Supabase connection string
    * `BACKEND_CORS_ORIGINS`: exact Vercel production URL and any approved preview/custom domains
+   * `JWT_SECRET_KEY`: strong random signing secret
+   * `REDIS_URL`: authenticated TLS Redis connection string
 4. Deploy the `agenthq-api` web service.
 5. Confirm `https://<service>.onrender.com/health` returns a successful response.
 
@@ -78,7 +82,9 @@ Do not automatically seed a production database.
 ## Production Safety
 
 * Keep `DATABASE_URL` only in Render's secret environment variables.
+* Keep `JWT_SECRET_KEY`, `BOOTSTRAP_SECRET`, and `REDIS_URL` only in secret environment variables.
 * Configure exact HTTPS CORS origins; do not use wildcard origins.
+* Keep rate limiting enabled in production. See [RATE_LIMITING.md](RATE_LIMITING.md).
 * Apply migrations before serving a new application version.
 * Do not seed production automatically.
 * The FastAPI `/docs` and `/redoc` routes remain enabled for this MVP. Restrict them at the edge if the API should not expose interactive documentation publicly.

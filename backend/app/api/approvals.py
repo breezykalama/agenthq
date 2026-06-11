@@ -1,10 +1,11 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.pagination import PaginationParams
+from app.core.rate_limit import enforce_authenticated_rate_limit
 from app.core.security import OrgPermission, require_current_organization, require_org_permission
 from app.db.session import get_db
 from app.models.agent import AgentRiskLevel
@@ -29,7 +30,17 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 
 
 @router.post("", response_model=ApprovalRead, status_code=status.HTTP_201_CREATED)
-def create_approval(approval_create: ApprovalCreate, db: DatabaseSession) -> ApprovalRead:
+def create_approval(
+    approval_create: ApprovalCreate,
+    request: Request,
+    db: DatabaseSession,
+) -> ApprovalRead:
+    enforce_authenticated_rate_limit(
+        request,
+        db,
+        "approval_action",
+        resource_type="approval",
+    )
     try:
         return ApprovalRead.model_validate(approval_service.create_approval(db, approval_create))
     except approval_service.ApprovalAgentNotFoundError as exc:
@@ -79,9 +90,17 @@ def get_approval(approval_id: UUID, db: DatabaseSession) -> ApprovalRead:
 @router.post("/{approval_id}/approve", response_model=ApprovalRead)
 def approve_approval(
     approval_id: UUID,
+    request: Request,
     db: DatabaseSession,
     decision: Annotated[ApprovalDecision | None, Body()] = None,
 ) -> ApprovalRead:
+    enforce_authenticated_rate_limit(
+        request,
+        db,
+        "approval_action",
+        resource_type="approval",
+        resource_id=approval_id,
+    )
     try:
         return ApprovalRead.model_validate(
             approval_service.approve_approval(db, approval_id, decision or ApprovalDecision())
@@ -101,9 +120,17 @@ def approve_approval(
 @router.post("/{approval_id}/reject", response_model=ApprovalRead)
 def reject_approval(
     approval_id: UUID,
+    request: Request,
     db: DatabaseSession,
     decision: Annotated[ApprovalDecision | None, Body()] = None,
 ) -> ApprovalRead:
+    enforce_authenticated_rate_limit(
+        request,
+        db,
+        "approval_action",
+        resource_type="approval",
+        resource_id=approval_id,
+    )
     try:
         return ApprovalRead.model_validate(
             approval_service.reject_approval(db, approval_id, decision or ApprovalDecision())
@@ -123,9 +150,17 @@ def reject_approval(
 @router.post("/{approval_id}/cancel", response_model=ApprovalRead)
 def cancel_approval(
     approval_id: UUID,
+    request: Request,
     db: DatabaseSession,
     decision: Annotated[ApprovalDecision | None, Body()] = None,
 ) -> ApprovalRead:
+    enforce_authenticated_rate_limit(
+        request,
+        db,
+        "approval_action",
+        resource_type="approval",
+        resource_id=approval_id,
+    )
     try:
         return ApprovalRead.model_validate(
             approval_service.cancel_approval(db, approval_id, decision or ApprovalDecision())

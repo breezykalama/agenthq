@@ -1,15 +1,42 @@
 import hashlib
 import logging
 from collections import defaultdict, deque
+from dataclasses import dataclass
+from functools import lru_cache
+from math import ceil
 from threading import Lock
 from time import monotonic
+from typing import Protocol, cast
+from uuid import UUID
 
 from fastapi import HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.tenancy import get_optional_organization_id
 
 security_logger = logging.getLogger("agenthq.security")
+
+SENSITIVE_LIMIT_SETTINGS = {
+    "invite_create": "invite_create_rate_limit_attempts",
+    "invite_revoke": "invite_create_rate_limit_attempts",
+    "approval_action": "approval_rate_limit_attempts",
+    "execution_create": "execution_rate_limit_attempts",
+    "execution_update": "execution_rate_limit_attempts",
+    "mcp_sync": "mcp_sync_rate_limit_attempts",
+    "policy_decision": "policy_decision_rate_limit_attempts",
+    "compliance_access": "compliance_rate_limit_attempts",
+}
+
+
+@dataclass(frozen=True)
+class RateLimitDecision:
+    allowed: bool
+    retry_after: int
+
+
+class RateLimitBackend(Protocol):
+    def check(self, key: str, *, limit: int, window_seconds: int) -> RateLimitDecision: ...
 
 
 class InMemoryRateLimiter:
@@ -17,7 +44,7 @@ class InMemoryRateLimiter:
         self._requests: dict[str, deque[float]] = defaultdict(deque)
         self._lock = Lock()
 
-    def allow(self, key: str, *, limit: int, window_seconds: int) -> bool:
+    def check(self, key: str, *, limit: int, window_seconds: int) -> RateLimitDecision:
         now = monotonic()
         cutoff = now - window_seconds
         with self._lock:
@@ -25,16 +52,73 @@ class InMemoryRateLimiter:
             while requests and requests[0] <= cutoff:
                 requests.popleft()
             if len(requests) >= limit:
-                return False
+                retry_after = max(1, ceil(requests[0] + window_seconds - now))
+                return RateLimitDecision(allowed=False, retry_after=retry_after)
             requests.append(now)
-            return True
+            return RateLimitDecision(allowed=True, retry_after=0)
+
+    def allow(self, key: str, *, limit: int, window_seconds: int) -> bool:
+        return self.check(key, limit=limit, window_seconds=window_seconds).allowed
 
     def clear(self) -> None:
         with self._lock:
             self._requests.clear()
 
 
+class RedisRateLimiter:
+    _CHECK_SCRIPT = """
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+local ttl = redis.call('TTL', KEYS[1])
+return {count, ttl}
+"""
+
+    def __init__(self, redis_url: str) -> None:
+        from redis import Redis
+
+        self._client = Redis.from_url(redis_url, decode_responses=True)
+
+    def check(self, key: str, *, limit: int, window_seconds: int) -> RateLimitDecision:
+        result = cast(
+            list[int],
+            self._client.eval(
+                self._CHECK_SCRIPT,
+                1,
+                f"agenthq:rate-limit:{key}",
+                window_seconds,
+            ),
+        )
+        count, ttl = result
+        return RateLimitDecision(
+            allowed=count <= limit,
+            retry_after=max(1, ttl) if count > limit else 0,
+        )
+
+
+class RateLimitBackendUnavailableError(Exception):
+    pass
+
+
 rate_limiter = InMemoryRateLimiter()
+
+
+@lru_cache
+def get_rate_limit_backend() -> RateLimitBackend:
+    settings = get_settings()
+    if settings.redis_url:
+        return RedisRateLimiter(settings.redis_url)
+    if settings.is_production:
+        raise RateLimitBackendUnavailableError(
+            "Production rate limiting requires REDIS_URL."
+        )
+    return rate_limiter
+
+
+def reset_rate_limit_backend() -> None:
+    get_rate_limit_backend.cache_clear()
+    rate_limiter.clear()
 
 
 def get_client_ip(request: Request) -> str:
@@ -53,20 +137,86 @@ def enforce_auth_rate_limit(
     db: Session | None = None,
 ) -> None:
     settings = get_settings()
+    if not settings.rate_limits_enabled:
+        return
     client_ip = get_client_ip(request)
-    keys = [f"{scope}:{client_ip}"]
+    keys = [f"auth:{scope}:ip:{client_ip}"]
     if identifier is not None:
-        keys.append(f"{scope}:{client_ip}:{safe_identifier(identifier)}")
-    for key in keys:
-        if not rate_limiter.allow(
-            key,
-            limit=settings.auth_rate_limit_attempts,
-            window_seconds=settings.auth_rate_limit_window_seconds,
-        ):
-            break
-    else:
+        keys.append(f"auth:{scope}:identifier:{safe_identifier(identifier)}")
+    _enforce_rate_limit(
+        request,
+        db=db,
+        scope=scope,
+        resource_type="authentication",
+        keys=keys,
+        limit=settings.auth_rate_limit_attempts,
+        window_seconds=settings.auth_rate_limit_window_seconds,
+    )
+
+
+def enforce_authenticated_rate_limit(
+    request: Request,
+    db: Session,
+    scope: str,
+    *,
+    resource_type: str,
+    resource_id: UUID | None = None,
+    key_by_resource: bool = False,
+    organization_shared: bool = False,
+) -> None:
+    settings = get_settings()
+    if not settings.rate_limits_enabled:
+        return
+    actor_user_id = db.info.get("audit_actor_user_id")
+    organization_id = get_optional_organization_id(db)
+    actor_key = str(actor_user_id) if actor_user_id is not None else "unknown"
+    organization_key = str(organization_id) if organization_id is not None else "none"
+    key = f"authenticated:{scope}:organization:{organization_key}"
+    if not organization_shared:
+        key = f"{key}:actor:{actor_key}"
+    if key_by_resource and resource_id is not None:
+        key = f"{key}:resource:{resource_id}"
+    _enforce_rate_limit(
+        request,
+        db=db,
+        scope=scope,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        keys=[key],
+        limit=getattr(settings, SENSITIVE_LIMIT_SETTINGS[scope]),
+        window_seconds=settings.sensitive_rate_limit_window_seconds,
+    )
+
+
+def _enforce_rate_limit(
+    request: Request,
+    *,
+    db: Session | None,
+    scope: str,
+    resource_type: str,
+    keys: list[str],
+    limit: int,
+    window_seconds: int,
+    resource_id: UUID | None = None,
+) -> None:
+    try:
+        backend = get_rate_limit_backend()
+        denied: RateLimitDecision | None = None
+        for key in keys:
+            decision = backend.check(key, limit=limit, window_seconds=window_seconds)
+            if not decision.allowed:
+                denied = decision
+                break
+    except Exception as exc:
+        security_logger.exception("security_rate_limit_backend_unavailable scope=%s", scope)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Abuse protection is temporarily unavailable.",
+        ) from exc
+    if denied is None:
         return
 
+    client_ip = get_client_ip(request)
     security_logger.warning(
         "security_rate_limit_exceeded scope=%s client_ip=%s",
         scope,
@@ -79,12 +229,17 @@ def enforce_auth_rate_limit(
         audit_log_service.record_event(
             db,
             action=AuditAction.SECURITY_RATE_LIMITED,
-            resource_type="authentication",
+            resource_type=resource_type,
+            resource_id=resource_id,
             outcome=AuditOutcome.DENIED,
-            reason="Authentication rate limit exceeded.",
-            metadata={"scope": scope},
+            reason="rate_limit_exceeded",
+            metadata={
+                "endpoint": request.url.path,
+                "scope": scope,
+            },
         )
     raise HTTPException(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         detail="Too many requests. Please try again later.",
+        headers={"Retry-After": str(denied.retry_after)},
     )

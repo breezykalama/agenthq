@@ -1,8 +1,9 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import enforce_authenticated_rate_limit
 from app.core.security import OrgPermission, require_current_organization, require_org_permission
 from app.db.session import get_db
 from app.schemas.policy_decision import PolicyDecisionRequest, PolicyDecisionResponse
@@ -22,8 +23,15 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 @router.post("/evaluate", response_model=PolicyDecisionResponse)
 def evaluate_policy_decision(
     decision_request: PolicyDecisionRequest,
+    request: Request,
     db: DatabaseSession,
 ) -> PolicyDecisionResponse:
+    enforce_authenticated_rate_limit(
+        request,
+        db,
+        "policy_decision",
+        resource_type="policy_decision",
+    )
     try:
         return policy_decision_service.evaluate_policy_decision(db, decision_request)
     except policy_decision_service.PolicyDecisionAgentNotFoundError as exc:

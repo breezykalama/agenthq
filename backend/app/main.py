@@ -25,7 +25,7 @@ from app.api.policy_decisions import router as policy_decisions_router
 from app.api.policy_rules import router as policy_rules_router
 from app.api.users import router as users_router
 from app.core.config import get_cors_origins, get_settings
-from app.core.rate_limit import rate_limiter
+from app.core.rate_limit import reset_rate_limit_backend
 from app.services.audit_logs import AuditLoggingError
 
 
@@ -33,7 +33,7 @@ from app.services.audit_logs import AuditLoggingError
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     app.state.settings = settings
-    rate_limiter.clear()
+    reset_rate_limit_backend()
     yield
 
 

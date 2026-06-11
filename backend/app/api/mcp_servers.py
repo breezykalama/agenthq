@@ -1,11 +1,12 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.adapters.mcp_discovery import MCPDiscoveryAdapter, get_mcp_discovery_adapter
 from app.api.pagination import PaginationParams
+from app.core.rate_limit import enforce_authenticated_rate_limit
 from app.core.security import OrgPermission, require_current_organization, require_org_permission
 from app.db.session import get_db
 from app.schemas.mcp_server import (
@@ -117,9 +118,19 @@ def delete_mcp_server(mcp_server_id: UUID, db: DatabaseSession) -> None:
 @router.post("/{mcp_server_id}/sync", response_model=MCPServerSyncResponse)
 def sync_mcp_server(
     mcp_server_id: UUID,
+    request: Request,
     db: DatabaseSession,
     adapter: DiscoveryAdapter,
 ) -> MCPServerSyncResponse:
+    enforce_authenticated_rate_limit(
+        request,
+        db,
+        "mcp_sync",
+        resource_type="mcp_server",
+        resource_id=mcp_server_id,
+        key_by_resource=True,
+        organization_shared=True,
+    )
     try:
         return mcp_server_service.sync_mcp_server(db, mcp_server_id, adapter)
     except mcp_server_service.MCPServerNotFoundError as exc:

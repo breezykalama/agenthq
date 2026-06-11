@@ -52,11 +52,48 @@ class Settings(BaseSettings):
         alias="ALLOW_PUBLIC_REGISTRATION",
     )
     allow_private_mcp_urls: bool | None = Field(default=None, alias="ALLOW_PRIVATE_MCP_URLS")
+    rate_limits_enabled: bool = Field(default=True, alias="RATE_LIMITS_ENABLED")
+    redis_url: str | None = Field(default=None, alias="REDIS_URL")
     auth_rate_limit_attempts: int = Field(default=10, ge=1, alias="AUTH_RATE_LIMIT_ATTEMPTS")
     auth_rate_limit_window_seconds: int = Field(
         default=60,
         ge=1,
         alias="AUTH_RATE_LIMIT_WINDOW_SECONDS",
+    )
+    sensitive_rate_limit_window_seconds: int = Field(
+        default=60,
+        ge=1,
+        alias="SENSITIVE_RATE_LIMIT_WINDOW_SECONDS",
+    )
+    invite_create_rate_limit_attempts: int = Field(
+        default=10,
+        ge=1,
+        alias="INVITE_CREATE_RATE_LIMIT_ATTEMPTS",
+    )
+    approval_rate_limit_attempts: int = Field(
+        default=30,
+        ge=1,
+        alias="APPROVAL_RATE_LIMIT_ATTEMPTS",
+    )
+    execution_rate_limit_attempts: int = Field(
+        default=60,
+        ge=1,
+        alias="EXECUTION_RATE_LIMIT_ATTEMPTS",
+    )
+    mcp_sync_rate_limit_attempts: int = Field(
+        default=5,
+        ge=1,
+        alias="MCP_SYNC_RATE_LIMIT_ATTEMPTS",
+    )
+    policy_decision_rate_limit_attempts: int = Field(
+        default=60,
+        ge=1,
+        alias="POLICY_DECISION_RATE_LIMIT_ATTEMPTS",
+    )
+    compliance_rate_limit_attempts: int = Field(
+        default=30,
+        ge=1,
+        alias="COMPLIANCE_RATE_LIMIT_ATTEMPTS",
     )
 
     model_config = SettingsConfigDict(

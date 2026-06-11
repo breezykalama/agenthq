@@ -19,6 +19,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
         "DATABASE_URL",
         "postgresql+psycopg://agenthq:agenthq@localhost:5432/agenthq",
     )
+    monkeypatch.setenv("REDIS_URL", "")
     get_settings.cache_clear()
 
     engine = create_engine(
