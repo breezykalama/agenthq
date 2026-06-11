@@ -14,7 +14,7 @@ Backend API:
 
 ## Current Version
 
-AgentHQ v0.4.0
+AgentHQ v0.4.1
 
 ## Project Status
 
@@ -33,6 +33,8 @@ AgentHQ is a live, multi-tenant Enterprise AI Agent Governance Platform focused 
 * MCP Server Registration
 * MCP Tool Discovery
 * Authentication & RBAC
+* Security Event Trails
+* Centralized Abuse Protection
 
 ## The Problem
 
@@ -197,6 +199,25 @@ Highlights:
 
 See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the complete v0.4.0 release summary.
 
+## AgentHQ v0.4.1
+
+AgentHQ v0.4.1 focuses on security hardening for multi-tenant, production-facing deployments.
+
+Highlights:
+
+* Centralized organization authorization and tenant-isolation checks
+* Membership-level administration and last-admin lockout prevention
+* Append-only, organization-scoped audit logs and denied-access security events
+* Recursive audit redaction and safe MCP error handling
+* Production JWT, bootstrap, registration, and MCP URL safeguards
+* Redis-backed production rate limiting with local in-memory fallback
+* `429 Too Many Requests` responses with `Retry-After`
+* Rate-limit security audit events for protected operations
+
+See [SECURITY_AUDIT.md](SECURITY_AUDIT.md), [AUTHORIZATION.md](AUTHORIZATION.md),
+[AUDIT_LOGGING.md](AUDIT_LOGGING.md), and [RATE_LIMITING.md](RATE_LIMITING.md) for the security
+model and operational guidance.
+
 ## Architecture Overview
 
 ```text
@@ -256,6 +277,10 @@ The architecture includes organization and membership context, tenant-isolation 
 * Failure Handling
 * Pagination
 * Performance Optimization
+* Tenant Isolation
+* Audit Redaction
+* Security Event Trails
+* Redis-Backed Rate Limiting
 
 ## Tech Stack
 
@@ -279,10 +304,11 @@ The architecture includes organization and membership context, tenant-isolation 
 * Supabase PostgreSQL
 * Render
 * Vercel
+* Render Key Value / Redis
 
 ## Quality
 
-* 220 automated tests passing
+* 282 automated tests passing
 * Ruff clean
 * MyPy clean
 * PostgreSQL migrations verified
@@ -293,6 +319,9 @@ The architecture includes organization and membership context, tenant-isolation 
 * Query-count regression tests
 * Atomic transaction safety
 * Tenant isolation tests
+* Append-only audit logging
+* Centralized secret redaction
+* Redis-backed production abuse protection
 
 ## Organization Onboarding
 
@@ -380,13 +409,30 @@ AgentHQ is prepared for a Supabase PostgreSQL, Render backend, and Vercel fronte
 Production configuration is environment-driven:
 
 ```text
-Backend:  DATABASE_URL, BACKEND_CORS_ORIGINS
+Backend:  DATABASE_URL, BACKEND_CORS_ORIGINS, JWT_SECRET_KEY, BOOTSTRAP_SECRET, REDIS_URL,
+          ALLOW_PUBLIC_REGISTRATION, RATE_LIMITS_ENABLED
 Frontend: VITE_API_BASE_URL
 ```
 
-Use exact HTTPS origins in `BACKEND_CORS_ORIGINS`, keep `DATABASE_URL` in backend secret storage, apply migrations before serving a new version, and never seed production automatically. FastAPI interactive docs remain enabled for the current release and can be restricted at the edge when needed.
+Use exact HTTPS origins in `BACKEND_CORS_ORIGINS`, keep backend credentials in secret storage,
+configure Render's internal Redis URL as `REDIS_URL`, apply migrations before serving a new
+version, and never seed production automatically. Protected operations fail closed when production
+rate limiting is unavailable. FastAPI interactive docs remain enabled for the current release and
+can be restricted at the edge when needed.
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for the complete deployment guide.
+See [DEPLOYMENT.md](DEPLOYMENT.md) and [RATE_LIMITING.md](RATE_LIMITING.md) for the complete
+deployment and abuse-protection guidance.
+
+## Documentation
+
+* [Deployment Guide](DEPLOYMENT.md)
+* [Demo Flow](DEMO.md)
+* [Release Notes](RELEASE_NOTES.md)
+* [Organization Authorization](AUTHORIZATION.md)
+* [Audit Logging](AUDIT_LOGGING.md)
+* [Rate Limiting](RATE_LIMITING.md)
+* [Supabase RLS Audit](RLS_AUDIT.md)
+* [Security Audit](SECURITY_AUDIT.md)
 
 ## Frontend
 
@@ -529,6 +575,12 @@ Screenshots can be added here once the visual demo flow stabilizes:
 * Atomic Transactions
 * Rollback Testing
 * Failure Handling
+* Organization Authorization Hardening
+* Security Event Trails
+* Audit Redaction
+* MCP URL and Error Hardening
+* Centralized Rate Limiting
+* Supabase RLS Lockdown
 
 ### Upcoming
 
@@ -537,6 +589,8 @@ Screenshots can be added here once the visual demo flow stabilizes:
 * Copilot Studio Agent Registration
 * Cost Tracking
 * Notifications
+* Organization Switching
+* SSO
 
 ## Health Check
 

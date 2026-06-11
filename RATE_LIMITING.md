@@ -29,7 +29,7 @@ endpoint. Those categories must be added to the centralized limiter when introdu
 
 ## Redis And Local Behavior
 
-Production should set `REDIS_URL` and uses Redis fixed-window counters shared across API instances.
+Production should set `REDIS_URL` and use Redis fixed-window counters shared across API instances.
 If rate limiting is enabled in production and Redis is not configured or unavailable, sensitive
 requests fail closed with `503 Service Unavailable`.
 

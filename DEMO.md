@@ -8,16 +8,40 @@ Base URL:
 http://localhost:8000
 ```
 
+## Authentication
+
+The governance endpoints below require an authenticated user with the appropriate organization
+membership and role. Log in first:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@agenthq.local",
+    "password": "your-password"
+  }'
+```
+
+Save the returned `access_token` and send it with every protected request:
+
+```text
+Authorization: Bearer {access_token}
+```
+
+The examples below use `{access_token}` as a placeholder.
+
 ## 1. View Dashboard Summary
 
 ```bash
-curl http://localhost:8000/api/v1/dashboard/summary
+curl http://localhost:8000/api/v1/dashboard/summary \
+  -H "Authorization: Bearer {access_token}"
 ```
 
 ## 2. View Agents
 
 ```bash
-curl http://localhost:8000/api/v1/agents
+curl http://localhost:8000/api/v1/agents \
+  -H "Authorization: Bearer {access_token}"
 ```
 
 Pick the `id` for `Payment Operations Agent` from the response.
@@ -25,13 +49,15 @@ Pick the `id` for `Payment Operations Agent` from the response.
 ## 3. View One Agent's Tools
 
 ```bash
-curl http://localhost:8000/api/v1/agents/{agent_id}/tools
+curl http://localhost:8000/api/v1/agents/{agent_id}/tools \
+  -H "Authorization: Bearer {access_token}"
 ```
 
 ## 4. Evaluate a Policy Decision
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/policy-decisions/evaluate \
+  -H "Authorization: Bearer {access_token}" \
   -H "Content-Type: application/json" \
   -d '{
     "agent_id": "{agent_id}",
@@ -44,6 +70,7 @@ curl -X POST http://localhost:8000/api/v1/policy-decisions/evaluate \
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/executions \
+  -H "Authorization: Bearer {access_token}" \
   -H "Content-Type: application/json" \
   -d '{
     "agent_id": "{agent_id}",
@@ -60,13 +87,15 @@ The execution should be marked `requires_approval` unless an approved approval i
 List approvals:
 
 ```bash
-curl http://localhost:8000/api/v1/approvals
+curl http://localhost:8000/api/v1/approvals \
+  -H "Authorization: Bearer {access_token}"
 ```
 
 Approve one pending approval:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/approvals/{approval_id}/approve \
+  -H "Authorization: Bearer {access_token}" \
   -H "Content-Type: application/json" \
   -d '{
     "approver": "risk-office",
@@ -78,6 +107,7 @@ curl -X POST http://localhost:8000/api/v1/approvals/{approval_id}/approve \
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/incidents \
+  -H "Authorization: Bearer {access_token}" \
   -H "Content-Type: application/json" \
   -d '{
     "agent_id": "{agent_id}",
@@ -91,7 +121,8 @@ curl -X POST http://localhost:8000/api/v1/incidents \
 ## 8. View Compliance Summary
 
 ```bash
-curl http://localhost:8000/api/v1/compliance/summary
+curl http://localhost:8000/api/v1/compliance/summary \
+  -H "Authorization: Bearer {access_token}"
 ```
 
 ## AgentHQ v0.2.0 MCP Demo Flow
@@ -102,6 +133,7 @@ This flow uses the current mock/local MCP discovery adapter. It demonstrates reg
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/mcp-servers \
+  -H "Authorization: Bearer {access_token}" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Customer Operations MCP",
@@ -115,7 +147,8 @@ Save the returned MCP server `id` as `{server_id}`.
 ## 10. Sync the MCP Server
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/mcp-servers/{server_id}/sync
+curl -X POST http://localhost:8000/api/v1/mcp-servers/{server_id}/sync \
+  -H "Authorization: Bearer {access_token}"
 ```
 
 Save the returned `agent_id`. A successful sync reports `connected`, creates three tools, and sets `last_sync_at`.
@@ -123,7 +156,8 @@ Save the returned `agent_id`. A successful sync reports `connected`, creates thr
 ## 11. Confirm the Linked Agent
 
 ```bash
-curl http://localhost:8000/api/v1/agents/{agent_id}
+curl http://localhost:8000/api/v1/agents/{agent_id} \
+  -H "Authorization: Bearer {access_token}"
 ```
 
 The linked agent name should match the registered MCP server name.
@@ -131,7 +165,8 @@ The linked agent name should match the registered MCP server name.
 ## 12. Confirm Discovered Tools
 
 ```bash
-curl http://localhost:8000/api/v1/agents/{agent_id}/tools
+curl http://localhost:8000/api/v1/agents/{agent_id}/tools \
+  -H "Authorization: Bearer {access_token}"
 ```
 
 The response should include:
@@ -145,7 +180,8 @@ Run the sync endpoint again to confirm no duplicate tools are created.
 ## 13. Confirm the MCP Sync Audit Log
 
 ```bash
-curl "http://localhost:8000/api/v1/audit-logs?action=mcp_server.synced&entity_id={server_id}"
+curl "http://localhost:8000/api/v1/audit-logs?action=mcp_server.synced&entity_id={server_id}" \
+  -H "Authorization: Bearer {access_token}"
 ```
 
 The response should include an `mcp_server.synced` event with before/after snapshots.
@@ -153,7 +189,8 @@ The response should include an `mcp_server.synced` event with before/after snaps
 ## 14. Confirm the Dashboard MCP Server Count
 
 ```bash
-curl http://localhost:8000/api/v1/dashboard/summary
+curl http://localhost:8000/api/v1/dashboard/summary \
+  -H "Authorization: Bearer {access_token}"
 ```
 
 Confirm `total_mcp_servers` and `connected_mcp_servers` include the synced server.

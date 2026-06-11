@@ -1,5 +1,27 @@
 # AgentHQ v0.4.0 Security Audit
 
+## Remediation Status
+
+This document preserves the original v0.4.0 audit findings. The following findings have since been
+remediated in the v0.4.1 hardening work:
+
+* Production rejects missing, default, short, and obviously weak JWT secrets.
+* Production bootstrap requires `BOOTSTRAP_SECRET`.
+* Public registration is disabled by default in production.
+* Centralized rate limiting protects authentication and sensitive governance operations.
+* MCP linked-agent references are tenant-validated.
+* Organization admins manage membership role/status instead of global identity.
+* The last active organization admin cannot be demoted or deactivated.
+* Auditors have read-only incident access.
+* Audit snapshots and metadata use centralized recursive secret redaction.
+* MCP URLs reject credentials and unsafe production network targets.
+* MCP failures return sanitized public errors.
+* High-risk free-text fields have bounded lengths.
+* Supabase public-schema RLS is locked down as database defense in depth.
+* Audit logs are append-only, organization-scoped, and include security event trails.
+
+Remaining recommendations should be evaluated against the current code before implementation.
+
 ## Executive Summary
 
 AgentHQ v0.4.0 has a solid application-level tenant-isolation foundation. Core repositories derive

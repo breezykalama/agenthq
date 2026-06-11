@@ -11,7 +11,10 @@ Backend:
 | `DATABASE_URL` | `postgresql://postgres.project-ref:password@aws-0-region.pooler.supabase.com:5432/postgres?sslmode=require` | Supabase PostgreSQL connection string. AgentHQ automatically selects the psycopg 3 SQLAlchemy driver. |
 | `BACKEND_CORS_ORIGINS` | `https://agenthq.example.com,https://agenthq-git-main-team.vercel.app` | Comma-separated exact frontend origins. Do not use `*` in production. |
 | `JWT_SECRET_KEY` | Strong random value of at least 32 characters | Signs access tokens. Never reuse another service secret. |
-| `REDIS_URL` | `rediss://...` | Shared Redis service used for production rate limiting. Protected endpoints fail closed when Redis is unavailable. |
+| `BOOTSTRAP_SECRET` | Separate strong random value | Protects first-organization bootstrap in production. |
+| `ALLOW_PUBLIC_REGISTRATION` | `false` | Public legacy/demo registration should remain disabled in production. |
+| `REDIS_URL` | `redis://...` | Render Key Value internal URL used for production rate limiting. Protected endpoints fail closed when Redis is unavailable. |
+| `RATE_LIMITS_ENABLED` | `true` | Enables centralized abuse protection. |
 
 Frontend:
 
@@ -34,14 +37,21 @@ AgentHQ uses SQLAlchemy and Alembic directly against PostgreSQL. It does not use
 The repository includes [render.yaml](render.yaml) and a Dockerfile at `backend/Dockerfile`.
 
 1. Push the repository to GitHub, GitLab, or Bitbucket.
-2. In Render, create a Blueprint from the repository.
-3. Set the secret environment variables:
+2. Create a Render Key Value service in the same region as the API. Use `noeviction` so security
+   counters are not silently discarded.
+3. Copy the Key Value service's internal Redis URL. Do not use `localhost` or expose the internal
+   URL to the frontend.
+4. In Render, create a Blueprint from the repository.
+5. Set the secret environment variables:
    * `DATABASE_URL`: Supabase connection string
    * `BACKEND_CORS_ORIGINS`: exact Vercel production URL and any approved preview/custom domains
    * `JWT_SECRET_KEY`: strong random signing secret
-   * `REDIS_URL`: authenticated TLS Redis connection string
-4. Deploy the `agenthq-api` web service.
-5. Confirm `https://<service>.onrender.com/health` returns a successful response.
+   * `BOOTSTRAP_SECRET`: separate strong bootstrap secret
+   * `ALLOW_PUBLIC_REGISTRATION`: `false`
+   * `REDIS_URL`: Render Key Value internal Redis connection string
+   * `RATE_LIMITS_ENABLED`: `true`
+6. Deploy the `agenthq-api` web service.
+7. Confirm `https://<service>.onrender.com/health` returns a successful response.
 
 The container runs `alembic upgrade head` before starting Uvicorn and binds to Render's injected `PORT`.
 
@@ -115,3 +125,9 @@ Vite embeds `VITE_API_BASE_URL` during the build. Update the variable in Vercel 
 ### Frontend deep links return 404
 
 Confirm `frontend/vercel.json` is included in the Vercel deployment and the Vercel project root is `frontend`.
+
+### Protected API requests return 503
+
+AgentHQ fails closed when production abuse protection is unavailable. Confirm `REDIS_URL` is the
+Render Key Value internal URL, both services are in the same region, and the Key Value service is
+healthy. A Render internal hostname is not reachable from a local development machine.

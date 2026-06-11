@@ -148,3 +148,46 @@ Agent Compliance Report:
 * 220 automated tests passing
 * Ruff clean
 * MyPy clean
+
+# AgentHQ v0.4.1 - Security Hardening & Abuse Protection
+
+## Highlights
+
+### Authorization and Tenant Isolation
+
+* Centralized organization membership, role, permission, and resource-scope checks
+* Hardened cross-organization reference validation
+* Membership-level user administration
+* Last-active-admin lockout prevention
+* Read-only auditor incident permissions
+
+### Audit and Sensitive Data Protection
+
+* Append-only, organization-scoped audit logs
+* Security events for denied and cross-tenant access attempts
+* Request ID, actor, organization, IP address, and user-agent context
+* Recursive audit redaction for secrets and credentials
+* Safe MCP URL validation and sanitized MCP errors
+
+### Authentication and Abuse Protection
+
+* Production JWT-secret validation
+* Bootstrap-secret protection
+* Production public-registration gating
+* Redis-backed production rate limiting
+* In-memory local/test limiter
+* Actor-, organization-, resource-, IP-, and identifier-aware rate-limit keys
+* `429` responses with `Retry-After`
+* Rate-limit denial security events
+
+### Database Defense in Depth
+
+* Supabase public-schema Row Level Security lockdown
+* Server-only access model retained through FastAPI
+
+### Quality
+
+* 282 automated backend tests passing
+* Ruff clean
+* MyPy clean
+* `git diff --check` clean
