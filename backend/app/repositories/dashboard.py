@@ -2,16 +2,19 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.tenancy import get_current_organization_id
 from app.models.agent import Agent, AgentRiskLevel, AgentStatus
+from app.models.agent_tool import AgentTool
 from app.models.approval import Approval, ApprovalStatus
+from app.models.audit_log import AuditAction, AuditLog
 from app.models.execution import Execution, ExecutionStatus
 from app.models.incident import Incident, IncidentStatus
 from app.models.mcp_server import MCPServer, MCPServerStatus
 from app.models.organization import OrganizationMembership
+from app.models.policy_rule import PolicyRule, PolicyRuleScope
 from app.models.user import User
 
 
@@ -55,6 +58,10 @@ class MCPServerMetrics:
     total: int
     connected: int
     disconnected: int
+    discovered_tools: int
+    governed_tools: int
+    unreviewed_tools: int
+    schema_changes_this_month: int
 
 
 @dataclass(frozen=True)
@@ -135,13 +142,65 @@ def get_incident_metrics(db: Session) -> IncidentMetrics:
     return IncidentMetrics(*row)
 
 
-def get_mcp_server_metrics(db: Session) -> MCPServerMetrics:
+def get_mcp_server_metrics(db: Session, *, month_start: datetime) -> MCPServerMetrics:
     organization_id = get_current_organization_id(db)
+    policy_exists = exists(
+        select(PolicyRule.id).where(
+            PolicyRule.organization_id == organization_id,
+            PolicyRule.deleted_at.is_(None),
+            PolicyRule.is_enabled.is_(True),
+            or_(
+                PolicyRule.scope == PolicyRuleScope.GLOBAL,
+                and_(
+                    PolicyRule.scope == PolicyRuleScope.AGENT,
+                    PolicyRule.agent_id == AgentTool.agent_id,
+                ),
+                and_(
+                    PolicyRule.scope == PolicyRuleScope.TOOL,
+                    PolicyRule.tool_id == AgentTool.id,
+                ),
+            ),
+        )
+    )
+    discovered_filter = (
+        AgentTool.organization_id == organization_id,
+        AgentTool.deleted_at.is_(None),
+        AgentTool.discovered_from_mcp_server_id.is_not(None),
+    )
+    discovered_tools = (
+        select(func.count()).select_from(AgentTool).where(*discovered_filter).scalar_subquery()
+    )
+    governed_tools = (
+        select(func.count())
+        .select_from(AgentTool)
+        .where(*discovered_filter, AgentTool.reviewed_at.is_not(None), policy_exists)
+        .scalar_subquery()
+    )
+    unreviewed_tools = (
+        select(func.count())
+        .select_from(AgentTool)
+        .where(*discovered_filter, AgentTool.reviewed_at.is_(None))
+        .scalar_subquery()
+    )
+    schema_changes = (
+        select(func.count())
+        .select_from(AuditLog)
+        .where(
+            AuditLog.organization_id == organization_id,
+            AuditLog.action == AuditAction.MCP_TOOL_SCHEMA_CHANGED,
+            AuditLog.created_at >= month_start,
+        )
+        .scalar_subquery()
+    )
     row = db.execute(
         select(
             func.count(),
             func.count().filter(MCPServer.status == MCPServerStatus.CONNECTED),
             func.count().filter(MCPServer.status == MCPServerStatus.DISCONNECTED),
+            discovered_tools,
+            governed_tools,
+            unreviewed_tools,
+            schema_changes,
         ).where(
             MCPServer.organization_id == organization_id,
             MCPServer.deleted_at.is_(None),

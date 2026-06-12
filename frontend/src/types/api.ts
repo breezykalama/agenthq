@@ -12,6 +12,7 @@ export type IncidentStatus = "open" | "investigating" | "resolved" | "dismissed"
 export type PolicyRuleScope = "global" | "agent" | "tool";
 export type PolicyRuleEffect = "allow" | "require_approval" | "block";
 export type ToolPermission = "read" | "write" | "execute" | "admin";
+export type ToolGovernanceStatus = "unreviewed" | "reviewed" | "governed";
 export type UserRole = "admin" | "auditor" | "operator" | "agent_owner";
 export type MCPServerStatus = "connected" | "disconnected" | "error";
 export type MCPTransportType = "streamable_http" | "sse";
@@ -111,6 +112,14 @@ export interface AgentTool {
   agent_id: string;
   name: string;
   description: string | null;
+  discovered_from_mcp_server_id: string | null;
+  input_schema: Record<string, unknown> | null;
+  output_schema: Record<string, unknown> | null;
+  schema_hash: string | null;
+  schema_version: number | null;
+  schema_last_updated_at: string | null;
+  reviewed_by_user_id: string | null;
+  reviewed_at: string | null;
   permission: ToolPermission;
   risk_level: RiskLevel;
   is_enabled: boolean;
@@ -140,10 +149,50 @@ export interface DashboardSummary {
   total_mcp_servers: number;
   connected_mcp_servers: number;
   disconnected_mcp_servers: number;
+  discovered_tools: number;
+  governed_tools: number;
+  unreviewed_tools: number;
+  schema_changes_this_month: number;
   total_users: number;
   active_users: number;
   total_cost_usd: string;
   average_latency_ms: number;
+}
+
+export interface ToolGovernanceItem {
+  id: string;
+  agent_id: string;
+  agent_name: string;
+  mcp_server_id: string;
+  mcp_server_name: string;
+  name: string;
+  description: string | null;
+  governance_status: ToolGovernanceStatus;
+  risk_level: RiskLevel;
+  permission: ToolPermission;
+  is_enabled: boolean;
+  policy_count: number;
+  policy_names: string[];
+  governed_by: PolicyRuleEffect[];
+  input_schema: Record<string, unknown> | null;
+  output_schema: Record<string, unknown> | null;
+  schema_hash: string | null;
+  schema_version: number | null;
+  schema_last_updated_at: string | null;
+  reviewed_by_user_id: string | null;
+  reviewed_at: string | null;
+}
+
+export interface ToolGovernanceSummary {
+  total_tools: number;
+  unreviewed_tools: number;
+  reviewed_tools: number;
+  governed_tools: number;
+  high_risk_tools: number;
+  schema_changes_this_month: number;
+  risk_distribution: Record<string, number>;
+  review_coverage: number;
+  policy_coverage: number;
 }
 
 export interface MCPServer {

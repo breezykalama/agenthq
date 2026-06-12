@@ -14,6 +14,8 @@ import type {
   MCPServer,
   PolicyDecisionResponse,
   PolicyRule
+  ,ToolGovernanceItem
+  ,ToolGovernanceSummary
 } from "../types/api";
 
 export interface AuditLogFilters {
@@ -50,5 +52,9 @@ export const endpoints = {
   complianceIncidents: () =>
     api.get<ListResponse<ComplianceIncident>>("/api/v1/compliance/incidents").then((r) => r.data),
   evaluatePolicy: (payload: unknown) =>
-    api.post<PolicyDecisionResponse>("/api/v1/policy-decisions/evaluate", payload).then((r) => r.data)
+    api.post<PolicyDecisionResponse>("/api/v1/policy-decisions/evaluate", payload).then((r) => r.data),
+  toolGovernance: () =>
+    api.get<ListResponse<ToolGovernanceItem>>("/api/v1/tool-governance").then((r) => r.data),
+  toolGovernanceSummary: () =>
+    api.get<ToolGovernanceSummary>("/api/v1/tool-governance-summary").then((r) => r.data)
 };

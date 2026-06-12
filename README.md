@@ -14,7 +14,7 @@ Backend API:
 
 ## Current Version
 
-AgentHQ v0.5.0
+AgentHQ v0.5.1
 
 ## Project Status
 
@@ -81,6 +81,19 @@ adapter for demos and tests.
 * Keep sync failures sanitized and auditable.
 
 Real discovery imports tool names and descriptions only. AgentHQ does not execute MCP tools.
+
+## AgentHQ v0.5.1
+
+AgentHQ v0.5.1 adds Tool Schema Governance for discovered MCP tools.
+
+* Persist MCP input and output schemas with hashes, versions, and change timestamps.
+* Detect discovered, removed, schema-changed, and description-changed tools during sync.
+* Preserve manually assigned risk levels and permissions.
+* Review discovered tools and audit risk or permission changes.
+* Calculate governance status from human review and applicable policy coverage.
+* View organization-scoped tool governance metrics, policy coverage, and formatted schemas.
+
+AgentHQ continues to provide governance visibility only. It does not call or execute MCP tools.
 
 ## AgentHQ v0.2.0
 

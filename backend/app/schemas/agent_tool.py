@@ -28,6 +28,14 @@ class AgentToolRead(BaseModel):
     agent_id: UUID
     name: str
     description: str | None
+    discovered_from_mcp_server_id: UUID | None
+    input_schema: dict[str, object] | None
+    output_schema: dict[str, object] | None
+    schema_hash: str | None
+    schema_version: int | None
+    schema_last_updated_at: datetime | None
+    reviewed_by_user_id: UUID | None
+    reviewed_at: datetime | None
     permission: AgentToolPermission
     risk_level: AgentRiskLevel
     is_enabled: bool
@@ -41,3 +49,8 @@ class AgentToolRead(BaseModel):
 class AgentToolListResponse(BaseModel):
     items: list[AgentToolRead]
     total: int
+
+
+class AgentToolReview(BaseModel):
+    risk_level: AgentRiskLevel
+    permission: AgentToolPermission

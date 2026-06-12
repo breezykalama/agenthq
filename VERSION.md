@@ -1,7 +1,7 @@
 # AgentHQ Version
 
 Current Version:
-v0.5.0
+v0.5.1
 
 Release Date:
 June 2026
@@ -10,13 +10,13 @@ Status:
 Live
 
 Release Name:
-Real MCP Tool Discovery
+Tool Schema Governance
 
 Quality:
-300 tests passing
+305 tests passing
 
 Key Theme:
-Governed real MCP server discovery
+Governance visibility for discovered MCP tool schemas
 
 Frontend:
 https://agenthq-seven.vercel.app/

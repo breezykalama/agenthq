@@ -23,6 +23,8 @@ from app.api.organization_invites import router as organization_invites_router
 from app.api.organizations import router as organizations_router
 from app.api.policy_decisions import router as policy_decisions_router
 from app.api.policy_rules import router as policy_rules_router
+from app.api.tool_governance import router as tool_governance_router
+from app.api.tool_governance import summary_router as tool_governance_summary_router
 from app.api.users import router as users_router
 from app.core.config import get_cors_origins, get_settings
 from app.core.rate_limit import reset_rate_limit_backend
@@ -38,7 +40,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="AgentHQ", version="0.5.0", lifespan=lifespan)
+    app = FastAPI(title="AgentHQ", version="0.5.1", lifespan=lifespan)
 
     @app.middleware("http")
     async def request_context_middleware(
@@ -85,6 +87,8 @@ def create_app() -> FastAPI:
     app.include_router(incidents_router)
     app.include_router(mcp_servers_router)
     app.include_router(compliance_router)
+    app.include_router(tool_governance_router)
+    app.include_router(tool_governance_summary_router)
     return app
 
 

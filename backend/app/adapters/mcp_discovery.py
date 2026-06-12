@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import anyio
 import httpx
@@ -20,6 +20,8 @@ from app.models.mcp_server import MCPAuthType, MCPTransportType
 class DiscoveredMCPTool:
     name: str
     description: str | None = None
+    input_schema: dict[str, object] | None = None
+    output_schema: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -81,7 +83,18 @@ async def list_all_tools(session: ClientSession) -> list[DiscoveredMCPTool]:
     while True:
         result = await session.list_tools(cursor=cursor)
         tools.extend(
-            DiscoveredMCPTool(name=tool.name, description=tool.description)
+            DiscoveredMCPTool(
+                name=tool.name,
+                description=tool.description,
+                input_schema=cast(
+                    dict[str, object] | None,
+                    getattr(tool, "inputSchema", None),
+                ),
+                output_schema=cast(
+                    dict[str, object] | None,
+                    getattr(tool, "outputSchema", None),
+                ),
+            )
             for tool in result.tools
         )
         cursor = result.nextCursor

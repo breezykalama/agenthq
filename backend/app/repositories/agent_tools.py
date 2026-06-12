@@ -93,6 +93,25 @@ def get_agent_tool_by_name(db: Session, agent_id: UUID, name: str) -> AgentTool 
     return db.scalar(statement)
 
 
+def list_discovered_agent_tools_by_server(db: Session, server_id: UUID) -> list[AgentTool]:
+    statement = select(AgentTool).where(
+        AgentTool.organization_id == get_current_organization_id(db),
+        AgentTool.discovered_from_mcp_server_id == server_id,
+        AgentTool.deleted_at.is_(None),
+    )
+    return list(db.scalars(statement).all())
+
+
+def get_discovered_agent_tool_by_id(db: Session, tool_id: UUID) -> AgentTool | None:
+    statement = select(AgentTool).where(
+        AgentTool.organization_id == get_current_organization_id(db),
+        AgentTool.id == tool_id,
+        AgentTool.discovered_from_mcp_server_id.is_not(None),
+        AgentTool.deleted_at.is_(None),
+    )
+    return db.scalar(statement)
+
+
 def update_agent_tool(db: Session, agent_tool: AgentTool, values: dict[str, object]) -> AgentTool:
     for field, value in values.items():
         setattr(agent_tool, field, value)
@@ -120,4 +139,11 @@ def soft_delete_agent_tool(db: Session, agent_tool: AgentTool) -> AgentTool:
     db.add(agent_tool)
     db.commit()
     db.refresh(agent_tool)
+    return agent_tool
+
+
+def soft_delete_agent_tool_pending(db: Session, agent_tool: AgentTool) -> AgentTool:
+    agent_tool.deleted_at = datetime.now(UTC)
+    db.add(agent_tool)
+    db.flush()
     return agent_tool

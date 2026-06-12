@@ -1,3 +1,5 @@
+import hashlib
+import json
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -53,6 +55,42 @@ MCP_DISCOVERY_FAILURE_MESSAGE = (
 
 def serialize_mcp_server(mcp_server: MCPServer) -> JsonObject:
     return MCPServerRead.model_validate(mcp_server).model_dump(mode="json")
+
+
+def schema_hash(
+    input_schema: dict[str, object] | None,
+    output_schema: dict[str, object] | None,
+) -> str | None:
+    if input_schema is None and output_schema is None:
+        return None
+    serialized = json.dumps(
+        {"input_schema": input_schema, "output_schema": output_schema},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(serialized.encode()).hexdigest()
+
+
+def audit_tool_change(
+    db: Session,
+    *,
+    action: AuditAction,
+    tool_id: UUID,
+    before: JsonObject | None,
+    after: JsonObject | None,
+    metadata: JsonObject | None = None,
+) -> None:
+    audit_log_service.create_critical_audit_log(
+        db,
+        AuditLogCreate(
+            action=action,
+            entity_type="agent_tool",
+            entity_id=tool_id,
+            before=before,
+            after=after,
+            metadata=metadata,
+        ),
+    )
 
 
 def create_mcp_server(db: Session, mcp_server_create: MCPServerCreate) -> MCPServer:
@@ -171,14 +209,30 @@ def sync_mcp_server(
         agent_id = ensure_linked_agent(db, mcp_server)
         created_tools_count = 0
         updated_tools_count = 0
-        for discovered_tool in discovered_tools:
-            existing_tool = agent_tool_repository.get_agent_tool_by_name(
+        synced_at = datetime.now(UTC)
+        existing_tools = {
+            tool.name: tool
+            for tool in agent_tool_repository.list_discovered_agent_tools_by_server(
                 db,
-                agent_id,
-                discovered_tool.name,
+                mcp_server.id,
+            )
+        }
+        discovered_names: set[str] = set()
+        for discovered_tool in discovered_tools:
+            discovered_names.add(discovered_tool.name)
+            existing_tool = existing_tools.get(discovered_tool.name)
+            if existing_tool is None:
+                existing_tool = agent_tool_repository.get_agent_tool_by_name(
+                    db,
+                    agent_id,
+                    discovered_tool.name,
+                )
+            new_schema_hash = schema_hash(
+                discovered_tool.input_schema,
+                discovered_tool.output_schema,
             )
             if existing_tool is None:
-                agent_tool_repository.create_agent_tool_pending(
+                created_tool = agent_tool_repository.create_agent_tool_pending(
                     db,
                     agent_id,
                     AgentToolCreate(
@@ -189,17 +243,109 @@ def sync_mcp_server(
                         is_enabled=True,
                     ),
                 )
+                agent_tool_repository.update_agent_tool_pending(
+                    db,
+                    created_tool,
+                    {
+                        "discovered_from_mcp_server_id": mcp_server.id,
+                        "input_schema": discovered_tool.input_schema,
+                        "output_schema": discovered_tool.output_schema,
+                        "schema_hash": new_schema_hash,
+                        "schema_version": 1,
+                        "schema_last_updated_at": synced_at,
+                    },
+                )
+                audit_tool_change(
+                    db,
+                    action=AuditAction.MCP_TOOL_DISCOVERED,
+                    tool_id=created_tool.id,
+                    before=None,
+                    after={
+                        "id": str(created_tool.id),
+                        "name": created_tool.name,
+                        "schema_hash": created_tool.schema_hash,
+                    },
+                    metadata={"new_schema_hash": new_schema_hash},
+                )
                 created_tools_count += 1
                 continue
 
+            before_tool: JsonObject = {
+                "id": str(existing_tool.id),
+                "name": existing_tool.name,
+                "description": existing_tool.description,
+                "schema_hash": existing_tool.schema_hash,
+                "schema_version": existing_tool.schema_version,
+            }
+            update_values: dict[str, object] = {
+                "discovered_from_mcp_server_id": mcp_server.id,
+            }
+            description_changed = existing_tool.description != discovered_tool.description
+            schemas_changed = existing_tool.schema_hash != new_schema_hash
+            if description_changed:
+                update_values["description"] = discovered_tool.description
+            if schemas_changed:
+                update_values.update(
+                    {
+                        "input_schema": discovered_tool.input_schema,
+                        "output_schema": discovered_tool.output_schema,
+                        "schema_hash": new_schema_hash,
+                        "schema_version": (existing_tool.schema_version or 0) + 1,
+                        "schema_last_updated_at": synced_at,
+                    }
+                )
             agent_tool_repository.update_agent_tool_pending(
                 db,
                 existing_tool,
-                {"description": discovered_tool.description},
+                update_values,
             )
+            after_tool: JsonObject = {
+                "id": str(existing_tool.id),
+                "name": existing_tool.name,
+                "description": existing_tool.description,
+                "schema_hash": existing_tool.schema_hash,
+                "schema_version": existing_tool.schema_version,
+            }
+            if description_changed:
+                audit_tool_change(
+                    db,
+                    action=AuditAction.MCP_TOOL_DESCRIPTION_CHANGED,
+                    tool_id=existing_tool.id,
+                    before=before_tool,
+                    after=after_tool,
+                )
+            if schemas_changed:
+                audit_tool_change(
+                    db,
+                    action=AuditAction.MCP_TOOL_SCHEMA_CHANGED,
+                    tool_id=existing_tool.id,
+                    before=before_tool,
+                    after=after_tool,
+                    metadata={
+                        "previous_schema_hash": before_tool["schema_hash"],
+                        "new_schema_hash": new_schema_hash,
+                    },
+                )
             updated_tools_count += 1
 
-        synced_at = datetime.now(UTC)
+        for removed_name, removed_tool in existing_tools.items():
+            if removed_name in discovered_names:
+                continue
+            removed_before: JsonObject = {
+                "id": str(removed_tool.id),
+                "name": removed_tool.name,
+                "schema_hash": removed_tool.schema_hash,
+            }
+            agent_tool_repository.soft_delete_agent_tool_pending(db, removed_tool)
+            assert removed_tool.deleted_at is not None
+            audit_tool_change(
+                db,
+                action=AuditAction.MCP_TOOL_REMOVED,
+                tool_id=removed_tool.id,
+                before=removed_before,
+                after={**removed_before, "deleted_at": removed_tool.deleted_at.isoformat()},
+                metadata={"previous_schema_hash": removed_tool.schema_hash},
+            )
         synced_server = mcp_server_repository.update_mcp_server_state_pending(
             db,
             mcp_server,

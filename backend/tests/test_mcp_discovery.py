@@ -147,7 +147,13 @@ def test_real_adapter_initializes_session_and_maps_tools(
     tools = RealMCPDiscoveryAdapter().discover_tools(target())
 
     assert initialized is True
-    assert tools == [DiscoveredMCPTool("govern_payment", "Govern a payment.")]
+    assert tools == [
+        DiscoveredMCPTool(
+            "govern_payment",
+            "Govern a payment.",
+            input_schema={"type": "object"},
+        )
+    ]
 
 
 def test_real_adapter_timeout_is_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:

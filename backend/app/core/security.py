@@ -38,6 +38,7 @@ class OrgPermission(StrEnum):
     MANAGE_INVITES = "manage_invites"
     MANAGE_AGENTS = "manage_agents"
     MANAGE_MCP_SERVERS = "manage_mcp_servers"
+    REVIEW_TOOLS = "review_tools"
     MANAGE_POLICIES = "manage_policies"
     MANAGE_APPROVALS = "manage_approvals"
     MANAGE_EXECUTIONS = "manage_executions"
@@ -63,6 +64,7 @@ ROLE_PERMISSIONS: dict[UserRole, frozenset[OrgPermission]] = {
             OrgPermission.MANAGE_APPROVALS,
             OrgPermission.MANAGE_EXECUTIONS,
             OrgPermission.MANAGE_INCIDENTS,
+            OrgPermission.REVIEW_TOOLS,
             OrgPermission.VIEW_INCIDENTS,
             OrgPermission.VIEW_DASHBOARD,
         }

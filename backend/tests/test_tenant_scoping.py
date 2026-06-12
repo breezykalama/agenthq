@@ -14,7 +14,8 @@ from app.core.security import create_access_token, hash_password
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import create_app
-from app.models.agent import Agent
+from app.models.agent import Agent, AgentRiskLevel
+from app.models.agent_tool import AgentTool, AgentToolPermission
 from app.models.organization import Organization, OrganizationMembership
 from app.models.user import User, UserRole
 
@@ -203,6 +204,50 @@ def test_request_organization_id_is_ignored_and_cross_tenant_references_rejected
             )
             assert persisted is not None
             assert str(persisted.organization_id) == tenants.organization_a_id
+
+
+def test_tool_governance_is_tenant_scoped() -> None:
+    with tenant_clients() as tenants:
+        agent_a = create_agent(tenants.client, tenants.headers_a, "Governance A")
+        agent_b = create_agent(tenants.client, tenants.headers_b, "Governance B")
+        server_a = tenants.client.post(
+            "/api/v1/mcp-servers",
+            headers=tenants.headers_a,
+            json={"name": "MCP A", "server_url": "https://a.example.com/mcp"},
+        ).json()
+        server_b = tenants.client.post(
+            "/api/v1/mcp-servers",
+            headers=tenants.headers_b,
+            json={"name": "MCP B", "server_url": "https://b.example.com/mcp"},
+        ).json()
+        with tenants.session_local() as db:
+            db.add_all(
+                [
+                    AgentTool(
+                        organization_id=UUID(tenants.organization_a_id),
+                        agent_id=UUID(agent_a["id"]),
+                        discovered_from_mcp_server_id=UUID(server_a["id"]),
+                        name="tool_a",
+                        permission=AgentToolPermission.EXECUTE,
+                        risk_level=AgentRiskLevel.MEDIUM,
+                    ),
+                    AgentTool(
+                        organization_id=UUID(tenants.organization_b_id),
+                        agent_id=UUID(agent_b["id"]),
+                        discovered_from_mcp_server_id=UUID(server_b["id"]),
+                        name="tool_b",
+                        permission=AgentToolPermission.EXECUTE,
+                        risk_level=AgentRiskLevel.MEDIUM,
+                    ),
+                ]
+            )
+            db.commit()
+
+        response = tenants.client.get("/api/v1/tool-governance", headers=tenants.headers_a)
+
+        assert response.status_code == 200
+        assert response.json()["total"] == 1
+        assert response.json()["items"][0]["name"] == "tool_a"
 
 
 def test_audit_dashboard_and_compliance_are_tenant_scoped() -> None:

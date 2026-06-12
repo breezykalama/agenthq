@@ -20,6 +20,7 @@ import { LandingPage } from "../pages/LandingPage";
 import { MCPServersPage } from "../pages/MCPServersPage";
 import { OrganizationInvitesPage } from "../pages/OrganizationInvitesPage";
 import { RegisterPage } from "../pages/RegisterPage";
+import { ToolGovernancePage } from "../pages/ToolGovernancePage";
 
 export const router = createBrowserRouter([
   { path: "/", element: <LandingPage /> },
@@ -52,6 +53,7 @@ export const router = createBrowserRouter([
               { path: "policy-decisions", element: <PolicyDecisionPage /> },
               { path: "approvals", element: <ApprovalsPage /> },
               { path: "executions", element: <ExecutionsPage /> }
+              ,{ path: "tool-governance", element: <ToolGovernancePage /> }
             ]
           },
           {

@@ -207,3 +207,22 @@ Agent Compliance Report:
 * Kept client-facing and stored sync errors sanitized.
 
 Real MCP tool execution remains out of scope for this release.
+# AgentHQ v0.5.1 - Tool Schema Governance
+
+## Highlights
+
+* Persisted MCP tool input and output schemas using PostgreSQL JSONB.
+* Added deterministic schema hashes, schema versions, and change timestamps.
+* Added audit events for discovered, removed, schema-changed, and description-changed tools.
+* Added explicit administrator and operator tool review workflow.
+* Added computed unreviewed, reviewed, and governed statuses.
+* Added policy coverage details, governance reporting, dashboard metrics, and schema viewer UI.
+* Preserved organization isolation, audit redaction, and manually edited risk and permission values.
+* MCP tool execution remains intentionally out of scope.
+
+## Quality
+
+* 305 automated backend tests passing
+* Ruff clean
+* MyPy clean
+* Frontend build and lint passing

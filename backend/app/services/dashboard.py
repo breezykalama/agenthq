@@ -25,7 +25,10 @@ def get_summary(db: Session) -> DashboardSummary:
     )
     approvals = dashboard_repository.get_approval_metrics(db)
     incidents = dashboard_repository.get_incident_metrics(db)
-    mcp_servers = dashboard_repository.get_mcp_server_metrics(db)
+    mcp_servers = dashboard_repository.get_mcp_server_metrics(
+        db,
+        month_start=today_start.replace(day=1),
+    )
     users = dashboard_repository.get_user_metrics(db)
 
     return DashboardSummary(
@@ -49,6 +52,10 @@ def get_summary(db: Session) -> DashboardSummary:
         total_mcp_servers=mcp_servers.total,
         connected_mcp_servers=mcp_servers.connected,
         disconnected_mcp_servers=mcp_servers.disconnected,
+        discovered_tools=mcp_servers.discovered_tools,
+        governed_tools=mcp_servers.governed_tools,
+        unreviewed_tools=mcp_servers.unreviewed_tools,
+        schema_changes_this_month=mcp_servers.schema_changes_this_month,
         total_users=users.total,
         active_users=users.active,
         total_cost_usd=executions.total_cost_usd,

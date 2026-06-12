@@ -24,6 +24,10 @@ class DashboardSummary(BaseModel):
     total_mcp_servers: int
     connected_mcp_servers: int
     disconnected_mcp_servers: int
+    discovered_tools: int
+    governed_tools: int
+    unreviewed_tools: int
+    schema_changes_this_month: int
     total_users: int
     active_users: int
     total_cost_usd: Decimal

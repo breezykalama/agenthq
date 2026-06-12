@@ -80,6 +80,10 @@ export function DashboardPage() {
           <MetricCard label="Blocked Executions" value={data?.blocked_executions ?? 0} />
           <MetricCard label="Requires Approval" value={data?.requires_approval_executions ?? 0} />
           <MetricCard label="MCP Servers" value={data?.total_mcp_servers ?? 0} />
+          <MetricCard label="Discovered Tools" value={data?.discovered_tools ?? 0} />
+          <MetricCard label="Governed Tools" value={data?.governed_tools ?? 0} />
+          <MetricCard label="Unreviewed Tools" value={data?.unreviewed_tools ?? 0} />
+          <MetricCard label="Schema Changes This Month" value={data?.schema_changes_this_month ?? 0} />
           <MetricCard label="Active Users" value={data?.active_users ?? 0} />
           <MetricCard label="Total Cost" value={`$${data?.total_cost_usd ?? "0"}`} />
           <MetricCard label="Avg Latency" value={`${Math.round(data?.average_latency_ms ?? 0)} ms`} />
