@@ -2,12 +2,14 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, cast
+from unittest.mock import patch
 from uuid import UUID
 
 from fastapi.testclient import TestClient
 from sqlalchemy import StaticPool, create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.core.rate_limit import rate_limiter
 from app.core.security import create_access_token, hash_password
 from app.db.base import Base
 from app.db.session import get_db
@@ -79,7 +81,9 @@ def tenant_clients() -> Iterator[TenantClients]:
 
     app = create_app()
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as client:
+    with patch("app.core.rate_limit.get_rate_limit_backend", return_value=rate_limiter), TestClient(
+        app
+    ) as client:
         yield TenantClients(
             client=client,
             headers_a={"Authorization": f"Bearer {token_a}"},

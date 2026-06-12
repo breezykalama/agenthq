@@ -1,7 +1,7 @@
 # AgentHQ Version
 
 Current Version:
-v0.4.1
+v0.5.0
 
 Release Date:
 June 2026
@@ -10,13 +10,13 @@ Status:
 Live
 
 Release Name:
-Security Hardening & Abuse Protection
+Real MCP Tool Discovery
 
 Quality:
-282 tests passing
+300 tests passing
 
 Key Theme:
-Secure multi-tenant AI Agent Governance
+Governed real MCP server discovery
 
 Frontend:
 https://agenthq-seven.vercel.app/

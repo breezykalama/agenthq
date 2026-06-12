@@ -14,6 +14,8 @@ export type PolicyRuleEffect = "allow" | "require_approval" | "block";
 export type ToolPermission = "read" | "write" | "execute" | "admin";
 export type UserRole = "admin" | "auditor" | "operator" | "agent_owner";
 export type MCPServerStatus = "connected" | "disconnected" | "error";
+export type MCPTransportType = "streamable_http" | "sse";
+export type MCPAuthType = "none" | "bearer" | "api_key";
 export type OrganizationInviteStatus = "pending" | "accepted" | "expired" | "revoked";
 
 export interface User {
@@ -150,6 +152,11 @@ export interface MCPServer {
   name: string;
   description: string | null;
   server_url: string;
+  transport_type: MCPTransportType;
+  auth_type: MCPAuthType;
+  auth_secret_ref: string | null;
+  request_timeout_seconds: number;
+  connect_timeout_seconds: number;
   status: MCPServerStatus;
   last_sync_at: string | null;
   last_error: string | null;

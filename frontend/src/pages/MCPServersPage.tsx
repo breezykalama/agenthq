@@ -30,6 +30,7 @@ export function MCPServersPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isAdmin = getEffectiveRole(user) === "admin";
+  const [authType, setAuthType] = useState("none");
   const [syncResult, setSyncResult] = useState<MCPServerSyncResponse | null>(null);
   const [copiedAgentId, setCopiedAgentId] = useState<string | null>(null);
   const servers = useQuery({ queryKey: ["mcp-servers"], queryFn: endpoints.mcpServers });
@@ -59,12 +60,19 @@ export function MCPServersPage() {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const authSecretRef = String(form.get("auth_secret_ref") ?? "");
     createServer.mutate({
       name: String(form.get("name") ?? ""),
       description: String(form.get("description") ?? "") || null,
-      server_url: String(form.get("server_url") ?? "")
+      server_url: String(form.get("server_url") ?? ""),
+      transport_type: String(form.get("transport_type") ?? "streamable_http"),
+      auth_type: String(form.get("auth_type") ?? "none"),
+      ...(authSecretRef ? { auth_secret_ref: authSecretRef } : {}),
+      request_timeout_seconds: Number(form.get("request_timeout_seconds") ?? 30),
+      connect_timeout_seconds: Number(form.get("connect_timeout_seconds") ?? 10)
     });
     event.currentTarget.reset();
+    setAuthType("none");
   }
 
   return (
@@ -96,6 +104,14 @@ export function MCPServersPage() {
                           <div>
                             <dt className="text-xs font-medium uppercase text-slate-500">Last Sync</dt>
                             <dd className="mt-1 text-slate-700">{formatDate(server.last_sync_at)}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-xs font-medium uppercase text-slate-500">Transport</dt>
+                            <dd className="mt-1 text-slate-700">{server.transport_type}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-xs font-medium uppercase text-slate-500">Authentication</dt>
+                            <dd className="mt-1 text-slate-700">{server.auth_type}</dd>
                           </div>
                           <div className="sm:col-span-2">
                             <dt className="text-xs font-medium uppercase text-slate-500">Linked Agent ID</dt>
@@ -190,6 +206,61 @@ export function MCPServersPage() {
                   rows={3}
                 />
               </Field>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Transport">
+                  <select name="transport_type" className={inputClass} defaultValue="streamable_http">
+                    <option value="streamable_http">Streamable HTTP</option>
+                    <option value="sse">SSE</option>
+                  </select>
+                </Field>
+                <Field label="Authentication">
+                  <select
+                    name="auth_type"
+                    className={inputClass}
+                    value={authType}
+                    onChange={(event) => setAuthType(event.target.value)}
+                  >
+                    <option value="none">None</option>
+                    <option value="bearer">Bearer token</option>
+                    <option value="api_key">API key</option>
+                  </select>
+                </Field>
+              </div>
+              {authType !== "none" ? (
+                <Field label="Credential environment reference">
+                  <input
+                    name="auth_secret_ref"
+                    className={inputClass}
+                    placeholder="MCP_AUTH_CUSTOMER_OPERATIONS"
+                    pattern="MCP_AUTH_[A-Z0-9_]+"
+                    required
+                  />
+                </Field>
+              ) : null}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Request timeout (seconds)">
+                  <input
+                    name="request_timeout_seconds"
+                    type="number"
+                    min={1}
+                    max={120}
+                    defaultValue={30}
+                    className={inputClass}
+                    required
+                  />
+                </Field>
+                <Field label="Connect timeout (seconds)">
+                  <input
+                    name="connect_timeout_seconds"
+                    type="number"
+                    min={1}
+                    max={30}
+                    defaultValue={10}
+                    className={inputClass}
+                    required
+                  />
+                </Field>
+              </div>
               {createServer.error ? (
                 <div className="text-sm text-red-700">{getErrorMessage(createServer.error)}</div>
               ) : null}

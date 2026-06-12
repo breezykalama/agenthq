@@ -191,3 +191,19 @@ Agent Compliance Report:
 * Ruff clean
 * MyPy clean
 * `git diff --check` clean
+
+# AgentHQ v0.5.0 - Real MCP Tool Discovery
+
+## Highlights
+
+* Added real MCP protocol discovery through the official Python MCP client.
+* Added Streamable HTTP and SSE transport support.
+* Added MCP session initialization and paginated `tools/list` discovery.
+* Added selectable `mock` and `real` discovery modes.
+* Added environment-referenced bearer and API-key authentication.
+* Added bounded connection and request timeouts.
+* Disabled discovery redirects to preserve MCP URL safety controls.
+* Preserved linked agents, tools, and successful sync timestamps on discovery failure.
+* Kept client-facing and stored sync errors sanitized.
+
+Real MCP tool execution remains out of scope for this release.

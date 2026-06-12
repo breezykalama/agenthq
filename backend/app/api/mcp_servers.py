@@ -49,6 +49,11 @@ def create_mcp_server(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Linked agent must exist in the current organization.",
         ) from exc
+    except mcp_server_service.InvalidMCPServerConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="MCP authentication configuration is invalid.",
+        ) from exc
 
 
 @router.get("", response_model=MCPServerListResponse)
@@ -101,6 +106,11 @@ def update_mcp_server(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Linked agent must exist in the current organization.",
+        ) from exc
+    except mcp_server_service.InvalidMCPServerConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="MCP authentication configuration is invalid.",
         ) from exc
 
 

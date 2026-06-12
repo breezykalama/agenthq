@@ -15,6 +15,17 @@ class MCPServerStatus(StrEnum):
     ERROR = "error"
 
 
+class MCPTransportType(StrEnum):
+    STREAMABLE_HTTP = "streamable_http"
+    SSE = "sse"
+
+
+class MCPAuthType(StrEnum):
+    NONE = "none"
+    BEARER = "bearer"
+    API_KEY = "api_key"
+
+
 class MCPServer(Base):
     __tablename__ = "mcp_servers"
 
@@ -24,6 +35,27 @@ class MCPServer(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     server_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    transport_type: Mapped[MCPTransportType] = mapped_column(
+        Enum(
+            MCPTransportType,
+            name="mcp_transport_type",
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        nullable=False,
+        default=MCPTransportType.STREAMABLE_HTTP,
+    )
+    auth_type: Mapped[MCPAuthType] = mapped_column(
+        Enum(
+            MCPAuthType,
+            name="mcp_auth_type",
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        nullable=False,
+        default=MCPAuthType.NONE,
+    )
+    auth_secret_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    request_timeout_seconds: Mapped[int] = mapped_column(nullable=False, default=30)
+    connect_timeout_seconds: Mapped[int] = mapped_column(nullable=False, default=10)
     status: Mapped[MCPServerStatus] = mapped_column(
         Enum(
             MCPServerStatus,

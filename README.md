@@ -14,7 +14,7 @@ Backend API:
 
 ## Current Version
 
-AgentHQ v0.4.1
+AgentHQ v0.5.0
 
 ## Project Status
 
@@ -35,6 +35,7 @@ AgentHQ is a live, multi-tenant Enterprise AI Agent Governance Platform focused 
 * Authentication & RBAC
 * Security Event Trails
 * Centralized Abuse Protection
+* Real MCP Tool Discovery
 
 ## The Problem
 
@@ -64,6 +65,22 @@ AgentHQ provides:
 * Audit Logging
 * Compliance Reporting
 * Dashboard Analytics
+
+## AgentHQ v0.5.0
+
+AgentHQ v0.5.0 adds real MCP protocol tool discovery while preserving the deterministic mock
+adapter for demos and tests.
+
+* Connect to MCP servers over Streamable HTTP or SSE.
+* Initialize an MCP client session and discover tools through `tools/list`.
+* Select mock or real discovery with `MCP_DISCOVERY_MODE`.
+* Configure bounded connection and request timeouts per MCP server.
+* Reference bearer tokens or API keys through `MCP_AUTH_*` environment variables.
+* Disable HTTP redirects and preserve existing linked agents, tools, and successful sync timestamps
+  when discovery fails.
+* Keep sync failures sanitized and auditable.
+
+Real discovery imports tool names and descriptions only. AgentHQ does not execute MCP tools.
 
 ## AgentHQ v0.2.0
 
@@ -410,7 +427,7 @@ Production configuration is environment-driven:
 
 ```text
 Backend:  DATABASE_URL, BACKEND_CORS_ORIGINS, JWT_SECRET_KEY, BOOTSTRAP_SECRET, REDIS_URL,
-          ALLOW_PUBLIC_REGISTRATION, RATE_LIMITS_ENABLED
+          ALLOW_PUBLIC_REGISTRATION, RATE_LIMITS_ENABLED, MCP_DISCOVERY_MODE
 Frontend: VITE_API_BASE_URL
 ```
 
@@ -505,6 +522,38 @@ cd backend
 uv run fastapi dev app/main.py
 ```
 
+### Test Real MCP Discovery Locally
+
+Start a compliant MCP server with a Streamable HTTP or SSE endpoint, then configure the backend:
+
+```env
+MCP_DISCOVERY_MODE=real
+ALLOW_PRIVATE_MCP_URLS=true
+```
+
+For an authenticated server, store the credential in a backend-only environment variable:
+
+```env
+MCP_AUTH_LOCAL_DEMO=replace-with-the-local-server-token
+```
+
+Register the server through the MCP Servers page or API:
+
+```json
+{
+  "name": "Local MCP Demo",
+  "server_url": "http://127.0.0.1:9000/mcp",
+  "transport_type": "streamable_http",
+  "auth_type": "bearer",
+  "auth_secret_ref": "MCP_AUTH_LOCAL_DEMO",
+  "request_timeout_seconds": 30,
+  "connect_timeout_seconds": 10
+}
+```
+
+Run sync from AgentHQ. A successful sync creates or reuses the linked agent and imports discovered
+tool names and descriptions. Never place credentials in `server_url`.
+
 Run backend checks:
 
 ```bash
@@ -581,10 +630,10 @@ Screenshots can be added here once the visual demo flow stabilizes:
 * MCP URL and Error Hardening
 * Centralized Rate Limiting
 * Supabase RLS Lockdown
+* Real MCP Protocol Integration
 
 ### Upcoming
 
-* Real MCP Protocol Integration
 * Foundry Agent Registration
 * Copilot Studio Agent Registration
 * Cost Tracking

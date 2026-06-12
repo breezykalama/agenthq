@@ -15,6 +15,9 @@ Backend:
 | `ALLOW_PUBLIC_REGISTRATION` | `false` | Public legacy/demo registration should remain disabled in production. |
 | `REDIS_URL` | `redis://...` | Render Key Value internal URL used for production rate limiting. Protected endpoints fail closed when Redis is unavailable. |
 | `RATE_LIMITS_ENABLED` | `true` | Enables centralized abuse protection. |
+| `MCP_DISCOVERY_MODE` | `mock` or `real` | Selects deterministic demo discovery or real MCP protocol discovery. |
+| `ALLOW_PRIVATE_MCP_URLS` | `false` | Keep false in production unless private MCP connectivity is explicitly approved. |
+| `MCP_AUTH_*` | Secret value | Optional backend-only bearer token or API key referenced by an MCP server's `auth_secret_ref`. |
 
 Frontend:
 
@@ -50,10 +53,33 @@ The repository includes [render.yaml](render.yaml) and a Dockerfile at `backend/
    * `ALLOW_PUBLIC_REGISTRATION`: `false`
    * `REDIS_URL`: Render Key Value internal Redis connection string
    * `RATE_LIMITS_ENABLED`: `true`
+   * `MCP_DISCOVERY_MODE`: `real` to enable real MCP discovery
+   * `ALLOW_PRIVATE_MCP_URLS`: `false` unless private MCP endpoints are explicitly approved
+   * Any required `MCP_AUTH_*` credential variables
 6. Deploy the `agenthq-api` web service.
 7. Confirm `https://<service>.onrender.com/health` returns a successful response.
 
 The container runs `alembic upgrade head` before starting Uvicorn and binds to Render's injected `PORT`.
+
+### Real MCP Discovery
+
+Real discovery supports Streamable HTTP and SSE transports. AgentHQ initializes an MCP session and
+uses `tools/list`; it does not execute MCP tools.
+
+Configure authentication without putting credentials in URLs:
+
+1. Add a backend-only Render secret such as `MCP_AUTH_CUSTOMER_OPERATIONS`.
+2. Register the MCP server with `auth_type` set to `bearer` or `api_key`.
+3. Set `auth_secret_ref` to the environment variable name, not its value.
+
+AgentHQ sends bearer credentials in `Authorization: Bearer ...` and API keys in `X-API-Key`.
+Credential references must begin with `MCP_AUTH_`. HTTP redirects are disabled for discovery.
+Production rejects localhost and literal private, loopback, or link-local IP URLs unless
+`ALLOW_PRIVATE_MCP_URLS=true`.
+
+Each MCP server supports bounded `connect_timeout_seconds` and `request_timeout_seconds`. Discovery
+failures preserve existing linked agents, discovered tools, and the previous successful
+`last_sync_at`; clients receive a stable sanitized error.
 
 ### Migration Command
 
@@ -93,6 +119,7 @@ Do not automatically seed a production database.
 
 * Keep `DATABASE_URL` only in Render's secret environment variables.
 * Keep `JWT_SECRET_KEY`, `BOOTSTRAP_SECRET`, and `REDIS_URL` only in secret environment variables.
+* Keep all `MCP_AUTH_*` values only in backend secret environment variables.
 * Configure exact HTTPS CORS origins; do not use wildcard origins.
 * Keep rate limiting enabled in production. See [RATE_LIMITING.md](RATE_LIMITING.md).
 * Apply migrations before serving a new application version.

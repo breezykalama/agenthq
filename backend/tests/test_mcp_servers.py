@@ -48,6 +48,60 @@ def test_create_mcp_server(client: TestClient) -> None:
     assert mcp_server["deleted_at"] is None
 
 
+def test_create_mcp_server_with_real_discovery_configuration(client: TestClient) -> None:
+    payload = mcp_server_payload()
+    payload.update(
+        {
+            "transport_type": "sse",
+            "auth_type": "bearer",
+            "auth_secret_ref": "MCP_AUTH_CUSTOMER_OPERATIONS",
+            "request_timeout_seconds": 45,
+            "connect_timeout_seconds": 8,
+        }
+    )
+
+    response = client.post("/api/v1/mcp-servers", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["transport_type"] == "sse"
+    assert response.json()["auth_type"] == "bearer"
+    assert response.json()["auth_secret_ref"] == "MCP_AUTH_CUSTOMER_OPERATIONS"
+    assert response.json()["request_timeout_seconds"] == 45
+    assert response.json()["connect_timeout_seconds"] == 8
+
+
+@pytest.mark.parametrize(
+    "payload_update",
+    [
+        {"auth_type": "bearer"},
+        {"auth_type": "api_key", "auth_secret_ref": "DATABASE_URL"},
+        {"auth_type": "none", "auth_secret_ref": "MCP_AUTH_UNUSED"},
+    ],
+)
+def test_create_mcp_server_rejects_unsafe_auth_configuration(
+    client: TestClient,
+    payload_update: dict[str, object],
+) -> None:
+    payload = mcp_server_payload()
+    payload.update(payload_update)
+
+    response = client.post("/api/v1/mcp-servers", json=payload)
+
+    assert response.status_code == 422
+
+
+def test_update_mcp_server_rejects_incomplete_auth_configuration(client: TestClient) -> None:
+    mcp_server = create_mcp_server(client)
+
+    response = client.patch(
+        f"/api/v1/mcp-servers/{mcp_server['id']}",
+        json={"auth_type": "bearer"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "MCP authentication configuration is invalid."
+
+
 def test_create_mcp_server_requires_server_url(client: TestClient) -> None:
     payload = mcp_server_payload()
     del payload["server_url"]
@@ -206,6 +260,27 @@ def test_audit_log_created_after_mcp_server_create(client: TestClient) -> None:
     assert logs[0]["entity_id"] == mcp_server["id"]
     assert logs[0]["before"] is None
     assert logs[0]["after"]["name"] == "Knowledge MCP"
+
+
+def test_mcp_auth_secret_value_is_not_stored_in_audit_logs(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MCP_AUTH_CUSTOMER_OPERATIONS", "super-sensitive-token")
+    payload = mcp_server_payload()
+    payload.update(
+        {
+            "auth_type": "bearer",
+            "auth_secret_ref": "MCP_AUTH_CUSTOMER_OPERATIONS",
+        }
+    )
+
+    response = client.post("/api/v1/mcp-servers", json=payload)
+    logs = audit_logs(client, "mcp_server.created")
+
+    assert response.status_code == 201
+    assert "super-sensitive-token" not in str(logs)
+    assert logs[0]["after"]["auth_secret_ref"] == "MCP_AUTH_CUSTOMER_OPERATIONS"
 
 
 def test_audit_log_created_after_mcp_server_update(client: TestClient) -> None:
@@ -429,7 +504,7 @@ def test_audit_log_created_on_sync_failure(client: TestClient) -> None:
 
 def test_sync_failure_does_not_expose_adapter_details(client: TestClient) -> None:
     class SensitiveFailureAdapter:
-        def discover_tools(self, server_url: str) -> list[object]:
+        def discover_tools(self, target: object) -> list[object]:
             raise RuntimeError(
                 "Connection failed for https://user:password@internal.example/mcp?token=secret"
             )
@@ -450,3 +525,28 @@ def test_sync_failure_does_not_expose_adapter_details(client: TestClient) -> Non
     assert server["last_error"] == response.json()["detail"]
     assert "password" not in str(response.json()).lower()
     assert "internal.example" not in str(server).lower()
+
+
+def test_invalid_discovered_tool_metadata_uses_safe_failure_path(client: TestClient) -> None:
+    class InvalidToolAdapter:
+        def discover_tools(self, target: object) -> list[object]:
+            return [type("Tool", (), {"name": "x" * 256, "description": "invalid"})()]
+
+    mcp_server = create_mcp_server(client, "Invalid Tool MCP")
+    app = cast(FastAPI, client.app)
+    app.dependency_overrides[get_mcp_discovery_adapter] = lambda: InvalidToolAdapter()
+    try:
+        response = client.post(f"/api/v1/mcp-servers/{mcp_server['id']}/sync")
+    finally:
+        app.dependency_overrides.pop(get_mcp_discovery_adapter, None)
+
+    server = client.get(f"/api/v1/mcp-servers/{mcp_server['id']}").json()
+    logs = audit_logs(client, "mcp_server.sync_failed")
+    assert response.status_code == 502
+    assert response.json()["detail"] == (
+        "MCP discovery failed. Check server connectivity and configuration."
+    )
+    assert server["status"] == "error"
+    assert server["agent_id"] is None
+    assert server["last_sync_at"] is None
+    assert len(logs) == 1

@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -52,6 +53,10 @@ class Settings(BaseSettings):
         alias="ALLOW_PUBLIC_REGISTRATION",
     )
     allow_private_mcp_urls: bool | None = Field(default=None, alias="ALLOW_PRIVATE_MCP_URLS")
+    mcp_discovery_mode: Literal["mock", "real"] = Field(
+        default="mock",
+        alias="MCP_DISCOVERY_MODE",
+    )
     rate_limits_enabled: bool = Field(default=True, alias="RATE_LIMITS_ENABLED")
     redis_url: str | None = Field(default=None, alias="REDIS_URL")
     auth_rate_limit_attempts: int = Field(default=10, ge=1, alias="AUTH_RATE_LIMIT_ATTEMPTS")
