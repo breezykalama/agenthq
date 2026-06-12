@@ -12,6 +12,7 @@ from app.repositories import policy_rules as policy_rule_repository
 from app.schemas.audit_log import AuditLogCreate
 from app.schemas.policy_rule import PolicyRuleCreate, PolicyRuleRead, PolicyRuleUpdate
 from app.services import audit_logs as audit_log_service
+from app.services import governance_alerts as alert_service
 
 
 class PolicyRuleNotFoundError(Exception):
@@ -50,6 +51,7 @@ def create_policy_rule(db: Session, policy_rule_create: PolicyRuleCreate) -> Pol
             after=serialize_policy_rule(policy_rule),
         ),
     )
+    alert_service.reconcile_all_tools(db)
     return policy_rule
 
 
@@ -97,6 +99,7 @@ def update_policy_rule(
     policy_rule_update: PolicyRuleUpdate,
 ) -> PolicyRule:
     policy_rule = get_policy_rule_by_id(db, rule_id)
+    previously_covered = alert_service.covered_tool_ids(db)
     before = serialize_policy_rule(policy_rule)
     update_values = policy_rule_update.model_dump(exclude_unset=True)
     merged_values = {
@@ -128,11 +131,13 @@ def update_policy_rule(
             after=serialize_policy_rule(updated_rule),
         ),
     )
+    alert_service.reconcile_all_tools(db, previously_covered=previously_covered)
     return updated_rule
 
 
 def soft_delete_policy_rule(db: Session, rule_id: UUID) -> None:
     policy_rule = get_policy_rule_by_id(db, rule_id)
+    previously_covered = alert_service.covered_tool_ids(db)
     before = serialize_policy_rule(policy_rule)
     deleted_rule = policy_rule_repository.soft_delete_policy_rule(db, policy_rule)
     audit_log_service.create_audit_log(
@@ -145,6 +150,7 @@ def soft_delete_policy_rule(db: Session, rule_id: UUID) -> None:
             after=serialize_policy_rule(deleted_rule),
         ),
     )
+    alert_service.reconcile_all_tools(db, previously_covered=previously_covered)
 
 
 def validate_unique_name(db: Session, name: str) -> None:

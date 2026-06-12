@@ -2,6 +2,8 @@ import { useQueries } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { endpoints } from "../api/queries";
+import { useAuth } from "../auth/context";
+import { getEffectiveRole } from "../auth/roles";
 import { Card, DataState, EmptyState, MetricCard, PageHeader } from "../components/Ui";
 import type { CountMap, DashboardSummary } from "../types/api";
 
@@ -26,16 +28,23 @@ function CountList({ title, data }: { title: string; data?: CountMap }) {
 }
 
 export function DashboardPage() {
+  const { user } = useAuth();
+  const canViewAlerts = getEffectiveRole(user) !== "agent_owner";
   const [demoBannerDismissed, setDemoBannerDismissed] = useState(
     () => localStorage.getItem("agenthq_demo_banner_dismissed") === "true"
   );
-  const [summary, agentsByRisk, executionsByStatus, approvalsByStatus, agents] = useQueries({
+  const [summary, agentsByRisk, executionsByStatus, approvalsByStatus, agents, recentAlerts] = useQueries({
     queries: [
       { queryKey: ["dashboard-summary"], queryFn: endpoints.dashboardSummary },
       { queryKey: ["agents-by-risk"], queryFn: endpoints.agentsByRisk },
       { queryKey: ["executions-by-status"], queryFn: endpoints.executionsByStatus },
       { queryKey: ["approvals-by-status"], queryFn: endpoints.approvalsByStatus },
-      { queryKey: ["agents"], queryFn: endpoints.agents }
+      { queryKey: ["agents"], queryFn: endpoints.agents },
+      {
+        queryKey: ["governance-alerts", "recent"],
+        queryFn: () => endpoints.governanceAlerts({ limit: 5 }),
+        enabled: canViewAlerts
+      }
     ]
   });
 
@@ -84,6 +93,10 @@ export function DashboardPage() {
           <MetricCard label="Governed Tools" value={data?.governed_tools ?? 0} />
           <MetricCard label="Unreviewed Tools" value={data?.unreviewed_tools ?? 0} />
           <MetricCard label="Schema Changes This Month" value={data?.schema_changes_this_month ?? 0} />
+          <MetricCard label="Governance Health" value={`${data?.governance_health ?? 100}/100`} />
+          <MetricCard label="Open Alerts" value={data?.open_governance_alerts ?? 0} />
+          <MetricCard label="Critical Alerts" value={data?.critical_governance_alerts ?? 0} />
+          <MetricCard label="Governance Gaps" value={data?.governance_gaps ?? 0} />
           <MetricCard label="Active Users" value={data?.active_users ?? 0} />
           <MetricCard label="Total Cost" value={`$${data?.total_cost_usd ?? "0"}`} />
           <MetricCard label="Avg Latency" value={`${Math.round(data?.average_latency_ms ?? 0)} ms`} />
@@ -112,6 +125,23 @@ export function DashboardPage() {
           <CountList title="Approvals by Status" data={approvalsByStatus.data} />
         </DataState>
       </div>
+      {canViewAlerts ? <div className="mt-6">
+        <DataState isLoading={recentAlerts.isLoading} error={recentAlerts.error}>
+          <Card>
+            <h3 className="mb-3 text-sm font-semibold text-slate-900">Recent Governance Alerts</h3>
+            {recentAlerts.data?.items.length ? (
+              <div className="space-y-3">
+                {recentAlerts.data.items.map((alert) => (
+                  <div key={alert.id} className="flex flex-wrap justify-between gap-2 border-b pb-3 last:border-0 last:pb-0">
+                    <div><div className="text-sm font-medium">{alert.title}</div><div className="text-xs text-slate-500">{alert.alert_type.replace(/_/g, " ")}</div></div>
+                    <div className="text-xs text-slate-500">{alert.severity} · {alert.status}</div>
+                  </div>
+                ))}
+              </div>
+            ) : <p className="text-sm text-slate-500">No governance alerts have been recorded.</p>}
+          </Card>
+        </DataState>
+      </div> : null}
       {data?.total_agents === 0 ? (
         <div className="mt-6">
           <EmptyState

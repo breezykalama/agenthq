@@ -28,6 +28,10 @@ class DashboardSummary(BaseModel):
     governed_tools: int
     unreviewed_tools: int
     schema_changes_this_month: int
+    governance_health: int
+    open_governance_alerts: int
+    critical_governance_alerts: int
+    governance_gaps: int
     total_users: int
     active_users: int
     total_cost_usd: Decimal

@@ -21,6 +21,7 @@ import { MCPServersPage } from "../pages/MCPServersPage";
 import { OrganizationInvitesPage } from "../pages/OrganizationInvitesPage";
 import { RegisterPage } from "../pages/RegisterPage";
 import { ToolGovernancePage } from "../pages/ToolGovernancePage";
+import { GovernanceAlertsPage } from "../pages/GovernanceAlertsPage";
 
 export const router = createBrowserRouter([
   { path: "/", element: <LandingPage /> },
@@ -52,13 +53,16 @@ export const router = createBrowserRouter([
               { path: "policy-decision", element: <PolicyDecisionPage /> },
               { path: "policy-decisions", element: <PolicyDecisionPage /> },
               { path: "approvals", element: <ApprovalsPage /> },
-              { path: "executions", element: <ExecutionsPage /> }
-              ,{ path: "tool-governance", element: <ToolGovernancePage /> }
+              { path: "executions", element: <ExecutionsPage /> },
+              { path: "tool-governance", element: <ToolGovernancePage /> }
             ]
           },
           {
             element: <RoleRoute allowedRoles={["admin", "auditor", "operator"]} />,
-            children: [{ path: "incidents", element: <IncidentsPage /> }]
+            children: [
+              { path: "incidents", element: <IncidentsPage /> },
+              { path: "governance-alerts", element: <GovernanceAlertsPage /> }
+            ]
           },
           {
             element: <RoleRoute allowedRoles={["admin", "auditor"]} />,

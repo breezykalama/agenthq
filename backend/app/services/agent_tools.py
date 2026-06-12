@@ -7,9 +7,12 @@ from app.models.agent_tool import AgentTool
 from app.models.audit_log import AuditAction, JsonObject
 from app.repositories import agent_tools as agent_tool_repository
 from app.repositories import agents as agent_repository
+from app.repositories import tool_governance as governance_repository
 from app.schemas.agent_tool import AgentToolCreate, AgentToolRead, AgentToolUpdate
 from app.schemas.audit_log import AuditLogCreate
 from app.services import audit_logs as audit_log_service
+from app.services import governance_alerts as alert_service
+from app.services import tool_governance as tool_governance_service
 
 
 class AgentToolNotFoundError(Exception):
@@ -118,6 +121,14 @@ def update_agent_tool(
             after=serialize_agent_tool(updated_tool),
         ),
     )
+    if updated_tool.discovered_from_mcp_server_id is not None:
+        policies = governance_repository.list_enabled_policy_rules(db)
+        alert_service.reconcile_tool_pending(
+            db,
+            updated_tool,
+            has_policy=bool(tool_governance_service.applicable_policies(updated_tool, policies)),
+        )
+        db.commit()
     return updated_tool
 
 

@@ -12,6 +12,7 @@ from app.schemas.dashboard import (
     DashboardSummary,
     ExecutionsByStatus,
 )
+from app.services.governance_alerts import calculate_health
 
 
 def get_summary(db: Session) -> DashboardSummary:
@@ -30,6 +31,14 @@ def get_summary(db: Session) -> DashboardSummary:
         month_start=today_start.replace(day=1),
     )
     users = dashboard_repository.get_user_metrics(db)
+    health = calculate_health(
+        unreviewed_tools=mcp_servers.unreviewed_tools,
+        high_risk_unreviewed_tools=mcp_servers.high_risk_unreviewed_tools,
+        ungoverned_tools=mcp_servers.discovered_tools - mcp_servers.governed_tools,
+        open_alerts=mcp_servers.open_alerts,
+        critical_alerts=mcp_servers.critical_alerts,
+        high_alerts=mcp_servers.high_alerts,
+    )
 
     return DashboardSummary(
         total_agents=agents.total,
@@ -56,6 +65,10 @@ def get_summary(db: Session) -> DashboardSummary:
         governed_tools=mcp_servers.governed_tools,
         unreviewed_tools=mcp_servers.unreviewed_tools,
         schema_changes_this_month=mcp_servers.schema_changes_this_month,
+        governance_health=health.score,
+        open_governance_alerts=health.open_alerts,
+        critical_governance_alerts=health.critical_alerts,
+        governance_gaps=health.governance_gaps,
         total_users=users.total,
         active_users=users.active,
         total_cost_usd=executions.total_cost_usd,

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { api, getErrorMessage } from "../api/client";
 import { endpoints } from "../api/queries";
@@ -134,7 +135,7 @@ export function ToolGovernancePage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="border-b text-xs uppercase text-slate-500">
-                  <tr><th className="py-2">Tool</th><th>Status</th><th>Risk</th><th>Permission</th><th>Policies</th><th>Schema Change</th><th>Reviewed</th><th /></tr>
+                  <tr><th className="py-2">Tool</th><th>Status</th><th>Risk</th><th>Permission</th><th>Policies</th><th>Alerts</th><th>Schema Change</th><th>Reviewed</th><th /></tr>
                 </thead>
                 <tbody>
                   {filtered.map((tool) => (
@@ -142,6 +143,7 @@ export function ToolGovernancePage() {
                       <td className="py-3"><div className="font-medium">{tool.name}</div><div className="text-xs text-slate-500">{tool.agent_name} · {tool.mcp_server_name}</div></td>
                       <td><Badge>{tool.governance_status}</Badge></td><td>{tool.risk_level}</td><td>{tool.permission}</td>
                       <td>{tool.policy_count}</td>
+                      <td>{tool.active_alerts_count ? <Link className="text-blue-700 underline" to={`/governance-alerts?tool_id=${tool.id}`}>{tool.active_alerts_count} active</Link> : "None"}</td>
                       <td>{tool.schema_last_updated_at ? new Date(tool.schema_last_updated_at).toLocaleString() : "Never"}</td>
                       <td>{tool.reviewed_at ? new Date(tool.reviewed_at).toLocaleString() : "Not reviewed"}</td>
                       <td><SecondaryButton onClick={() => setSelected(tool)}>Review</SecondaryButton></td>

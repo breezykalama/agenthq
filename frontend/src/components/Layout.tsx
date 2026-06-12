@@ -11,6 +11,7 @@ const baseNavItems = [
   { to: "/dashboard", label: "Dashboard", shortLabel: "DB", roles: ["admin", "auditor", "operator", "agent_owner"] },
   { to: "/mcp-servers", label: "MCP Servers", shortLabel: "MC", roles: ["admin"] },
   { to: "/tool-governance", label: "Tool Governance", shortLabel: "TG", roles: ["admin", "operator"] },
+  { to: "/governance-alerts", label: "Governance Alerts", shortLabel: "GA", roles: ["admin", "auditor", "operator"] },
   { to: "/agents", label: "Agents", shortLabel: "AG", roles: ["admin", "agent_owner"] },
   { to: "/policy-rules", label: "Policy Rules", shortLabel: "PR", roles: ["admin"] },
   { to: "/policy-decisions", label: "Decision Tester", shortLabel: "DT", roles: ["admin", "operator"] },

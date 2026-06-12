@@ -39,6 +39,8 @@ class OrgPermission(StrEnum):
     MANAGE_AGENTS = "manage_agents"
     MANAGE_MCP_SERVERS = "manage_mcp_servers"
     REVIEW_TOOLS = "review_tools"
+    VIEW_ALERTS = "view_alerts"
+    MANAGE_ALERTS = "manage_alerts"
     MANAGE_POLICIES = "manage_policies"
     MANAGE_APPROVALS = "manage_approvals"
     MANAGE_EXECUTIONS = "manage_executions"
@@ -57,6 +59,7 @@ ROLE_PERMISSIONS: dict[UserRole, frozenset[OrgPermission]] = {
             OrgPermission.VIEW_AUDIT_LOGS,
             OrgPermission.VIEW_COMPLIANCE,
             OrgPermission.VIEW_DASHBOARD,
+            OrgPermission.VIEW_ALERTS,
         }
     ),
     UserRole.OPERATOR: frozenset(
@@ -65,6 +68,8 @@ ROLE_PERMISSIONS: dict[UserRole, frozenset[OrgPermission]] = {
             OrgPermission.MANAGE_EXECUTIONS,
             OrgPermission.MANAGE_INCIDENTS,
             OrgPermission.REVIEW_TOOLS,
+            OrgPermission.VIEW_ALERTS,
+            OrgPermission.MANAGE_ALERTS,
             OrgPermission.VIEW_INCIDENTS,
             OrgPermission.VIEW_DASHBOARD,
         }

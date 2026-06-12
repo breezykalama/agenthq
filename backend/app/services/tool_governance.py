@@ -9,6 +9,7 @@ from app.models.agent_tool import AgentTool
 from app.models.audit_log import AuditAction
 from app.models.policy_rule import PolicyRule, PolicyRuleScope
 from app.repositories import agent_tools as agent_tool_repository
+from app.repositories import governance_alerts as alert_repository
 from app.repositories import tool_governance as governance_repository
 from app.schemas.agent_tool import AgentToolReview
 from app.schemas.audit_log import AuditLogCreate
@@ -19,6 +20,7 @@ from app.schemas.tool_governance import (
 )
 from app.services import agent_tools as agent_tool_service
 from app.services import audit_logs as audit_log_service
+from app.services import governance_alerts as alert_service
 
 
 class DiscoveredToolNotFoundError(Exception):
@@ -48,6 +50,7 @@ def serialize_governance_tool(
     agent_name: str,
     server_name: str,
     policies: list[PolicyRule],
+    active_alert_ids: list[UUID] | None = None,
 ) -> ToolGovernanceRead:
     matching = applicable_policies(tool, policies)
     assert tool.discovered_from_mcp_server_id is not None
@@ -73,6 +76,8 @@ def serialize_governance_tool(
         schema_last_updated_at=tool.schema_last_updated_at,
         reviewed_by_user_id=tool.reviewed_by_user_id,
         reviewed_at=tool.reviewed_at,
+        active_alerts_count=len(active_alert_ids or []),
+        active_alert_ids=active_alert_ids or [],
     )
 
 
@@ -87,8 +92,9 @@ def list_tools(
     offset: int,
 ) -> tuple[list[ToolGovernanceRead], int]:
     policies = governance_repository.list_enabled_policy_rules(db)
+    alert_ids = alert_repository.active_alert_ids_by_tool(db)
     items = [
-        serialize_governance_tool(tool, agent_name, server_name, policies)
+        serialize_governance_tool(tool, agent_name, server_name, policies, alert_ids.get(tool.id))
         for tool, agent_name, server_name in governance_repository.list_discovered_tools(
             db,
             agent_id=agent_id,
@@ -104,9 +110,16 @@ def list_tools(
 
 def get_tool(db: Session, tool_id: UUID) -> ToolGovernanceRead:
     policies = governance_repository.list_enabled_policy_rules(db)
+    alert_ids = alert_repository.active_alert_ids_by_tool(db)
     for tool, agent_name, server_name in governance_repository.list_discovered_tools(db):
         if tool.id == tool_id:
-            return serialize_governance_tool(tool, agent_name, server_name, policies)
+            return serialize_governance_tool(
+                tool,
+                agent_name,
+                server_name,
+                policies,
+                alert_ids.get(tool.id),
+            )
     raise DiscoveredToolNotFoundError
 
 
@@ -160,6 +173,12 @@ def review_tool(db: Session, tool_id: UUID, review: AgentToolReview) -> ToolGove
                 metadata=metadata,
             ),
         )
+    policies = governance_repository.list_enabled_policy_rules(db)
+    alert_service.reconcile_tool_pending(
+        db,
+        tool,
+        has_policy=bool(applicable_policies(tool, policies)),
+    )
     db.commit()
     return get_tool(db, tool.id)
 

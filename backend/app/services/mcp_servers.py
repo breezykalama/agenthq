@@ -10,10 +10,12 @@ from app.core.security import assert_resource_in_org, log_resource_access_denied
 from app.models.agent import AgentRiskLevel, AgentStatus
 from app.models.agent_tool import AgentToolPermission
 from app.models.audit_log import AuditAction, AuditOutcome, JsonObject
+from app.models.governance_alert import GovernanceAlertSeverity, GovernanceAlertType
 from app.models.mcp_server import MCPAuthType, MCPServer, MCPServerStatus
 from app.repositories import agent_tools as agent_tool_repository
 from app.repositories import agents as agent_repository
 from app.repositories import mcp_servers as mcp_server_repository
+from app.repositories import tool_governance as governance_repository
 from app.schemas.agent import AgentCreate
 from app.schemas.agent_tool import AgentToolCreate
 from app.schemas.audit_log import AuditLogCreate
@@ -26,6 +28,8 @@ from app.schemas.mcp_server import (
 )
 from app.services import agents as agent_service
 from app.services import audit_logs as audit_log_service
+from app.services import governance_alerts as alert_service
+from app.services import tool_governance as tool_governance_service
 
 
 class MCPServerNotFoundError(Exception):
@@ -48,9 +52,7 @@ class InvalidMCPServerConfigurationError(Exception):
     pass
 
 
-MCP_DISCOVERY_FAILURE_MESSAGE = (
-    "MCP discovery failed. Check server connectivity and configuration."
-)
+MCP_DISCOVERY_FAILURE_MESSAGE = "MCP discovery failed. Check server connectivity and configuration."
 
 
 def serialize_mcp_server(mcp_server: MCPServer) -> JsonObject:
@@ -218,6 +220,7 @@ def sync_mcp_server(
             )
         }
         discovered_names: set[str] = set()
+        policies = governance_repository.list_enabled_policy_rules(db)
         for discovered_tool in discovered_tools:
             discovered_names.add(discovered_tool.name)
             existing_tool = existing_tools.get(discovered_tool.name)
@@ -267,6 +270,22 @@ def sync_mcp_server(
                     },
                     metadata={"new_schema_hash": new_schema_hash},
                 )
+                alert_service.create_tool_event_alert_pending(
+                    db,
+                    alert_type=GovernanceAlertType.NEW_TOOL_DISCOVERED,
+                    severity=GovernanceAlertSeverity.MEDIUM,
+                    tool=created_tool,
+                    title=f"New MCP tool discovered: {created_tool.name}",
+                    description="A new MCP tool is available for governance review.",
+                    metadata={"schema_hash": new_schema_hash},
+                )
+                alert_service.reconcile_tool_pending(
+                    db,
+                    created_tool,
+                    has_policy=bool(
+                        tool_governance_service.applicable_policies(created_tool, policies)
+                    ),
+                )
                 created_tools_count += 1
                 continue
 
@@ -314,6 +333,14 @@ def sync_mcp_server(
                     before=before_tool,
                     after=after_tool,
                 )
+                alert_service.create_tool_event_alert_pending(
+                    db,
+                    alert_type=GovernanceAlertType.DESCRIPTION_CHANGED,
+                    severity=GovernanceAlertSeverity.LOW,
+                    tool=existing_tool,
+                    title=f"Tool description changed: {existing_tool.name}",
+                    description="An MCP server changed the description of a discovered tool.",
+                )
             if schemas_changed:
                 audit_tool_change(
                     db,
@@ -326,6 +353,25 @@ def sync_mcp_server(
                         "new_schema_hash": new_schema_hash,
                     },
                 )
+                alert_service.create_tool_event_alert_pending(
+                    db,
+                    alert_type=GovernanceAlertType.SCHEMA_CHANGED,
+                    severity=GovernanceAlertSeverity.HIGH,
+                    tool=existing_tool,
+                    title=f"Tool schema changed: {existing_tool.name}",
+                    description="An MCP server changed the schema of a discovered tool.",
+                    metadata={
+                        "previous_schema_hash": before_tool["schema_hash"],
+                        "new_schema_hash": new_schema_hash,
+                    },
+                )
+            alert_service.reconcile_tool_pending(
+                db,
+                existing_tool,
+                has_policy=bool(
+                    tool_governance_service.applicable_policies(existing_tool, policies)
+                ),
+            )
             updated_tools_count += 1
 
         for removed_name, removed_tool in existing_tools.items():
@@ -344,6 +390,15 @@ def sync_mcp_server(
                 tool_id=removed_tool.id,
                 before=removed_before,
                 after={**removed_before, "deleted_at": removed_tool.deleted_at.isoformat()},
+                metadata={"previous_schema_hash": removed_tool.schema_hash},
+            )
+            alert_service.create_tool_event_alert_pending(
+                db,
+                alert_type=GovernanceAlertType.TOOL_REMOVED,
+                severity=GovernanceAlertSeverity.HIGH,
+                tool=removed_tool,
+                title=f"MCP tool removed: {removed_tool.name}",
+                description="A previously discovered MCP tool is no longer reported by its server.",
                 metadata={"previous_schema_hash": removed_tool.schema_hash},
             )
         synced_server = mcp_server_repository.update_mcp_server_state_pending(

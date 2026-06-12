@@ -16,6 +16,11 @@ from app.db.session import get_db
 from app.main import create_app
 from app.models.agent import Agent, AgentRiskLevel
 from app.models.agent_tool import AgentTool, AgentToolPermission
+from app.models.governance_alert import (
+    GovernanceAlert,
+    GovernanceAlertSeverity,
+    GovernanceAlertType,
+)
 from app.models.organization import Organization, OrganizationMembership
 from app.models.user import User, UserRole
 
@@ -82,9 +87,10 @@ def tenant_clients() -> Iterator[TenantClients]:
 
     app = create_app()
     app.dependency_overrides[get_db] = override_get_db
-    with patch("app.core.rate_limit.get_rate_limit_backend", return_value=rate_limiter), TestClient(
-        app
-    ) as client:
+    with (
+        patch("app.core.rate_limit.get_rate_limit_backend", return_value=rate_limiter),
+        TestClient(app) as client,
+    ):
         yield TenantClients(
             client=client,
             headers_a={"Authorization": f"Bearer {token_a}"},
@@ -199,9 +205,7 @@ def test_request_organization_id_is_ignored_and_cross_tenant_references_rejected
         assert tool.status_code == 404
         assert execution.status_code == 404
         with tenants.session_local() as db:
-            persisted = db.scalar(
-                select(Agent).where(Agent.id == UUID(injected.json()["id"]))
-            )
+            persisted = db.scalar(select(Agent).where(Agent.id == UUID(injected.json()["id"])))
             assert persisted is not None
             assert str(persisted.organization_id) == tenants.organization_a_id
 
@@ -248,6 +252,39 @@ def test_tool_governance_is_tenant_scoped() -> None:
         assert response.status_code == 200
         assert response.json()["total"] == 1
         assert response.json()["items"][0]["name"] == "tool_a"
+
+
+def test_governance_alerts_are_tenant_scoped() -> None:
+    with tenant_clients() as tenants:
+        with tenants.session_local() as db:
+            alert_a = GovernanceAlert(
+                organization_id=UUID(tenants.organization_a_id),
+                alert_type=GovernanceAlertType.UNGOVERNED_TOOL,
+                severity=GovernanceAlertSeverity.HIGH,
+                title="Organization A alert",
+                description="Only organization A can read this.",
+            )
+            alert_b = GovernanceAlert(
+                organization_id=UUID(tenants.organization_b_id),
+                alert_type=GovernanceAlertType.UNGOVERNED_TOOL,
+                severity=GovernanceAlertSeverity.HIGH,
+                title="Organization B alert",
+                description="Only organization B can read this.",
+            )
+            db.add_all([alert_a, alert_b])
+            db.commit()
+            alert_b_id = alert_b.id
+
+        response = tenants.client.get("/api/v1/governance-alerts", headers=tenants.headers_a)
+        cross_tenant = tenants.client.get(
+            f"/api/v1/governance-alerts/{alert_b_id}",
+            headers=tenants.headers_a,
+        )
+
+        assert response.status_code == 200
+        assert response.json()["total"] == 1
+        assert response.json()["items"][0]["title"] == "Organization A alert"
+        assert cross_tenant.status_code == 404
 
 
 def test_audit_dashboard_and_compliance_are_tenant_scoped() -> None:
@@ -378,8 +415,7 @@ def test_organization_admin_changes_membership_not_global_user() -> None:
             persisted_user = db.get(User, member_id)
             persisted_membership = db.scalar(
                 select(OrganizationMembership).where(
-                    OrganizationMembership.organization_id
-                    == UUID(tenants.organization_a_id),
+                    OrganizationMembership.organization_id == UUID(tenants.organization_a_id),
                     OrganizationMembership.user_id == member_id,
                 )
             )
@@ -572,8 +608,7 @@ def test_cross_tenant_resource_ids_are_safely_hidden() -> None:
             for event in security_events["items"]
         )
         assert all(
-            tenants.organization_b_id not in str(event)
-            for event in security_events["items"]
+            tenants.organization_b_id not in str(event) for event in security_events["items"]
         )
 
 

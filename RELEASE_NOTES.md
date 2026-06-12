@@ -226,3 +226,22 @@ Real MCP tool execution remains out of scope for this release.
 * Ruff clean
 * MyPy clean
 * Frontend build and lint passing
+# AgentHQ v0.5.2 - Governance Alerts & Monitoring
+
+## Highlights
+
+* Added organization-scoped governance alerts with audited lifecycle management.
+* Added automatic alerts for MCP tool discovery, removal, schema drift, and description changes.
+* Added alerts for high-risk unreviewed tools, ungoverned tools, and lost policy coverage.
+* Added idempotent active-alert generation and redacted alert metadata.
+* Added governance health scoring and dashboard monitoring metrics.
+* Added responsive Governance Alert Center and tool-level alert links.
+* Preserved tenant isolation, optimized dashboard query counts, and safe cross-tenant not-found behavior.
+* Notifications, email delivery, and MCP tool execution remain intentionally out of scope.
+
+## Quality
+
+* 311 automated backend tests passing
+* Ruff clean
+* MyPy clean
+* Frontend build and lint passing

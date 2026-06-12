@@ -37,6 +37,8 @@ class ToolGovernanceRead(BaseModel):
     schema_last_updated_at: datetime | None
     reviewed_by_user_id: UUID | None
     reviewed_at: datetime | None
+    active_alerts_count: int
+    active_alert_ids: list[UUID]
 
 
 class ToolGovernanceListResponse(BaseModel):

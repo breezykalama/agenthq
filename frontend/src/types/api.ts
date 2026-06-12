@@ -13,6 +13,15 @@ export type PolicyRuleScope = "global" | "agent" | "tool";
 export type PolicyRuleEffect = "allow" | "require_approval" | "block";
 export type ToolPermission = "read" | "write" | "execute" | "admin";
 export type ToolGovernanceStatus = "unreviewed" | "reviewed" | "governed";
+export type GovernanceAlertType =
+  | "new_tool_discovered"
+  | "tool_removed"
+  | "schema_changed"
+  | "description_changed"
+  | "high_risk_unreviewed"
+  | "ungoverned_tool"
+  | "policy_coverage_lost";
+export type GovernanceAlertStatus = "open" | "acknowledged" | "resolved";
 export type UserRole = "admin" | "auditor" | "operator" | "agent_owner";
 export type MCPServerStatus = "connected" | "disconnected" | "error";
 export type MCPTransportType = "streamable_http" | "sse";
@@ -153,6 +162,10 @@ export interface DashboardSummary {
   governed_tools: number;
   unreviewed_tools: number;
   schema_changes_this_month: number;
+  governance_health: number;
+  open_governance_alerts: number;
+  critical_governance_alerts: number;
+  governance_gaps: number;
   total_users: number;
   active_users: number;
   total_cost_usd: string;
@@ -181,6 +194,8 @@ export interface ToolGovernanceItem {
   schema_last_updated_at: string | null;
   reviewed_by_user_id: string | null;
   reviewed_at: string | null;
+  active_alerts_count: number;
+  active_alert_ids: string[];
 }
 
 export interface ToolGovernanceSummary {
@@ -193,6 +208,41 @@ export interface ToolGovernanceSummary {
   risk_distribution: Record<string, number>;
   review_coverage: number;
   policy_coverage: number;
+}
+
+export interface GovernanceAlert {
+  id: string;
+  organization_id: string;
+  alert_type: GovernanceAlertType;
+  severity: RiskLevel;
+  status: GovernanceAlertStatus;
+  agent_id: string | null;
+  tool_id: string | null;
+  mcp_server_id: string | null;
+  title: string;
+  description: string;
+  metadata: Record<string, unknown> | null;
+  acknowledged_by_user_id: string | null;
+  acknowledged_at: string | null;
+  resolved_by_user_id: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GovernanceHealth {
+  score: number;
+  metrics: {
+    unreviewed_tools: number;
+    high_risk_unreviewed_tools: number;
+    ungoverned_tools: number;
+    unresolved_critical_alerts: number;
+    unresolved_high_alerts: number;
+  };
+  open_alerts: number;
+  critical_alerts: number;
+  governance_gaps: number;
+  explanation: string;
 }
 
 export interface MCPServer {

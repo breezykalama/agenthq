@@ -1,7 +1,7 @@
 # AgentHQ Version
 
 Current Version:
-v0.5.1
+v0.5.2
 
 Release Date:
 June 2026
@@ -10,13 +10,13 @@ Status:
 Live
 
 Release Name:
-Tool Schema Governance
+Governance Alerts & Monitoring
 
 Quality:
-305 tests passing
+311 tests passing
 
 Key Theme:
-Governance visibility for discovered MCP tool schemas
+Proactive governance risk visibility and alert management
 
 Frontend:
 https://agenthq-seven.vercel.app/

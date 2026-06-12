@@ -5,6 +5,7 @@ from app.models.agent_tool import AgentTool
 from app.models.approval import Approval
 from app.models.audit_log import AuditLog
 from app.models.execution import Execution
+from app.models.governance_alert import GovernanceAlert
 from app.models.incident import Incident
 from app.models.mcp_server import MCPServer
 from app.models.organization import Organization, OrganizationMembership
@@ -18,6 +19,7 @@ __all__ = [
     "Approval",
     "AuditLog",
     "Execution",
+    "GovernanceAlert",
     "Incident",
     "MCPServer",
     "Organization",

@@ -10,6 +10,8 @@ import type {
   DashboardSummary,
   Execution,
   Incident,
+  GovernanceAlert,
+  GovernanceHealth,
   ListResponse,
   MCPServer,
   PolicyDecisionResponse,
@@ -56,5 +58,9 @@ export const endpoints = {
   toolGovernance: () =>
     api.get<ListResponse<ToolGovernanceItem>>("/api/v1/tool-governance").then((r) => r.data),
   toolGovernanceSummary: () =>
-    api.get<ToolGovernanceSummary>("/api/v1/tool-governance-summary").then((r) => r.data)
+    api.get<ToolGovernanceSummary>("/api/v1/tool-governance-summary").then((r) => r.data),
+  governanceAlerts: (params: Record<string, string | number> = {}) =>
+    api.get<ListResponse<GovernanceAlert>>("/api/v1/governance-alerts", { params }).then((r) => r.data),
+  governanceHealth: () =>
+    api.get<GovernanceHealth>("/api/v1/governance-health").then((r) => r.data)
 };

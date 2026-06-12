@@ -11,6 +11,11 @@ from app.models.agent_tool import AgentTool
 from app.models.approval import Approval, ApprovalStatus
 from app.models.audit_log import AuditAction, AuditLog
 from app.models.execution import Execution, ExecutionStatus
+from app.models.governance_alert import (
+    GovernanceAlert,
+    GovernanceAlertSeverity,
+    GovernanceAlertStatus,
+)
 from app.models.incident import Incident, IncidentStatus
 from app.models.mcp_server import MCPServer, MCPServerStatus
 from app.models.organization import OrganizationMembership
@@ -62,6 +67,10 @@ class MCPServerMetrics:
     governed_tools: int
     unreviewed_tools: int
     schema_changes_this_month: int
+    high_risk_unreviewed_tools: int
+    open_alerts: int
+    critical_alerts: int
+    high_alerts: int
 
 
 @dataclass(frozen=True)
@@ -192,6 +201,46 @@ def get_mcp_server_metrics(db: Session, *, month_start: datetime) -> MCPServerMe
         )
         .scalar_subquery()
     )
+    high_risk_unreviewed = (
+        select(func.count())
+        .select_from(AgentTool)
+        .where(
+            *discovered_filter,
+            AgentTool.reviewed_at.is_(None),
+            AgentTool.risk_level.in_((AgentRiskLevel.HIGH, AgentRiskLevel.CRITICAL)),
+        )
+        .scalar_subquery()
+    )
+    active_alert_statuses = (GovernanceAlertStatus.OPEN, GovernanceAlertStatus.ACKNOWLEDGED)
+    open_alerts = (
+        select(func.count())
+        .select_from(GovernanceAlert)
+        .where(
+            GovernanceAlert.organization_id == organization_id,
+            GovernanceAlert.status.in_(active_alert_statuses),
+        )
+        .scalar_subquery()
+    )
+    critical_alerts = (
+        select(func.count())
+        .select_from(GovernanceAlert)
+        .where(
+            GovernanceAlert.organization_id == organization_id,
+            GovernanceAlert.status.in_(active_alert_statuses),
+            GovernanceAlert.severity == GovernanceAlertSeverity.CRITICAL,
+        )
+        .scalar_subquery()
+    )
+    high_alerts = (
+        select(func.count())
+        .select_from(GovernanceAlert)
+        .where(
+            GovernanceAlert.organization_id == organization_id,
+            GovernanceAlert.status.in_(active_alert_statuses),
+            GovernanceAlert.severity == GovernanceAlertSeverity.HIGH,
+        )
+        .scalar_subquery()
+    )
     row = db.execute(
         select(
             func.count(),
@@ -201,6 +250,10 @@ def get_mcp_server_metrics(db: Session, *, month_start: datetime) -> MCPServerMe
             governed_tools,
             unreviewed_tools,
             schema_changes,
+            high_risk_unreviewed,
+            open_alerts,
+            critical_alerts,
+            high_alerts,
         ).where(
             MCPServer.organization_id == organization_id,
             MCPServer.deleted_at.is_(None),

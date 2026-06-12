@@ -14,7 +14,7 @@ Backend API:
 
 ## Current Version
 
-AgentHQ v0.5.1
+AgentHQ v0.5.2
 
 ## Project Status
 
@@ -94,6 +94,19 @@ AgentHQ v0.5.1 adds Tool Schema Governance for discovered MCP tools.
 * View organization-scoped tool governance metrics, policy coverage, and formatted schemas.
 
 AgentHQ continues to provide governance visibility only. It does not call or execute MCP tools.
+
+## AgentHQ v0.5.2
+
+AgentHQ v0.5.2 adds proactive Governance Alerts and Monitoring.
+
+* Generate organization-scoped alerts for new, removed, and changed MCP tools.
+* Surface unreviewed, ungoverned, high-risk, and policy-coverage gaps.
+* Prevent duplicate active alerts while preserving alert history.
+* Acknowledge, resolve, and reopen alerts with audited lifecycle transitions.
+* Calculate a governance health score from tool posture and unresolved alerts.
+* Monitor recent alerts and governance gaps from the dashboard and Alert Center.
+
+Notifications, email delivery, MCP tool execution, and tool calls remain intentionally out of scope.
 
 ## AgentHQ v0.2.0
 
@@ -298,6 +311,8 @@ The architecture includes organization and membership context, tenant-isolation 
 * MCP Server Registration
 * Tool Discovery
 * Tool Governance
+* Governance Alerts
+* Governance Health Monitoring
 
 ### Security & Reliability
 
@@ -338,7 +353,7 @@ The architecture includes organization and membership context, tenant-isolation 
 
 ## Quality
 
-* 282 automated tests passing
+* 311 automated tests passing
 * Ruff clean
 * MyPy clean
 * PostgreSQL migrations verified
