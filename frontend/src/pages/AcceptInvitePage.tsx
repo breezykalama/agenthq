@@ -34,7 +34,7 @@ export function AcceptInvitePage() {
         full_name: fullName || null,
         password
       });
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (requestError) {
       setError(getInviteErrorMessage(requestError));
     } finally {

@@ -37,3 +37,45 @@ main code {
 main textarea {
   resize: vertical;
 }
+
+@layer components {
+  .landing-button {
+    @apply inline-flex min-h-10 items-center justify-center rounded-md px-4 py-2 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2;
+  }
+
+  .landing-button-primary {
+    @apply bg-emerald-400 text-slate-950 hover:bg-emerald-300 focus-visible:outline-emerald-300;
+  }
+
+  .landing-button-outline {
+    @apply border border-white/35 bg-transparent text-white hover:bg-white/10 focus-visible:outline-white;
+  }
+
+  .landing-button-light {
+    @apply bg-white text-slate-950 hover:bg-slate-100 focus-visible:outline-white;
+  }
+
+  .landing-button-dark {
+    @apply bg-slate-950 text-white hover:bg-slate-800 focus-visible:outline-slate-950;
+  }
+
+  .landing-button-white {
+    @apply border border-slate-300 bg-white text-slate-950 hover:bg-slate-50 focus-visible:outline-slate-950;
+  }
+
+  .landing-link {
+    @apply inline-flex min-h-10 items-center justify-center rounded-md text-sm font-semibold text-white transition hover:text-emerald-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white;
+  }
+
+  .section-kicker {
+    @apply text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700;
+  }
+
+  .section-heading {
+    @apply mt-4 text-3xl font-semibold leading-tight text-slate-950 sm:text-4xl;
+  }
+
+  .section-copy {
+    @apply mt-5 text-base leading-7 text-slate-600;
+  }
+}

@@ -14,7 +14,7 @@ export function LoginPage() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  if (user) return <Navigate to="/" replace />;
+  if (user) return <Navigate to="/dashboard" replace />;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -22,7 +22,7 @@ export function LoginPage() {
     setIsSubmitting(true);
     try {
       await login({ email, password });
-      const destination = (location.state as { from?: string } | null)?.from ?? "/";
+      const destination = (location.state as { from?: string } | null)?.from ?? "/dashboard";
       navigate(destination, { replace: true });
     } catch (requestError) {
       setError(getErrorMessage(requestError));

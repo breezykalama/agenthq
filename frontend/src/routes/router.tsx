@@ -16,11 +16,13 @@ import { IncidentsPage } from "../pages/IncidentsPage";
 import { PolicyDecisionPage } from "../pages/PolicyDecisionPage";
 import { PolicyRulesPage } from "../pages/PolicyRulesPage";
 import { LoginPage } from "../pages/LoginPage";
+import { LandingPage } from "../pages/LandingPage";
 import { MCPServersPage } from "../pages/MCPServersPage";
 import { OrganizationInvitesPage } from "../pages/OrganizationInvitesPage";
 import { RegisterPage } from "../pages/RegisterPage";
 
 export const router = createBrowserRouter([
+  { path: "/", element: <LandingPage /> },
   { path: "/login", element: <LoginPage /> },
   { path: "/register", element: <RegisterPage /> },
   { path: "/bootstrap", element: <BootstrapPage /> },
@@ -29,10 +31,9 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute />,
     children: [
       {
-        path: "/",
         element: <Layout />,
         children: [
-          { index: true, element: <DashboardPage /> },
+          { path: "dashboard", element: <DashboardPage /> },
           {
             element: <RoleRoute allowedRoles={["admin"]} />,
             children: [

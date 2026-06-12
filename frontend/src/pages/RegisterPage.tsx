@@ -15,7 +15,7 @@ export function RegisterPage() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  if (user) return <Navigate to="/" replace />;
+  if (user) return <Navigate to="/dashboard" replace />;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -23,7 +23,7 @@ export function RegisterPage() {
     setIsSubmitting(true);
     try {
       await register({ full_name: fullName, email, password });
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {

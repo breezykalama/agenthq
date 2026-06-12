@@ -8,7 +8,7 @@ import { formatRole } from "../utils/format";
 import { TemporaryOnboarding } from "./Onboarding";
 
 const baseNavItems = [
-  { to: "/", label: "Dashboard", shortLabel: "DB", roles: ["admin", "auditor", "operator", "agent_owner"] },
+  { to: "/dashboard", label: "Dashboard", shortLabel: "DB", roles: ["admin", "auditor", "operator", "agent_owner"] },
   { to: "/mcp-servers", label: "MCP Servers", shortLabel: "MC", roles: ["admin"] },
   { to: "/agents", label: "Agents", shortLabel: "AG", roles: ["admin", "agent_owner"] },
   { to: "/policy-rules", label: "Policy Rules", shortLabel: "PR", roles: ["admin"] },

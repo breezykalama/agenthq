@@ -17,6 +17,7 @@ export interface BootstrapPayload {
   admin_full_name: string;
   admin_email: string;
   admin_password: string;
+  bootstrap_secret?: string;
 }
 
 export const authApi = {
@@ -24,9 +25,11 @@ export const authApi = {
     api.post<User>("/api/v1/auth/register", payload).then((response) => response.data),
   login: (payload: LoginPayload) =>
     api.post<TokenResponse>("/api/v1/auth/login", payload).then((response) => response.data),
-  bootstrap: (payload: BootstrapPayload) =>
+  bootstrap: ({ bootstrap_secret, ...payload }: BootstrapPayload) =>
     api
-      .post<BootstrapTokenResponse>("/api/v1/organizations/bootstrap", payload)
+      .post<BootstrapTokenResponse>("/api/v1/organizations/bootstrap", payload, {
+        headers: bootstrap_secret ? { "X-Bootstrap-Secret": bootstrap_secret } : undefined
+      })
       .then((response) => response.data),
   me: () => api.get<User>("/api/v1/auth/me").then((response) => response.data)
 };

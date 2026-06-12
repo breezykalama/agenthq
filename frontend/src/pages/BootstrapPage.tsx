@@ -20,7 +20,7 @@ export function BootstrapPage() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  if (user) return <Navigate to="/" replace />;
+  if (user) return <Navigate to="/dashboard" replace />;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -33,7 +33,7 @@ export function BootstrapPage() {
         admin_email: adminEmail,
         admin_password: adminPassword
       });
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (requestError) {
       setError(
         axios.isAxiosError(requestError) && requestError.response?.status === 409
