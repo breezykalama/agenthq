@@ -5,10 +5,35 @@
 body {
   background: #f5f7fb;
   color: #17202a;
+  min-width: 320px;
 }
 
 input,
 select,
 textarea {
   font: inherit;
+}
+
+main form,
+main section,
+main div {
+  min-width: 0;
+}
+
+main table {
+  min-width: 42rem;
+}
+
+main td,
+main th {
+  padding-right: 0.75rem;
+}
+
+main pre,
+main code {
+  max-width: 100%;
+}
+
+main textarea {
+  resize: vertical;
 }
