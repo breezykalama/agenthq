@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 import { api, getErrorMessage } from "../api/client";
 import { endpoints } from "../api/queries";
@@ -14,7 +14,14 @@ import {
   SecondaryButton,
   inputClass
 } from "../components/Ui";
-import type { ListResponse, PolicyRule, PolicySimulation } from "../types/api";
+import type {
+  Agent,
+  AgentTool,
+  ListResponse,
+  PolicyRule,
+  PolicyRuleScope,
+  PolicySimulation
+} from "../types/api";
 
 function formString(form: FormData, key: string) {
   return String(form.get(key) ?? "");
@@ -24,7 +31,23 @@ export function PolicyRulesPage() {
   const queryClient = useQueryClient();
   const [previewPayload, setPreviewPayload] = useState<Record<string, unknown> | null>(null);
   const [editingRule, setEditingRule] = useState<PolicyRule | null>(null);
+  const [scope, setScope] = useState<PolicyRuleScope>("global");
+  const [selectedAgentId, setSelectedAgentId] = useState("");
+  const [selectedToolId, setSelectedToolId] = useState("");
   const rules = useQuery({ queryKey: ["policy-rules"], queryFn: endpoints.policyRules });
+  const agents = useQuery({ queryKey: ["agents"], queryFn: endpoints.agents });
+  const tools = useQuery({
+    queryKey: ["agent-tools", selectedAgentId],
+    queryFn: () => endpoints.agentTools(selectedAgentId),
+    enabled: Boolean(selectedAgentId)
+  });
+
+  useEffect(() => {
+    setScope(editingRule?.scope ?? "global");
+    setSelectedAgentId(editingRule?.agent_id ?? "");
+    setSelectedToolId(editingRule?.tool_id ?? "");
+  }, [editingRule]);
+
   const simulation = useMutation({
     mutationFn: (payload: unknown) => endpoints.simulatePolicy(payload)
   });
@@ -44,14 +67,12 @@ export function PolicyRulesPage() {
   });
 
   function payloadFromForm(form: FormData): Record<string, unknown> {
-    const agentId = formString(form, "agent_id");
-    const toolId = formString(form, "tool_id");
     return {
       name: formString(form, "name"),
       description: formString(form, "description") || null,
-      scope: formString(form, "scope"),
-      agent_id: agentId || null,
-      tool_id: toolId || null,
+      scope,
+      agent_id: scope === "global" ? null : selectedAgentId || null,
+      tool_id: scope === "tool" ? selectedToolId || null : null,
       risk_level: formString(form, "risk_level"),
       effect: formString(form, "effect"),
       is_enabled: form.get("is_enabled") === "on",
@@ -111,12 +132,69 @@ export function PolicyRulesPage() {
             <Field label="Name"><input name="name" required defaultValue={editingRule?.name} className={inputClass} placeholder="Global high-risk requires approval" /></Field>
             <Field label="Description"><textarea name="description" defaultValue={editingRule?.description ?? ""} className={inputClass} placeholder="When and why this rule should apply" /></Field>
             <Field label="Scope">
-              <select name="scope" className={inputClass} defaultValue={editingRule?.scope ?? "global"}>
+              <select
+                name="scope"
+                className={inputClass}
+                value={scope}
+                onChange={(event) => {
+                  const nextScope = event.target.value as PolicyRuleScope;
+                  setScope(nextScope);
+                  if (nextScope === "global") setSelectedAgentId("");
+                  if (nextScope !== "tool") setSelectedToolId("");
+                }}
+              >
                 <option value="global">global</option><option value="agent">agent</option><option value="tool">tool</option>
               </select>
             </Field>
-            <Field label="Agent ID"><input name="agent_id" defaultValue={editingRule?.agent_id ?? ""} className={inputClass} placeholder="Required for agent/tool scope" /></Field>
-            <Field label="Tool ID"><input name="tool_id" defaultValue={editingRule?.tool_id ?? ""} className={inputClass} placeholder="Required for tool scope" /></Field>
+            {scope !== "global" ? (
+              <Field label="Agent">
+                <select
+                  className={inputClass}
+                  value={selectedAgentId}
+                  required
+                  disabled={agents.isLoading}
+                  onChange={(event) => {
+                    setSelectedAgentId(event.target.value);
+                    setSelectedToolId("");
+                  }}
+                >
+                  <option value="">{agents.isLoading ? "Loading agents..." : "Select an agent"}</option>
+                  {(agents.data as ListResponse<Agent> | undefined)?.items.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name} - {agent.department}
+                    </option>
+                  ))}
+                </select>
+                {agents.error ? <p className="mt-1 text-xs text-red-600">{getErrorMessage(agents.error)}</p> : null}
+                {!agents.isLoading && agents.data?.total === 0 ? (
+                  <p className="mt-1 text-xs text-slate-500">Create or sync an agent before adding an agent-scoped policy.</p>
+                ) : null}
+              </Field>
+            ) : null}
+            {scope === "tool" ? (
+              <Field label="Tool">
+                <select
+                  className={inputClass}
+                  value={selectedToolId}
+                  required
+                  disabled={!selectedAgentId || tools.isLoading}
+                  onChange={(event) => setSelectedToolId(event.target.value)}
+                >
+                  <option value="">
+                    {!selectedAgentId ? "Select an agent first" : tools.isLoading ? "Loading tools..." : "Select a tool"}
+                  </option>
+                  {(tools.data as ListResponse<AgentTool> | undefined)?.items.map((tool) => (
+                    <option key={tool.id} value={tool.id}>
+                      {tool.name} - {tool.risk_level} risk / {tool.permission}
+                    </option>
+                  ))}
+                </select>
+                {tools.error ? <p className="mt-1 text-xs text-red-600">{getErrorMessage(tools.error)}</p> : null}
+                {selectedAgentId && !tools.isLoading && tools.data?.total === 0 ? (
+                  <p className="mt-1 text-xs text-slate-500">This agent has no available tools yet.</p>
+                ) : null}
+              </Field>
+            ) : null}
             <Field label="Risk Level">
               <select name="risk_level" className={inputClass} defaultValue={editingRule?.risk_level ?? "high"}>
                 <option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="critical">critical</option>
