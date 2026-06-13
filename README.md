@@ -14,7 +14,7 @@ Backend API:
 
 ## Current Version
 
-AgentHQ v0.5.3
+AgentHQ v0.6.0
 
 ## Project Status
 
@@ -37,6 +37,7 @@ AgentHQ is a live, multi-tenant Enterprise AI Agent Governance Platform focused 
 * Centralized Abuse Protection
 * Real MCP Tool Discovery
 * Policy Simulation & Impact Analysis
+* MCP Gateway Policy Enforcement
 
 ## The Problem
 
@@ -81,7 +82,8 @@ adapter for demos and tests.
   when discovery fails.
 * Keep sync failures sanitized and auditable.
 
-Real discovery imports tool names and descriptions only. AgentHQ does not execute MCP tools.
+Real discovery imports tool definitions only. Governed tool calls are handled separately by the
+v0.6.0 MCP Gateway.
 
 ## AgentHQ v0.5.1
 
@@ -94,7 +96,8 @@ AgentHQ v0.5.1 adds Tool Schema Governance for discovered MCP tools.
 * Calculate governance status from human review and applicable policy coverage.
 * View organization-scoped tool governance metrics, policy coverage, and formatted schemas.
 
-AgentHQ continues to provide governance visibility only. It does not call or execute MCP tools.
+Tool Schema Governance remains read-only; governed tool calls are handled separately by the v0.6.0
+MCP Gateway.
 
 ## AgentHQ v0.5.2
 
@@ -123,6 +126,25 @@ AgentHQ v0.5.3 adds read-only Policy Simulation and Impact Analysis.
 
 Simulations are organization-scoped and do not persist policies, create alerts, or change execution
 behavior.
+
+## AgentHQ v0.6.0
+
+AgentHQ v0.6.0 introduces the MCP Gateway and turns governance policy decisions into an enforcement
+boundary for routed MCP tool calls.
+
+* Issue hashed, revocable, server-scoped gateway tokens.
+* List only enabled and reviewed or governed MCP tools.
+* Evaluate policies before every gateway tool call.
+* Block upstream calls when policy denies them.
+* Require approved, organization-scoped approvals when policy requires approval.
+* Forward allowed calls to real MCP servers through Streamable HTTP or SSE.
+* Record execution status, latency, sanitized summaries, and gateway audit events.
+* Prevent duplicate upstream calls with gateway-token, tool, and idempotency-key records.
+* Rate limit gateway listing, calls, and credential management.
+
+AgentHQ can enforce governance only for MCP traffic routed through the gateway. Production
+deployments requiring strict enforcement must prevent governed clients from reaching upstream MCP
+servers directly.
 
 ## AgentHQ v0.2.0
 
@@ -299,7 +321,10 @@ Organizations own governance resources, while memberships define each user's org
 
 AgentHQ uses a React frontend for the tenant-aware governance console, a FastAPI backend for API workflows, modular governance services for policy decisions and lifecycle rules, PostgreSQL persistence for organization-scoped operational records, and audit/compliance capabilities for reporting and review.
 
-The architecture includes organization and membership context, tenant-isolation enforcement, JWT authentication, reusable RBAC enforcement, an MCP Server Registry, and an MCP Discovery Layer that synchronizes discovered tools into the governance layer.
+The architecture includes organization and membership context, tenant-isolation enforcement, JWT
+authentication, reusable RBAC enforcement, an MCP Server Registry, an MCP Discovery Layer that
+synchronizes discovered tools, and an MCP Gateway that enforces policies before forwarding approved
+tool calls upstream.
 
 ## Core Capabilities
 
@@ -329,6 +354,8 @@ The architecture includes organization and membership context, tenant-isolation 
 * MCP Server Registration
 * Tool Discovery
 * Tool Governance
+* MCP Gateway Policy Enforcement
+* Real Governed Tool Calls
 * Governance Alerts
 * Governance Health Monitoring
 
@@ -371,7 +398,7 @@ The architecture includes organization and membership context, tenant-isolation 
 
 ## Quality
 
-* 320 automated tests passing
+* 338 automated tests passing
 * Ruff clean
 * MyPy clean
 * PostgreSQL migrations verified

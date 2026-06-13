@@ -14,6 +14,7 @@ import type {
   GovernanceHealth,
   ListResponse,
   MCPServer,
+  MCPGatewayToken,
   PolicyDecisionResponse,
   PolicyImpactSummary,
   PolicyRule
@@ -51,6 +52,12 @@ export const endpoints = {
     api.get<ListResponse<AuditLog>>("/api/v1/audit-logs", { params }).then((r) => r.data),
   mcpServers: () =>
     api.get<ListResponse<MCPServer>>("/api/v1/mcp-servers").then((r) => r.data),
+  mcpGatewayTokens: (mcpServerId: string) =>
+    api
+      .get<ListResponse<MCPGatewayToken>>("/api/v1/mcp-gateway-tokens", {
+        params: { mcp_server_id: mcpServerId }
+      })
+      .then((r) => r.data),
   complianceSummary: () =>
     api.get<ComplianceSummary>("/api/v1/compliance/summary").then((r) => r.data),
   complianceIncidents: () =>

@@ -20,6 +20,8 @@ from app.api.governance_alerts import health_router as governance_health_router
 from app.api.governance_alerts import router as governance_alerts_router
 from app.api.health import router as health_router
 from app.api.incidents import router as incidents_router
+from app.api.mcp_gateway import gateway_router as mcp_gateway_router
+from app.api.mcp_gateway import management_router as mcp_gateway_management_router
 from app.api.mcp_servers import router as mcp_servers_router
 from app.api.organization_invites import router as organization_invites_router
 from app.api.organizations import router as organizations_router
@@ -43,7 +45,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="AgentHQ", version="0.5.3", lifespan=lifespan)
+    app = FastAPI(title="AgentHQ", version="0.6.0", lifespan=lifespan)
 
     @app.middleware("http")
     async def request_context_middleware(
@@ -90,6 +92,8 @@ def create_app() -> FastAPI:
     app.include_router(policy_simulations_router)
     app.include_router(incidents_router)
     app.include_router(mcp_servers_router)
+    app.include_router(mcp_gateway_management_router)
+    app.include_router(mcp_gateway_router)
     app.include_router(compliance_router)
     app.include_router(tool_governance_router)
     app.include_router(tool_governance_summary_router)

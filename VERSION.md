@@ -1,7 +1,7 @@
 # AgentHQ Version
 
 Current Version:
-v0.5.3
+v0.6.0
 
 Release Date:
 June 2026
@@ -10,13 +10,13 @@ Status:
 Live
 
 Release Name:
-Policy Simulation & Impact Analysis
+MCP Gateway & Policy Enforcement Proxy
 
 Quality:
-320 tests passing
+338 tests passing
 
 Key Theme:
-Read-only policy preview and governance impact intelligence
+Governed real MCP tool calls through an enforcement boundary
 
 Frontend:
 https://agenthq-seven.vercel.app/

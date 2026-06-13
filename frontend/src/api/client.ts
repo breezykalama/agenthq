@@ -9,6 +9,13 @@ export const api = axios.create({
   }
 });
 
+export const gatewayApi = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || "",
+  headers: {
+    "Content-Type": "application/json"
+  }
+});
+
 export function getStoredToken(): string | null {
   return localStorage.getItem(AUTH_TOKEN_KEY);
 }
@@ -62,4 +69,11 @@ export function getErrorMessage(error: unknown): string {
     return "AgentHQ could not complete the request. Please try again.";
   }
   return "AgentHQ could not complete the request. Please try again.";
+}
+
+export function getGatewayErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error) && error.response?.status === 401) {
+    return "The gateway token is invalid, expired, rotated, or revoked.";
+  }
+  return getErrorMessage(error);
 }

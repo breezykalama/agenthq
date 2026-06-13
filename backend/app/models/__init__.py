@@ -7,6 +7,7 @@ from app.models.audit_log import AuditLog
 from app.models.execution import Execution
 from app.models.governance_alert import GovernanceAlert
 from app.models.incident import Incident
+from app.models.mcp_gateway import MCPGatewayCallRecord, MCPGatewayToken
 from app.models.mcp_server import MCPServer
 from app.models.organization import Organization, OrganizationMembership
 from app.models.organization_invite import OrganizationInvite
@@ -22,6 +23,8 @@ __all__ = [
     "GovernanceAlert",
     "Incident",
     "MCPServer",
+    "MCPGatewayCallRecord",
+    "MCPGatewayToken",
     "Organization",
     "OrganizationMembership",
     "OrganizationInvite",

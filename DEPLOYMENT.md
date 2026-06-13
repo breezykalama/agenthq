@@ -18,6 +18,9 @@ Backend:
 | `MCP_DISCOVERY_MODE` | `mock` or `real` | Selects deterministic demo discovery or real MCP protocol discovery. |
 | `ALLOW_PRIVATE_MCP_URLS` | `false` | Keep false in production unless private MCP connectivity is explicitly approved. |
 | `MCP_AUTH_*` | Secret value | Optional backend-only bearer token or API key referenced by an MCP server's `auth_secret_ref`. |
+| `GATEWAY_LIST_RATE_LIMIT_ATTEMPTS` | `60` | Per-token/server governed tool-list requests per rate-limit window. |
+| `GATEWAY_CALL_RATE_LIMIT_ATTEMPTS` | `30` | Per-token/tool governed calls per rate-limit window. |
+| `GATEWAY_TOKEN_RATE_LIMIT_ATTEMPTS` | `10` | Gateway token management actions per rate-limit window. |
 
 Frontend:
 
@@ -64,7 +67,7 @@ The container runs `alembic upgrade head` before starting Uvicorn and binds to R
 ### Real MCP Discovery
 
 Real discovery supports Streamable HTTP and SSE transports. AgentHQ initializes an MCP session and
-uses `tools/list`; it does not execute MCP tools.
+uses `tools/list`. Real tool calls occur only when a client explicitly uses the AgentHQ MCP Gateway.
 
 Configure authentication without putting credentials in URLs:
 
@@ -80,6 +83,46 @@ Production rejects localhost and literal private, loopback, or link-local IP URL
 Each MCP server supports bounded `connect_timeout_seconds` and `request_timeout_seconds`. Discovery
 failures preserve existing linked agents, discovered tools, and the previous successful
 `last_sync_at`; clients receive a stable sanitized error.
+
+### MCP Gateway Policy Enforcement
+
+Create a server-scoped gateway token from the MCP Servers page or
+`POST /api/v1/mcp-gateway-tokens`. The raw token is returned only on creation or rotation and must
+be stored by the calling agent or MCP client as a secret.
+
+Gateway clients send:
+
+```text
+Authorization: Bearer <gateway-token>
+```
+
+The REST-first v0.6.0 gateway exposes:
+
+```text
+GET  /api/v1/mcp-gateway/{mcp_server_id}/info
+GET  /api/v1/mcp-gateway/{mcp_server_id}/tools
+POST /api/v1/mcp-gateway/{mcp_server_id}/tools/{tool_id}/call
+```
+
+Full MCP Streamable HTTP protocol compatibility at the AgentHQ gateway endpoint is not included in
+v0.6.0. Clients integrate through the REST gateway endpoints while the enforcement service remains
+transport-independent for a future MCP-compatible facade.
+
+The gateway hides unreviewed, disabled, and non-executable tools; evaluates policy before forwarding
+calls; enforces approved approvals; records executions; and audits gateway outcomes. Gateway tokens
+are hashed at rest, server-scoped, revocable, rotatable, and rate limited.
+
+When an `idempotency_key` is supplied, repeated calls using the same gateway token and tool return
+the previous execution status and safe summary without calling the upstream tool again. Full prior
+tool output is intentionally not persisted for replay.
+
+Approval reuse is allowed in v0.6.0 when the approval is approved, belongs to the same organization
+and agent, and its `requested_action` exactly matches the tool name. The reused approval ID is
+included in gateway audit metadata.
+
+Strict enforcement requires network and credential controls that prevent governed clients from
+calling upstream MCP servers directly. If a client retains a direct upstream URL and credential, it
+can bypass AgentHQ.
 
 ### Migration Command
 
@@ -120,6 +163,8 @@ Do not automatically seed a production database.
 * Keep `DATABASE_URL` only in Render's secret environment variables.
 * Keep `JWT_SECRET_KEY`, `BOOTSTRAP_SECRET`, and `REDIS_URL` only in secret environment variables.
 * Keep all `MCP_AUTH_*` values only in backend secret environment variables.
+* Store raw gateway tokens only in the calling client's secret store; AgentHQ shows them once.
+* Restrict direct upstream MCP access when using AgentHQ as an enforcement boundary.
 * Configure exact HTTPS CORS origins; do not use wildcard origins.
 * Keep rate limiting enabled in production. See [RATE_LIMITING.md](RATE_LIMITING.md).
 * Apply migrations before serving a new application version.

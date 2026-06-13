@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { api, getErrorMessage } from "../api/client";
+import { api, gatewayApi, getErrorMessage, getGatewayErrorMessage } from "../api/client";
 import { endpoints } from "../api/queries";
 import { useAuth } from "../auth/context";
 import { getEffectiveRole } from "../auth/roles";
@@ -17,7 +17,13 @@ import {
   SecondaryButton,
   inputClass
 } from "../components/Ui";
-import type { MCPServerSyncResponse } from "../types/api";
+import type {
+  MCPGatewayCallResponse,
+  MCPGatewayTokenCreated,
+  MCPGatewayTool,
+  MCPServer,
+  MCPServerSyncResponse
+} from "../types/api";
 
 const actionLinkClass =
   "rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50";
@@ -33,6 +39,7 @@ export function MCPServersPage() {
   const [authType, setAuthType] = useState("none");
   const [syncResult, setSyncResult] = useState<MCPServerSyncResponse | null>(null);
   const [copiedAgentId, setCopiedAgentId] = useState<string | null>(null);
+  const [gatewayServer, setGatewayServer] = useState<MCPServer | null>(null);
   const servers = useQuery({ queryKey: ["mcp-servers"], queryFn: endpoints.mcpServers });
   const createServer = useMutation({
     mutationFn: (payload: unknown) => api.post("/api/v1/mcp-servers", payload),
@@ -133,6 +140,9 @@ export function MCPServersPage() {
                             onClick={() => syncServer.mutate(server.id)}
                           >
                             {isSyncing ? "Syncing..." : "Sync Tools"}
+                          </SecondaryButton>
+                          <SecondaryButton onClick={() => setGatewayServer(server)}>
+                            Manage Gateway
                           </SecondaryButton>
                           {server.agent_id ? (
                             <>
@@ -309,7 +319,195 @@ export function MCPServersPage() {
           </div>
         </Card>
       ) : null}
+      {isAdmin && gatewayServer ? (
+        <GatewayPanel server={gatewayServer} onClose={() => setGatewayServer(null)} />
+      ) : null}
     </>
+  );
+}
+
+function GatewayPanel({ server, onClose }: { server: MCPServer; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [rawToken, setRawToken] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [tools, setTools] = useState<MCPGatewayTool[]>([]);
+  const [callResult, setCallResult] = useState<MCPGatewayCallResponse | null>(null);
+  const tokens = useQuery({
+    queryKey: ["mcp-gateway-tokens", server.id],
+    queryFn: () => endpoints.mcpGatewayTokens(server.id)
+  });
+  const createToken = useMutation({
+    mutationFn: (name: string) =>
+      api
+        .post<MCPGatewayTokenCreated>("/api/v1/mcp-gateway-tokens", {
+          mcp_server_id: server.id,
+          name
+        })
+        .then((response) => response.data),
+    onSuccess: (created) => {
+      setRawToken(created.token);
+      void queryClient.invalidateQueries({ queryKey: ["mcp-gateway-tokens", server.id] });
+    }
+  });
+  const rotateToken = useMutation({
+    mutationFn: (tokenId: string) =>
+      api
+        .post<MCPGatewayTokenCreated>(`/api/v1/mcp-gateway-tokens/${tokenId}/rotate`)
+        .then((response) => response.data),
+    onSuccess: (rotated) => {
+      setRawToken(rotated.token);
+      void queryClient.invalidateQueries({ queryKey: ["mcp-gateway-tokens", server.id] });
+    }
+  });
+  const revokeToken = useMutation({
+    mutationFn: (tokenId: string) => api.post(`/api/v1/mcp-gateway-tokens/${tokenId}/revoke`),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["mcp-gateway-tokens", server.id] })
+  });
+  const loadTools = useMutation({
+    mutationFn: () =>
+      gatewayApi
+        .get<{ items: MCPGatewayTool[] }>(`/api/v1/mcp-gateway/${server.id}/tools`, {
+          headers: { Authorization: `Bearer ${rawToken}` }
+        })
+        .then((response) => response.data.items),
+    onSuccess: setTools
+  });
+  const callTool = useMutation({
+    mutationFn: ({
+      toolId,
+      payload,
+      approvalId
+    }: {
+      toolId: string;
+      payload: Record<string, unknown>;
+      approvalId: string | null;
+    }) =>
+      gatewayApi
+        .post<MCPGatewayCallResponse>(
+          `/api/v1/mcp-gateway/${server.id}/tools/${toolId}/call`,
+          { input_payload: payload, approval_id: approvalId },
+          { headers: { Authorization: `Bearer ${rawToken}` } }
+        )
+        .then((response) => response.data),
+    onSuccess: setCallResult
+  });
+  const gatewayEndpoint = `${String(gatewayApi.defaults.baseURL ?? "").replace(/\/$/, "")}/api/v1/mcp-gateway/${server.id}`;
+
+  function submitToken(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    createToken.mutate(String(new FormData(event.currentTarget).get("gateway_name") ?? ""));
+    event.currentTarget.reset();
+  }
+
+  function submitCall(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      callTool.mutate({
+        toolId: String(form.get("tool_id") ?? ""),
+        payload: JSON.parse(String(form.get("input_payload") ?? "{}")) as Record<string, unknown>,
+        approvalId: String(form.get("approval_id") ?? "") || null
+      });
+    } catch {
+      setCallResult(null);
+    }
+  }
+
+  return (
+    <Card className="mt-4 border-emerald-200">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-slate-950">AgentHQ Gateway · {server.name}</h3>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+            Configure agents to connect to AgentHQ Gateway instead of the upstream MCP server.
+            AgentHQ enforces policies, approvals, audit logging, and compliance controls before
+            forwarding allowed calls.
+          </p>
+        </div>
+        <SecondaryButton onClick={onClose}>Close</SecondaryButton>
+      </div>
+      <div className="mt-4 rounded-md bg-slate-50 p-3">
+        <div className="text-xs font-medium uppercase text-slate-500">Gateway endpoint</div>
+        <div className="mt-1 break-all font-mono text-xs text-slate-800">{gatewayEndpoint}</div>
+      </div>
+      <div className="mt-5 grid gap-5 xl:grid-cols-2">
+        <div>
+          <h4 className="font-medium">Gateway Tokens</h4>
+          <form className="mt-3 flex flex-col gap-2 sm:flex-row" onSubmit={submitToken}>
+            <input
+              name="gateway_name"
+              className={inputClass}
+              placeholder="Production agent client"
+              required
+            />
+            <PrimaryButton disabled={createToken.isPending}>Create token</PrimaryButton>
+          </form>
+          {rawToken ? (
+            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
+              <div className="font-medium text-amber-950">Copy this token now. It is shown once.</div>
+              <div className="mt-2 break-all font-mono text-xs text-amber-900">{rawToken}</div>
+              <SecondaryButton
+                onClick={() => {
+                  void navigator.clipboard.writeText(rawToken);
+                  setCopied(true);
+                }}
+              >
+                {copied ? "Copied" : "Copy token"}
+              </SecondaryButton>
+            </div>
+          ) : null}
+          <DataState isLoading={tokens.isLoading} error={tokens.error}>
+            <div className="mt-3 space-y-2">
+              {tokens.data?.items.map((token) => (
+                <div key={token.id} className="flex flex-wrap items-center justify-between gap-2 border-b py-2 text-sm">
+                  <div>
+                    <span className="font-medium">{token.name}</span> <Badge>{token.status}</Badge>
+                    <div className="text-xs text-slate-500">Last used: {formatDate(token.last_used_at)}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <SecondaryButton onClick={() => rotateToken.mutate(token.id)}>Rotate</SecondaryButton>
+                    {token.status === "active" ? <SecondaryButton onClick={() => revokeToken.mutate(token.id)}>Revoke</SecondaryButton> : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </DataState>
+        </div>
+        <div>
+          <h4 className="font-medium">Gateway Call Test</h4>
+          <p className="mt-1 text-sm text-slate-500">
+            Use the one-time token above to load governed tools and test policy enforcement.
+          </p>
+          <SecondaryButton disabled={!rawToken || loadTools.isPending} onClick={() => loadTools.mutate()}>
+            {loadTools.isPending ? "Loading..." : "Load governed tools"}
+          </SecondaryButton>
+          <form className="mt-3 space-y-3" onSubmit={submitCall}>
+            <Field label="Tool">
+              <select name="tool_id" className={inputClass} required>
+                <option value="">Select governed tool</option>
+                {tools.map((tool) => <option key={tool.id} value={tool.id}>{tool.name}</option>)}
+              </select>
+            </Field>
+            <Field label="JSON input">
+              <textarea name="input_payload" className={inputClass} defaultValue="{}" rows={4} />
+            </Field>
+            <Field label="Approved approval ID (optional)">
+              <input name="approval_id" className={inputClass} placeholder="Required when policy requires approval" />
+            </Field>
+            <PrimaryButton disabled={!rawToken || callTool.isPending}>
+              {callTool.isPending ? "Calling..." : "Call through gateway"}
+            </PrimaryButton>
+          </form>
+          {loadTools.error || callTool.error ? <p className="mt-3 text-sm text-red-700">{getGatewayErrorMessage(loadTools.error ?? callTool.error)}</p> : null}
+          {callResult ? <pre className="mt-3 max-h-80 overflow-auto rounded-md bg-slate-950 p-3 text-xs text-slate-100">{JSON.stringify(callResult, null, 2)}</pre> : null}
+        </div>
+      </div>
+      <p className="mt-5 text-xs text-amber-800">
+        Strict enforcement requires upstream MCP servers to reject direct client access. Traffic
+        sent directly to the upstream server bypasses AgentHQ.
+      </p>
+    </Card>
   );
 }
 

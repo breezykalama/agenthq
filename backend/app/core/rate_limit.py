@@ -24,8 +24,14 @@ SENSITIVE_LIMIT_SETTINGS = {
     "execution_create": "execution_rate_limit_attempts",
     "execution_update": "execution_rate_limit_attempts",
     "mcp_sync": "mcp_sync_rate_limit_attempts",
+    "gateway_token": "gateway_token_rate_limit_attempts",
     "policy_decision": "policy_decision_rate_limit_attempts",
     "compliance_access": "compliance_rate_limit_attempts",
+}
+
+GATEWAY_LIMIT_SETTINGS = {
+    "gateway_tools": "gateway_list_rate_limit_attempts",
+    "gateway_call": "gateway_call_rate_limit_attempts",
 }
 
 
@@ -184,6 +190,33 @@ def enforce_authenticated_rate_limit(
         resource_id=resource_id,
         keys=[key],
         limit=getattr(settings, SENSITIVE_LIMIT_SETTINGS[scope]),
+        window_seconds=settings.sensitive_rate_limit_window_seconds,
+    )
+
+
+def enforce_gateway_rate_limit(
+    request: Request,
+    db: Session,
+    scope: str,
+    *,
+    gateway_token_id: UUID,
+    organization_id: UUID,
+    resource_id: UUID,
+) -> None:
+    settings = get_settings()
+    if not settings.rate_limits_enabled:
+        return
+    _enforce_rate_limit(
+        request,
+        db=db,
+        scope=scope,
+        resource_type="mcp_gateway",
+        resource_id=resource_id,
+        keys=[
+            f"gateway:{scope}:organization:{organization_id}:token:{gateway_token_id}:"
+            f"resource:{resource_id}"
+        ],
+        limit=getattr(settings, GATEWAY_LIMIT_SETTINGS[scope]),
         window_seconds=settings.sensitive_rate_limit_window_seconds,
     )
 

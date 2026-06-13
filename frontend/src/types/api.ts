@@ -26,6 +26,7 @@ export type UserRole = "admin" | "auditor" | "operator" | "agent_owner";
 export type MCPServerStatus = "connected" | "disconnected" | "error";
 export type MCPTransportType = "streamable_http" | "sse";
 export type MCPAuthType = "none" | "bearer" | "api_key";
+export type MCPGatewayTokenStatus = "active" | "revoked";
 export type OrganizationInviteStatus = "pending" | "accepted" | "expired" | "revoked";
 
 export interface User {
@@ -319,6 +320,44 @@ export interface MCPServerSyncResponse {
   updated_tools_count: number;
   status: MCPServerStatus;
   last_sync_at: string;
+}
+
+export interface MCPGatewayToken {
+  id: string;
+  mcp_server_id: string;
+  name: string;
+  status: MCPGatewayTokenStatus;
+  last_used_at: string | null;
+  expires_at: string | null;
+  created_by_user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MCPGatewayTokenCreated extends MCPGatewayToken {
+  token: string;
+}
+
+export interface MCPGatewayTool {
+  id: string;
+  name: string;
+  description: string | null;
+  input_schema: Record<string, unknown> | null;
+  output_schema: Record<string, unknown> | null;
+  risk_level: RiskLevel;
+  permission: ToolPermission;
+  governance_status: ToolGovernanceStatus;
+}
+
+export interface MCPGatewayCallResponse {
+  execution_id: string;
+  status: ExecutionStatus;
+  policy_decision: PolicyRuleEffect;
+  policy_decision_reason: string;
+  approval_id: string | null;
+  result: Record<string, unknown> | null;
+  error: string | null;
+  idempotent_replay: boolean;
 }
 
 export interface PolicyRule {

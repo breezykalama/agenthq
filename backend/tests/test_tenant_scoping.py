@@ -287,6 +287,32 @@ def test_governance_alerts_are_tenant_scoped() -> None:
         assert cross_tenant.status_code == 404
 
 
+def test_gateway_token_cannot_access_another_organization_server() -> None:
+    with tenant_clients() as tenants:
+        server_a = tenants.client.post(
+            "/api/v1/mcp-servers",
+            headers=tenants.headers_a,
+            json={"name": "Gateway A", "server_url": "https://a.example.com/mcp"},
+        ).json()
+        server_b = tenants.client.post(
+            "/api/v1/mcp-servers",
+            headers=tenants.headers_b,
+            json={"name": "Gateway B", "server_url": "https://b.example.com/mcp"},
+        ).json()
+        token_a = tenants.client.post(
+            "/api/v1/mcp-gateway-tokens",
+            headers=tenants.headers_a,
+            json={"mcp_server_id": server_a["id"], "name": "Organization A token"},
+        ).json()["token"]
+
+        response = tenants.client.get(
+            f"/api/v1/mcp-gateway/{server_b['id']}/tools",
+            headers={"Authorization": f"Bearer {token_a}"},
+        )
+
+        assert response.status_code == 401
+
+
 def test_policy_simulation_rejects_cross_tenant_targets() -> None:
     with tenant_clients() as tenants:
         agent_b = create_agent(tenants.client, tenants.headers_b, "Simulation Target B")

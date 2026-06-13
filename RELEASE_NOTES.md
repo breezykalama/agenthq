@@ -266,3 +266,29 @@ Real MCP tool execution remains out of scope for this release.
 * Ruff clean
 * MyPy clean
 * Frontend build and lint passing
+
+# AgentHQ v0.6.0 - MCP Gateway & Policy Enforcement Proxy
+
+## Highlights
+
+* Added a REST-first MCP governance gateway for real routed tool calls.
+* Added hashed, one-time-display, server-scoped gateway tokens with rotation and revocation.
+* Added governed tool listing that hides unreviewed and disabled tools.
+* Added policy and approval enforcement before upstream MCP calls.
+* Added real Streamable HTTP and SSE `tools/call` forwarding through the official MCP client.
+* Added execution records, latency tracking, safe errors, and gateway security audit events.
+* Added idempotency protection to prevent duplicate upstream calls.
+* Added Redis/in-memory gateway rate limits with production fail-closed behavior.
+* Added admin gateway management and safe call testing to the MCP Servers page.
+
+## Known Limitation
+
+AgentHQ enforces only MCP traffic routed through the gateway. Strict deployments must restrict
+direct client access to upstream MCP servers.
+
+## Quality
+
+* 338 automated backend tests passing
+* Ruff clean
+* MyPy clean
+* Frontend build and lint passing

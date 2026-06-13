@@ -90,6 +90,21 @@ class Settings(BaseSettings):
         ge=1,
         alias="MCP_SYNC_RATE_LIMIT_ATTEMPTS",
     )
+    gateway_list_rate_limit_attempts: int = Field(
+        default=60,
+        ge=1,
+        alias="GATEWAY_LIST_RATE_LIMIT_ATTEMPTS",
+    )
+    gateway_call_rate_limit_attempts: int = Field(
+        default=30,
+        ge=1,
+        alias="GATEWAY_CALL_RATE_LIMIT_ATTEMPTS",
+    )
+    gateway_token_rate_limit_attempts: int = Field(
+        default=10,
+        ge=1,
+        alias="GATEWAY_TOKEN_RATE_LIMIT_ATTEMPTS",
+    )
     policy_decision_rate_limit_attempts: int = Field(
         default=60,
         ge=1,
