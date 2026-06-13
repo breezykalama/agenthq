@@ -179,6 +179,9 @@ def review_tool(db: Session, tool_id: UUID, review: AgentToolReview) -> ToolGove
         tool,
         has_policy=bool(applicable_policies(tool, policies)),
     )
+    from app.services import risk_compliance as risk_service
+
+    risk_service.reconcile(db, commit=False)
     db.commit()
     return get_tool(db, tool.id)
 

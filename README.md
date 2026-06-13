@@ -14,7 +14,7 @@ Backend API:
 
 ## Current Version
 
-AgentHQ v0.7.0
+AgentHQ v0.8.0
 
 ## Project Status
 
@@ -39,6 +39,9 @@ AgentHQ is a live, multi-tenant Enterprise AI Agent Governance Platform focused 
 * Policy Simulation & Impact Analysis
 * MCP Gateway Policy Enforcement
 * Dual-Protocol REST and MCP Gateway
+* AI Risk Register
+* Compliance Controls and Evaluation
+* Executive AI Risk Reporting
 
 ## The Problem
 
@@ -161,6 +164,22 @@ AgentHQ v0.7.0 introduces a dual-protocol governed gateway for external AI agent
 
 See [GATEWAY_INTEGRATION.md](GATEWAY_INTEGRATION.md) for setup examples and the production
 direct-bypass safety model.
+
+## AgentHQ v0.8.0
+
+AgentHQ v0.8.0 introduces the AI Risk & Compliance Center for enterprise governance visibility.
+
+* Automatically maintain an organization-scoped AI Risk Register for discovered MCP tools.
+* Evaluate five built-in, extensible compliance controls.
+* Measure policy coverage, governance status, and compliance posture per tool.
+* Calculate an explainable organization AI Risk Score and Compliance Score.
+* Capture one lightweight daily risk snapshot when executive risk reporting is accessed.
+* Surface compliance violations, critical coverage gaps, and critical unreviewed tools as
+  governance alerts.
+* Provide executive risk reporting, dashboard widgets, a Risk Register page, and an expanded
+  Compliance Center.
+
+Compliance evaluation is informational and does not change policy enforcement behavior.
 
 ## AgentHQ v0.2.0
 
@@ -414,7 +433,7 @@ tool calls upstream.
 
 ## Quality
 
-* 346 automated tests passing
+* 354 automated tests passing
 * Ruff clean
 * MyPy clean
 * PostgreSQL migrations verified

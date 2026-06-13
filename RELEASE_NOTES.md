@@ -84,6 +84,20 @@ The dashboard summary now reports total users and active users.
 
 AgentHQ governs only calls routed through its gateway. Strict production enforcement requires
 preventing agents from directly reaching upstream MCP servers.
+
+# AgentHQ v0.8.0 - AI Risk & Compliance Center
+
+## Highlights
+
+* Added an automatically reconciled, organization-scoped AI Risk Register.
+* Added five built-in extensible compliance controls.
+* Added organization, agent, MCP server, and tool compliance evaluation.
+* Added explainable AI Risk and Compliance scores.
+* Added daily risk snapshots and executive risk summary reporting.
+* Added compliance-driven governance alerts.
+* Added Risk Register, Compliance Center, and dashboard risk experiences.
+
+Compliance evaluation is informational and does not change policy enforcement behavior.
 * Live frontend and backend deployment
 
 # AgentHQ v0.3.2 — Reliability & Performance Hardening

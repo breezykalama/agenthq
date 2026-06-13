@@ -30,10 +30,11 @@ function CountList({ title, data }: { title: string; data?: CountMap }) {
 export function DashboardPage() {
   const { user } = useAuth();
   const canViewAlerts = getEffectiveRole(user) !== "agent_owner";
+  const canViewRisk = ["admin", "auditor"].includes(getEffectiveRole(user) ?? "");
   const [demoBannerDismissed, setDemoBannerDismissed] = useState(
     () => localStorage.getItem("agenthq_demo_banner_dismissed") === "true"
   );
-  const [summary, agentsByRisk, executionsByStatus, approvalsByStatus, agents, recentAlerts] = useQueries({
+  const [summary, agentsByRisk, executionsByStatus, approvalsByStatus, agents, recentAlerts, riskSummary] = useQueries({
     queries: [
       { queryKey: ["dashboard-summary"], queryFn: endpoints.dashboardSummary },
       { queryKey: ["agents-by-risk"], queryFn: endpoints.agentsByRisk },
@@ -44,6 +45,11 @@ export function DashboardPage() {
         queryKey: ["governance-alerts", "recent"],
         queryFn: () => endpoints.governanceAlerts({ limit: 5 }),
         enabled: canViewAlerts
+      },
+      {
+        queryKey: ["risk-summary"],
+        queryFn: endpoints.riskSummary,
+        enabled: canViewRisk
       }
     ]
   });
@@ -103,6 +109,43 @@ export function DashboardPage() {
           <MetricCard label="Avg Latency" value={`${Math.round(data?.average_latency_ms ?? 0)} ms`} />
         </div>
       </DataState>
+      {canViewRisk ? (
+        <div className="mt-4">
+          <DataState
+            isLoading={riskSummary.isLoading}
+            error={riskSummary.error}
+            onRetry={() => void riskSummary.refetch()}
+          >
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+              <MetricCard label="AI Risk Score" value={`${riskSummary.data?.risk_score ?? 100}/100`} />
+              <MetricCard label="Compliance Score" value={`${riskSummary.data?.compliance_score ?? 100}%`} />
+              <MetricCard label="Compliance Violations" value={riskSummary.data?.compliance_violations ?? 0} />
+              <MetricCard label="Open Governance Risks" value={riskSummary.data?.open_governance_risks ?? 0} />
+              <MetricCard label="High Risk Tools" value={riskSummary.data?.high_risk_tools ?? 0} />
+            </div>
+            <Card className="mt-4">
+              <h3 className="mb-3 text-sm font-semibold text-slate-900">Risk Trend</h3>
+              <div className="flex min-h-24 items-end gap-2 overflow-x-auto">
+                {riskSummary.data?.risk_trend.map((snapshot) => (
+                  <div key={snapshot.date} className="flex min-w-16 flex-col items-center gap-2">
+                    <div
+                      className="w-8 rounded-t bg-blue-600"
+                      style={{ height: `${Math.max(8, snapshot.risk_score)}px` }}
+                      title={`${snapshot.date}: ${snapshot.risk_score}/100`}
+                    />
+                    <span className="text-xs text-slate-500">{snapshot.date.slice(5)}</span>
+                  </div>
+                ))}
+                {riskSummary.data?.risk_trend.length === 0 ? (
+                  <p className="self-center text-sm text-slate-500">
+                    Risk trend snapshots will appear as the organization is evaluated.
+                  </p>
+                ) : null}
+              </div>
+            </Card>
+          </DataState>
+        </div>
+      ) : null}
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
         <DataState
           isLoading={agentsByRisk.isLoading}

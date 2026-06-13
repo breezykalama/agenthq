@@ -52,6 +52,9 @@ def create_policy_rule(db: Session, policy_rule_create: PolicyRuleCreate) -> Pol
         ),
     )
     alert_service.reconcile_all_tools(db)
+    from app.services import risk_compliance as risk_service
+
+    risk_service.reconcile(db)
     return policy_rule
 
 
@@ -132,6 +135,9 @@ def update_policy_rule(
         ),
     )
     alert_service.reconcile_all_tools(db, previously_covered=previously_covered)
+    from app.services import risk_compliance as risk_service
+
+    risk_service.reconcile(db)
     return updated_rule
 
 
@@ -151,6 +157,9 @@ def soft_delete_policy_rule(db: Session, rule_id: UUID) -> None:
         ),
     )
     alert_service.reconcile_all_tools(db, previously_covered=previously_covered)
+    from app.services import risk_compliance as risk_service
+
+    risk_service.reconcile(db)
 
 
 def validate_unique_name(db: Session, name: str) -> None:

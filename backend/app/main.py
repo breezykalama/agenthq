@@ -30,6 +30,7 @@ from app.api.organizations import router as organizations_router
 from app.api.policy_decisions import router as policy_decisions_router
 from app.api.policy_rules import router as policy_rules_router
 from app.api.policy_simulations import router as policy_simulations_router
+from app.api.risk_compliance import router as risk_compliance_router
 from app.api.tool_governance import router as tool_governance_router
 from app.api.tool_governance import summary_router as tool_governance_summary_router
 from app.api.users import router as users_router
@@ -47,7 +48,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="AgentHQ", version="0.7.0", lifespan=lifespan)
+    app = FastAPI(title="AgentHQ", version="0.8.0", lifespan=lifespan)
 
     @app.middleware("http")
     async def request_context_middleware(
@@ -92,6 +93,7 @@ def create_app() -> FastAPI:
     app.include_router(policy_rules_router)
     app.include_router(policy_decisions_router)
     app.include_router(policy_simulations_router)
+    app.include_router(risk_compliance_router)
     app.include_router(incidents_router)
     app.include_router(mcp_servers_router)
     app.include_router(mcp_gateway_management_router)

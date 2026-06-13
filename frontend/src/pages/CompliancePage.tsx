@@ -11,6 +11,9 @@ export function CompliancePage() {
   const { user } = useAuth();
   const summary = useQuery({ queryKey: ["compliance-summary"], queryFn: endpoints.complianceSummary });
   const incidents = useQuery({ queryKey: ["compliance-incidents"], queryFn: endpoints.complianceIncidents });
+  const controls = useQuery({ queryKey: ["compliance-controls"], queryFn: endpoints.complianceControls });
+  const evaluation = useQuery({ queryKey: ["compliance-evaluation"], queryFn: endpoints.complianceEvaluation });
+  const riskSummary = useQuery({ queryKey: ["risk-summary"], queryFn: endpoints.riskSummary });
 
   useEffect(() => {
     if (user) markOnboardingStepComplete(user.id, "reviewCompliance");
@@ -35,6 +38,55 @@ export function CompliancePage() {
           <MetricCard label="Audit Events" value={summary.data?.audit_events ?? 0} />
         </div>
       </DataState>
+      <DataState isLoading={riskSummary.isLoading} error={riskSummary.error}>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard label="AI Risk Score" value={`${riskSummary.data?.risk_score ?? 100}/100`} />
+          <MetricCard label="Compliance Score" value={`${riskSummary.data?.compliance_score ?? 100}%`} />
+          <MetricCard label="Compliance Violations" value={riskSummary.data?.compliance_violations ?? 0} />
+          <MetricCard label="Open Governance Risks" value={riskSummary.data?.open_governance_risks ?? 0} />
+        </div>
+      </DataState>
+      <div className="mt-6 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <Card>
+          <h3 className="mb-3 font-semibold">Compliance Controls</h3>
+          <DataState isLoading={controls.isLoading} error={controls.error}>
+            <div className="space-y-3">
+              {controls.data?.map((control) => (
+                <div key={control.id} className="border-b pb-3 last:border-0 last:pb-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{control.name}</span>
+                    <span className="text-xs text-slate-500">{control.severity}</span>
+                    <span className="text-xs text-slate-500">{control.enabled ? "enabled" : "disabled"}</span>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-600">{control.description}</p>
+                </div>
+              ))}
+            </div>
+          </DataState>
+        </Card>
+        <Card>
+          <h3 className="mb-3 font-semibold">Violated Controls</h3>
+          <DataState isLoading={evaluation.isLoading} error={evaluation.error}>
+            <div className="space-y-3">
+              {evaluation.data?.violated_controls.map((control) => (
+                <div key={control.control_name} className="border-b pb-3 last:border-0 last:pb-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">{control.control_name}</span>
+                    <span className="text-sm font-semibold text-red-700">{control.failed_tools} affected tools</span>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-600">{control.description}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {control.affected_agent_ids.length} affected agents · {control.passed_tools} passing tools
+                  </p>
+                </div>
+              ))}
+              {evaluation.data?.violated_controls.length === 0 ? (
+                <p className="text-sm text-slate-500">All enabled compliance controls are passing.</p>
+              ) : null}
+            </div>
+          </DataState>
+        </Card>
+      </div>
       <Card className="mt-6">
         <h3 className="mb-3 font-semibold">Incident Report</h3>
         <DataState isLoading={incidents.isLoading} error={incidents.error}>

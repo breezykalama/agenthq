@@ -44,6 +44,9 @@ def create_approval(db: Session, approval_create: ApprovalCreate) -> Approval:
             after=serialize_approval(approval),
         ),
     )
+    from app.services import risk_compliance as risk_service
+
+    risk_service.reconcile(db)
     return approval
 
 
@@ -154,6 +157,9 @@ def decide_approval(
                 after=serialize_approval(updated_approval),
             ),
         )
+        from app.services import risk_compliance as risk_service
+
+        risk_service.reconcile(db, commit=False)
         db.commit()
         db.refresh(updated_approval)
     except Exception:

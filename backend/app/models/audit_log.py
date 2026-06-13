@@ -79,6 +79,7 @@ class AuditAction(StrEnum):
     SECURITY_INACTIVE_MEMBERSHIP_DENIED = "security.inactive_membership_denied"
     SECURITY_RATE_LIMITED = "security.rate_limited"
     COMPLIANCE_REPORT_ACCESSED = "compliance.report_accessed"
+    COMPLIANCE_CONTROL_CREATED = "compliance_control.created"
 
 
 class AuditOutcome(StrEnum):

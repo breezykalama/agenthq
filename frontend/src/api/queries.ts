@@ -21,6 +21,10 @@ import type {
   ,ToolGovernanceItem
   ,ToolGovernanceSummary,
   PolicySimulation
+  ,RiskRegisterItem
+  ,RiskSummary
+  ,ComplianceControl
+  ,ComplianceEvaluation
 } from "../types/api";
 
 export interface AuditLogFilters {
@@ -75,5 +79,12 @@ export const endpoints = {
   simulatePolicy: (payload: unknown) =>
     api.post<PolicySimulation>("/api/v1/policy-simulations", payload).then((r) => r.data),
   policyImpactSummary: () =>
-    api.get<PolicyImpactSummary>("/api/v1/policy-impact-summary").then((r) => r.data)
+    api.get<PolicyImpactSummary>("/api/v1/policy-impact-summary").then((r) => r.data),
+  riskRegister: (params: Record<string, string | number> = {}) =>
+    api.get<ListResponse<RiskRegisterItem>>("/api/v1/risk-register", { params }).then((r) => r.data),
+  riskSummary: () => api.get<RiskSummary>("/api/v1/risk-summary").then((r) => r.data),
+  complianceControls: () =>
+    api.get<ComplianceControl[]>("/api/v1/compliance-controls").then((r) => r.data),
+  complianceEvaluation: () =>
+    api.get<ComplianceEvaluation>("/api/v1/compliance-evaluation").then((r) => r.data)
 };

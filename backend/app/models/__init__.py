@@ -12,6 +12,7 @@ from app.models.mcp_server import MCPServer
 from app.models.organization import Organization, OrganizationMembership
 from app.models.organization_invite import OrganizationInvite
 from app.models.policy_rule import PolicyRule
+from app.models.risk_compliance import AIRiskRecord, ComplianceControl, RiskSnapshot
 from app.models.user import User
 
 __all__ = [
@@ -29,5 +30,8 @@ __all__ = [
     "OrganizationMembership",
     "OrganizationInvite",
     "PolicyRule",
+    "AIRiskRecord",
+    "ComplianceControl",
+    "RiskSnapshot",
     "User",
 ]

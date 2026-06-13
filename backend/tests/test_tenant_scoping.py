@@ -340,6 +340,31 @@ def test_policy_simulation_rejects_cross_tenant_targets() -> None:
         assert response.status_code == 422
 
 
+def test_risk_register_and_summary_are_tenant_scoped() -> None:
+    with tenant_clients() as tenants:
+        for headers, name, url in (
+            (tenants.headers_a, "Risk A", "https://risk-a.example.com/mcp"),
+            (tenants.headers_b, "Risk B", "https://risk-b.example.com/mcp"),
+        ):
+            server = tenants.client.post(
+                "/api/v1/mcp-servers",
+                headers=headers,
+                json={"name": name, "server_url": url},
+            ).json()
+            tenants.client.post(f"/api/v1/mcp-servers/{server['id']}/sync", headers=headers)
+
+        register_a = tenants.client.get("/api/v1/risk-register", headers=tenants.headers_a)
+        register_b = tenants.client.get("/api/v1/risk-register", headers=tenants.headers_b)
+        summary_a = tenants.client.get("/api/v1/risk-summary", headers=tenants.headers_a)
+
+        assert register_a.json()["total"] == 3
+        assert register_b.json()["total"] == 3
+        assert {
+            item["tool_id"] for item in register_a.json()["items"]
+        }.isdisjoint({item["tool_id"] for item in register_b.json()["items"]})
+        assert summary_a.json()["non_compliant_tools"] == 3
+
+
 def test_audit_dashboard_and_compliance_are_tenant_scoped() -> None:
     with tenant_clients() as tenants:
         create_agent(tenants.client, tenants.headers_a, "Organization A Agent")

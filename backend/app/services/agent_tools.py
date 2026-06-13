@@ -128,6 +128,9 @@ def update_agent_tool(
             updated_tool,
             has_policy=bool(tool_governance_service.applicable_policies(updated_tool, policies)),
         )
+        from app.services import risk_compliance as risk_service
+
+        risk_service.reconcile(db, commit=False)
         db.commit()
     return updated_tool
 

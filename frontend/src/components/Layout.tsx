@@ -18,6 +18,7 @@ const baseNavItems = [
   { to: "/approvals", label: "Approvals", shortLabel: "AP", roles: ["admin", "operator"] },
   { to: "/executions", label: "Executions", shortLabel: "EX", roles: ["admin", "operator"] },
   { to: "/incidents", label: "Incidents", shortLabel: "IN", roles: ["admin", "auditor", "operator"] },
+  { to: "/risk-register", label: "AI Risk Register", shortLabel: "RR", roles: ["admin", "auditor"] },
   { to: "/compliance", label: "Compliance", shortLabel: "CO", roles: ["admin", "auditor"] },
   { to: "/audit-logs", label: "Audit Logs", shortLabel: "AL", roles: ["admin", "auditor"] }
 ] satisfies Array<{ to: string; label: string; shortLabel: string; roles: UserRole[] }>;

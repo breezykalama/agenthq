@@ -18,6 +18,9 @@ class GovernanceAlertType(StrEnum):
     HIGH_RISK_UNREVIEWED = "high_risk_unreviewed"
     UNGOVERNED_TOOL = "ungoverned_tool"
     POLICY_COVERAGE_LOST = "policy_coverage_lost"
+    COMPLIANCE_NON_COMPLIANT = "compliance_non_compliant"
+    CRITICAL_POLICY_COVERAGE_LOST = "critical_policy_coverage_lost"
+    CRITICAL_TOOL_UNREVIEWED = "critical_tool_unreviewed"
 
 
 class GovernanceAlertSeverity(StrEnum):

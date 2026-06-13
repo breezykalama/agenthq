@@ -20,7 +20,12 @@ export type GovernanceAlertType =
   | "description_changed"
   | "high_risk_unreviewed"
   | "ungoverned_tool"
-  | "policy_coverage_lost";
+  | "policy_coverage_lost"
+  | "compliance_non_compliant"
+  | "critical_policy_coverage_lost"
+  | "critical_tool_unreviewed";
+export type PolicyCoverageStatus = "covered" | "partially_covered" | "uncovered";
+export type ComplianceStatus = "compliant" | "warning" | "non_compliant";
 export type GovernanceAlertStatus = "open" | "acknowledged" | "resolved";
 export type UserRole = "admin" | "auditor" | "operator" | "agent_owner";
 export type MCPServerStatus = "connected" | "disconnected" | "error";
@@ -90,6 +95,74 @@ export interface BootstrapTokenResponse extends TokenResponse {
 export interface ListResponse<T> {
   items: T[];
   total: number;
+}
+
+export interface RiskRegisterItem {
+  id: string;
+  tool_id: string;
+  tool_name: string;
+  agent_id: string;
+  agent_name: string;
+  mcp_server_id: string;
+  mcp_server_name: string;
+  risk_level: RiskLevel;
+  governance_status: ToolGovernanceStatus;
+  policy_coverage_status: PolicyCoverageStatus;
+  compliance_status: ComplianceStatus;
+  owner_user_id: string | null;
+  last_reviewed_at: string | null;
+  violated_controls: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ComplianceControl {
+  id: string;
+  name: string;
+  description: string;
+  severity: RiskLevel;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ComplianceEvaluation {
+  status: ComplianceStatus;
+  compliance_score: number;
+  compliant_tools: number;
+  warning_tools: number;
+  non_compliant_tools: number;
+  violated_controls: Array<{
+    control_name: string;
+    description: string;
+    severity: RiskLevel;
+    passed_tools: number;
+    failed_tools: number;
+    affected_tool_ids: string[];
+    affected_agent_ids: string[];
+  }>;
+}
+
+export interface RiskSummary {
+  risk_score: number;
+  compliance_score: number;
+  governed_tools: number;
+  ungoverned_tools: number;
+  compliant_tools: number;
+  non_compliant_tools: number;
+  high_risk_tools: number;
+  critical_alerts: number;
+  compliance_violations: number;
+  open_governance_risks: number;
+  risk_trend: Array<{
+    date: string;
+    risk_score: number;
+    governed_tools: number;
+    ungoverned_tools: number;
+    compliant_tools: number;
+    non_compliant_tools: number;
+    open_alerts: number;
+  }>;
 }
 
 export interface AuditLog {

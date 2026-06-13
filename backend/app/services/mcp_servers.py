@@ -421,6 +421,9 @@ def sync_mcp_server(
                 after=serialize_mcp_server(synced_server),
             ),
         )
+        from app.services import risk_compliance as risk_service
+
+        risk_service.reconcile(db, commit=False)
         db.commit()
         db.refresh(synced_server)
     except audit_log_service.AuditLoggingError:

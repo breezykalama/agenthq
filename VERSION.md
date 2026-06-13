@@ -1,7 +1,7 @@
 # AgentHQ Version
 
 Current Version:
-v0.7.0
+v0.8.0
 
 Release Date:
 June 2026
@@ -10,13 +10,13 @@ Status:
 Live
 
 Release Name:
-Dual-Protocol Governed Gateway
+AI Risk & Compliance Center
 
 Quality:
-346 tests passing
+354 tests passing
 
 Key Theme:
-Agent-scoped REST and MCP gateway enforcement
+Enterprise AI risk visibility and compliance posture
 
 Frontend:
 https://agenthq-seven.vercel.app/

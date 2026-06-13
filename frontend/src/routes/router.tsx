@@ -20,6 +20,7 @@ import { LandingPage } from "../pages/LandingPage";
 import { MCPServersPage } from "../pages/MCPServersPage";
 import { OrganizationInvitesPage } from "../pages/OrganizationInvitesPage";
 import { RegisterPage } from "../pages/RegisterPage";
+import { RiskRegisterPage } from "../pages/RiskRegisterPage";
 import { ToolGovernancePage } from "../pages/ToolGovernancePage";
 import { GovernanceAlertsPage } from "../pages/GovernanceAlertsPage";
 
@@ -68,6 +69,7 @@ export const router = createBrowserRouter([
             element: <RoleRoute allowedRoles={["admin", "auditor"]} />,
             children: [
               { path: "compliance", element: <CompliancePage /> },
+              { path: "risk-register", element: <RiskRegisterPage /> },
               { path: "audit-logs", element: <AuditLogsPage /> }
             ]
           },
