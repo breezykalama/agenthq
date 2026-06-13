@@ -10,6 +10,7 @@ from app.adapters.mcp_discovery import MCPDiscoveryTarget
 from app.adapters.mcp_execution import MCPExecutionAdapter, MCPExecutionError
 from app.core.audit_context import AUDIT_ACTOR_ROLE
 from app.core.tenancy import get_current_organization_id, set_current_organization_id
+from app.models.agent import Agent, AgentStatus
 from app.models.agent_tool import AgentTool, AgentToolPermission
 from app.models.approval import ApprovalStatus
 from app.models.audit_log import AuditAction, AuditOutcome
@@ -18,6 +19,7 @@ from app.models.mcp_gateway import MCPGatewayCallRecord, MCPGatewayToken, MCPGat
 from app.models.mcp_server import MCPServer
 from app.models.policy_rule import PolicyRuleEffect
 from app.repositories import agent_tools as agent_tool_repository
+from app.repositories import agents as agent_repository
 from app.repositories import approvals as approval_repository
 from app.repositories import executions as execution_repository
 from app.repositories import mcp_gateway as gateway_repository
@@ -27,6 +29,8 @@ from app.schemas.audit_log import AuditLogCreate
 from app.schemas.execution import ExecutionCreate
 from app.schemas.mcp_gateway import (
     MCPGatewayInfo,
+    MCPGatewayServer,
+    MCPGatewayServerList,
     MCPGatewayTokenCreate,
     MCPGatewayTokenCreated,
     MCPGatewayTokenRead,
@@ -69,16 +73,18 @@ def generate_gateway_token() -> str:
 
 
 def create_token(db: Session, create: MCPGatewayTokenCreate) -> MCPGatewayTokenCreated:
-    server = mcp_server_repository.get_mcp_server_by_id(db, create.mcp_server_id)
+    servers, agent = resolve_credential_scope(db, create)
     actor_user_id = db.info.get("audit_actor_user_id")
-    if server is None or not isinstance(actor_user_id, UUID):
+    if not isinstance(actor_user_id, UUID):
         raise MCPGatewayNotFoundError
     raw_token = generate_gateway_token()
     token = gateway_repository.create_token_pending(
         db,
         MCPGatewayToken(
             organization_id=get_current_organization_id(db),
-            mcp_server_id=server.id,
+            agent_id=agent.id,
+            mcp_server_id=servers[0].id if len(servers) == 1 else None,
+            allowed_mcp_server_ids=[str(server.id) for server in servers],
             name=create.name,
             token_hash=hash_gateway_token(raw_token),
             expires_at=create.expires_at,
@@ -87,7 +93,7 @@ def create_token(db: Session, create: MCPGatewayTokenCreate) -> MCPGatewayTokenC
     )
     audit_gateway_event(
         db,
-        action=AuditAction.MCP_GATEWAY_TOKEN_CREATED,
+        action=AuditAction.AGENT_GATEWAY_CREDENTIAL_CREATED,
         token=token,
         resource_id=token.id,
     )
@@ -114,7 +120,7 @@ def rotate_token(db: Session, token_id: UUID) -> MCPGatewayTokenCreated:
     )
     audit_gateway_event(
         db,
-        action=AuditAction.MCP_GATEWAY_TOKEN_ROTATED,
+        action=AuditAction.AGENT_GATEWAY_CREDENTIAL_ROTATED,
         token=token,
         resource_id=token.id,
     )
@@ -137,7 +143,7 @@ def revoke_token(db: Session, token_id: UUID) -> MCPGatewayToken:
     )
     audit_gateway_event(
         db,
-        action=AuditAction.MCP_GATEWAY_TOKEN_REVOKED,
+        action=AuditAction.AGENT_GATEWAY_CREDENTIAL_REVOKED,
         token=token,
         resource_id=token.id,
     )
@@ -149,20 +155,102 @@ def revoke_token(db: Session, token_id: UUID) -> MCPGatewayToken:
 def authenticate_token(
     db: Session,
     raw_token: str,
-    mcp_server_id: UUID,
+    mcp_server_id: UUID | None = None,
 ) -> MCPGatewayToken:
     token = gateway_repository.get_token_by_hash(db, hash_gateway_token(raw_token))
     now = datetime.now(UTC)
-    if (
-        token is None
-        or token.status != MCPGatewayTokenStatus.ACTIVE
-        or token.mcp_server_id != mcp_server_id
-        or (token.expires_at is not None and token.expires_at <= now)
-    ):
+    if token is None:
         raise MCPGatewayTokenInvalidError
     set_current_organization_id(db, token.organization_id)
     db.info[AUDIT_ACTOR_ROLE] = "gateway"
+    if (
+        token.status != MCPGatewayTokenStatus.ACTIVE
+        or (mcp_server_id is not None and not token_allows_server(token, mcp_server_id))
+        or (token.expires_at is not None and token.expires_at <= now)
+    ):
+        audit_gateway_event(
+            db,
+            action=AuditAction.AGENT_GATEWAY_CREDENTIAL_DENIED,
+            token=token,
+            resource_id=token.id,
+            outcome=AuditOutcome.DENIED,
+            reason="Gateway credential is inactive, expired, or outside its allowed server scope.",
+        )
+        db.commit()
+        raise MCPGatewayTokenInvalidError
+    audit_gateway_event(
+        db,
+        action=AuditAction.AGENT_GATEWAY_CREDENTIAL_USED,
+        token=token,
+        resource_id=token.id,
+    )
+    gateway_repository.mark_token_used_pending(db, token)
+    db.commit()
     return token
+
+
+def resolve_credential_scope(
+    db: Session,
+    create: MCPGatewayTokenCreate,
+) -> tuple[list[MCPServer], Agent]:
+    requested_server_ids = list(dict.fromkeys(create.allowed_mcp_server_ids))
+    if create.mcp_server_id is not None and create.mcp_server_id not in requested_server_ids:
+        requested_server_ids.append(create.mcp_server_id)
+    servers = [
+        server
+        for server_id in requested_server_ids
+        if (server := mcp_server_repository.get_mcp_server_by_id(db, server_id)) is not None
+    ]
+    if len(servers) != len(requested_server_ids) or not servers:
+        raise MCPGatewayNotFoundError
+    agent_id = create.agent_id or servers[0].agent_id
+    agent = agent_repository.get_agent_by_id(db, agent_id) if agent_id is not None else None
+    if (
+        agent is None
+        or any(server.agent_id != agent.id for server in servers)
+        or not agent_gateway_enabled(agent)
+    ):
+        raise MCPGatewayNotFoundError
+    return servers, agent
+
+
+def token_allows_server(token: MCPGatewayToken, server_id: UUID) -> bool:
+    return str(server_id) in token.allowed_mcp_server_ids or token.mcp_server_id == server_id
+
+
+def agent_gateway_enabled(agent: Agent) -> bool:
+    return agent.deleted_at is None and agent.status not in {
+        AgentStatus.DISABLED,
+        AgentStatus.ARCHIVED,
+    }
+
+
+def list_gateway_servers(db: Session, token: MCPGatewayToken) -> MCPGatewayServerList:
+    require_agent(db, token)
+    servers = [
+        server
+        for server_id in token.allowed_mcp_server_ids
+        if (server := mcp_server_repository.get_mcp_server_by_id(db, UUID(server_id))) is not None
+        and server.agent_id == token.agent_id
+    ]
+    if token.mcp_server_id is not None and all(
+        server.id != token.mcp_server_id for server in servers
+    ):
+        server = mcp_server_repository.get_mcp_server_by_id(db, token.mcp_server_id)
+        if server is not None and server.agent_id == token.agent_id:
+            servers.append(server)
+    return MCPGatewayServerList(
+        items=[
+            MCPGatewayServer(
+                id=server.id,
+                name=server.name,
+                status=server.status,
+                linked_agent_id=token.agent_id,
+            )
+            for server in servers
+        ],
+        total=len(servers),
+    )
 
 
 def gateway_info(db: Session, token: MCPGatewayToken) -> MCPGatewayInfo:
@@ -177,8 +265,16 @@ def gateway_info(db: Session, token: MCPGatewayToken) -> MCPGatewayInfo:
     )
 
 
-def list_gateway_tools(db: Session, token: MCPGatewayToken) -> MCPGatewayToolList:
-    server = require_server(db, token)
+def list_gateway_tools(
+    db: Session,
+    token: MCPGatewayToken,
+    server_id: UUID | None = None,
+    *,
+    protocol: str = "rest",
+) -> MCPGatewayToolList:
+    server = (
+        require_allowed_server(db, token, server_id) if server_id else require_server(db, token)
+    )
     policies = governance_repository.list_enabled_policy_rules(db)
     items: list[MCPGatewayTool] = []
     for tool, _, _ in governance_repository.list_discovered_tools(db, server_id=server.id):
@@ -206,7 +302,7 @@ def list_gateway_tools(db: Session, token: MCPGatewayToken) -> MCPGatewayToolLis
         action=AuditAction.MCP_GATEWAY_TOOLS_LISTED,
         token=token,
         resource_id=server.id,
-        metadata={"tool_count": len(items)},
+        metadata={"tool_count": len(items), "protocol": protocol},
     )
     gateway_repository.mark_token_used_pending(db, token)
     db.commit()
@@ -219,8 +315,13 @@ def call_gateway_tool(
     tool_id: UUID,
     call: MCPGatewayToolCall,
     adapter: MCPExecutionAdapter,
+    *,
+    server_id: UUID | None = None,
+    protocol: str = "rest",
 ) -> MCPGatewayToolCallResponse:
-    server = require_server(db, token)
+    server = (
+        require_allowed_server(db, token, server_id) if server_id else require_server(db, token)
+    )
     assert server.agent_id is not None
     if call.idempotency_key is not None:
         previous = gateway_repository.get_call_record(
@@ -241,6 +342,7 @@ def call_gateway_tool(
                 metadata={
                     "execution_id": str(previous.execution_id),
                     "idempotent_replay": True,
+                    "protocol": protocol,
                 },
             )
             gateway_repository.mark_token_used_pending(db, token)
@@ -262,7 +364,10 @@ def call_gateway_tool(
         action=AuditAction.MCP_GATEWAY_CALL_REQUESTED,
         token=token,
         resource_id=tool.id,
-        metadata=gateway_metadata(server.id, tool.agent_id, tool.id, call.approval_id),
+        metadata={
+            **gateway_metadata(server.id, tool.agent_id, tool.id, call.approval_id),
+            "protocol": protocol,
+        },
     )
     status = ExecutionStatus.PENDING
     action = AuditAction.MCP_GATEWAY_CALL_SUCCEEDED
@@ -324,6 +429,7 @@ def call_gateway_tool(
             **gateway_metadata(server.id, tool.agent_id, tool.id, approval_id),
             "execution_id": str(execution.id),
             "status": status.value,
+            "protocol": protocol,
         },
     )
     gateway_repository.mark_token_used_pending(db, token)
@@ -343,11 +449,54 @@ def call_gateway_tool(
     return response
 
 
+def call_gateway_tool_by_name(
+    db: Session,
+    token: MCPGatewayToken,
+    server_id: UUID,
+    tool_name: str,
+    call: MCPGatewayToolCall,
+    adapter: MCPExecutionAdapter,
+    *,
+    protocol: str = "mcp",
+) -> MCPGatewayToolCallResponse:
+    tools = list_gateway_tools(db, token, server_id, protocol=protocol).items
+    tool = next((item for item in tools if item.name == tool_name), None)
+    if tool is None:
+        raise MCPGatewayToolUnavailableError
+    return call_gateway_tool(
+        db,
+        token,
+        tool.id,
+        call,
+        adapter,
+        server_id=server_id,
+        protocol=protocol,
+    )
+
+
 def require_server(db: Session, token: MCPGatewayToken) -> MCPServer:
-    server = mcp_server_repository.get_mcp_server_by_id(db, token.mcp_server_id)
-    if server is None or server.agent_id is None:
+    if token.mcp_server_id is None:
+        raise MCPGatewayNotFoundError
+    return require_allowed_server(db, token, token.mcp_server_id)
+
+
+def require_allowed_server(db: Session, token: MCPGatewayToken, server_id: UUID) -> MCPServer:
+    require_agent(db, token)
+    server = mcp_server_repository.get_mcp_server_by_id(db, server_id)
+    if (
+        server is None
+        or server.agent_id != token.agent_id
+        or not token_allows_server(token, server_id)
+    ):
         raise MCPGatewayNotFoundError
     return server
+
+
+def require_agent(db: Session, token: MCPGatewayToken) -> Agent:
+    agent = agent_repository.get_agent_by_id(db, token.agent_id)
+    if agent is None or not agent_gateway_enabled(agent):
+        raise MCPGatewayNotFoundError
+    return agent
 
 
 def require_gateway_tool(

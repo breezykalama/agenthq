@@ -299,6 +299,14 @@ def test_gateway_token_cannot_access_another_organization_server() -> None:
             headers=tenants.headers_b,
             json={"name": "Gateway B", "server_url": "https://b.example.com/mcp"},
         ).json()
+        tenants.client.post(
+            f"/api/v1/mcp-servers/{server_a['id']}/sync",
+            headers=tenants.headers_a,
+        )
+        tenants.client.post(
+            f"/api/v1/mcp-servers/{server_b['id']}/sync",
+            headers=tenants.headers_b,
+        )
         token_a = tenants.client.post(
             "/api/v1/mcp-gateway-tokens",
             headers=tenants.headers_a,

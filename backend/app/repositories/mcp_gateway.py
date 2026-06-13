@@ -18,12 +18,15 @@ def list_tokens(
     db: Session,
     *,
     mcp_server_id: UUID | None,
+    agent_id: UUID | None = None,
     limit: int,
     offset: int,
 ) -> tuple[list[MCPGatewayToken], int]:
     filters = [MCPGatewayToken.organization_id == get_current_organization_id(db)]
     if mcp_server_id is not None:
         filters.append(MCPGatewayToken.mcp_server_id == mcp_server_id)
+    if agent_id is not None:
+        filters.append(MCPGatewayToken.agent_id == agent_id)
     statement = (
         select(MCPGatewayToken)
         .where(*filters)

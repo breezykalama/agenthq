@@ -84,11 +84,11 @@ Each MCP server supports bounded `connect_timeout_seconds` and `request_timeout_
 failures preserve existing linked agents, discovered tools, and the previous successful
 `last_sync_at`; clients receive a stable sanitized error.
 
-### MCP Gateway Policy Enforcement
+### Dual-Protocol MCP Gateway Policy Enforcement
 
-Create a server-scoped gateway token from the MCP Servers page or
-`POST /api/v1/mcp-gateway-tokens`. The raw token is returned only on creation or rotation and must
-be stored by the calling agent or MCP client as a secret.
+Create an agent-scoped gateway credential from the MCP Servers page or
+`POST /api/v1/agent-gateway-credentials`. The raw credential is returned only on creation or
+rotation and must be stored by the calling agent or MCP client as a secret.
 
 Gateway clients send:
 
@@ -96,17 +96,19 @@ Gateway clients send:
 Authorization: Bearer <gateway-token>
 ```
 
-The REST-first v0.6.0 gateway exposes:
+The REST gateway exposes:
 
 ```text
-GET  /api/v1/mcp-gateway/{mcp_server_id}/info
-GET  /api/v1/mcp-gateway/{mcp_server_id}/tools
-POST /api/v1/mcp-gateway/{mcp_server_id}/tools/{tool_id}/call
+GET  /api/v1/gateway/mcp-servers
+GET  /api/v1/gateway/mcp-servers/{mcp_server_id}/tools
+POST /api/v1/gateway/mcp-servers/{mcp_server_id}/tools/{tool_id}/call
 ```
 
-Full MCP Streamable HTTP protocol compatibility at the AgentHQ gateway endpoint is not included in
-v0.6.0. Clients integrate through the REST gateway endpoints while the enforcement service remains
-transport-independent for a future MCP-compatible facade.
+MCP-compatible clients connect through Streamable HTTP at
+`https://<agenthq-host>/api/v1/mcp/<mcp_server_id>` using the agent gateway credential as a Bearer
+token. The endpoint supports `initialize`, `notifications/initialized`, `tools/list`, and
+`tools/call`. See [GATEWAY_INTEGRATION.md](GATEWAY_INTEGRATION.md) for approval and idempotency
+metadata.
 
 The gateway hides unreviewed, disabled, and non-executable tools; evaluates policy before forwarding
 calls; enforces approved approvals; records executions; and audits gateway outcomes. Gateway tokens

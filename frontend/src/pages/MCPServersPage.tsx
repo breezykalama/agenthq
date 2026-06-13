@@ -333,41 +333,50 @@ function GatewayPanel({ server, onClose }: { server: MCPServer; onClose: () => v
   const [tools, setTools] = useState<MCPGatewayTool[]>([]);
   const [callResult, setCallResult] = useState<MCPGatewayCallResponse | null>(null);
   const tokens = useQuery({
-    queryKey: ["mcp-gateway-tokens", server.id],
-    queryFn: () => endpoints.mcpGatewayTokens(server.id)
+    queryKey: ["agent-gateway-credentials", server.agent_id],
+    queryFn: () => endpoints.agentGatewayCredentials(server.agent_id ?? ""),
+    enabled: Boolean(server.agent_id)
   });
   const createToken = useMutation({
     mutationFn: (name: string) =>
       api
-        .post<MCPGatewayTokenCreated>("/api/v1/mcp-gateway-tokens", {
-          mcp_server_id: server.id,
+        .post<MCPGatewayTokenCreated>("/api/v1/agent-gateway-credentials", {
+          agent_id: server.agent_id,
+          allowed_mcp_server_ids: [server.id],
           name
         })
         .then((response) => response.data),
     onSuccess: (created) => {
       setRawToken(created.token);
-      void queryClient.invalidateQueries({ queryKey: ["mcp-gateway-tokens", server.id] });
+      void queryClient.invalidateQueries({
+        queryKey: ["agent-gateway-credentials", server.agent_id]
+      });
     }
   });
   const rotateToken = useMutation({
     mutationFn: (tokenId: string) =>
       api
-        .post<MCPGatewayTokenCreated>(`/api/v1/mcp-gateway-tokens/${tokenId}/rotate`)
+        .post<MCPGatewayTokenCreated>(`/api/v1/agent-gateway-credentials/${tokenId}/rotate`)
         .then((response) => response.data),
     onSuccess: (rotated) => {
       setRawToken(rotated.token);
-      void queryClient.invalidateQueries({ queryKey: ["mcp-gateway-tokens", server.id] });
+      void queryClient.invalidateQueries({
+        queryKey: ["agent-gateway-credentials", server.agent_id]
+      });
     }
   });
   const revokeToken = useMutation({
-    mutationFn: (tokenId: string) => api.post(`/api/v1/mcp-gateway-tokens/${tokenId}/revoke`),
+    mutationFn: (tokenId: string) =>
+      api.post(`/api/v1/agent-gateway-credentials/${tokenId}/revoke`),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["mcp-gateway-tokens", server.id] })
+      queryClient.invalidateQueries({
+        queryKey: ["agent-gateway-credentials", server.agent_id]
+      })
   });
   const loadTools = useMutation({
     mutationFn: () =>
       gatewayApi
-        .get<{ items: MCPGatewayTool[] }>(`/api/v1/mcp-gateway/${server.id}/tools`, {
+        .get<{ items: MCPGatewayTool[] }>(`/api/v1/gateway/mcp-servers/${server.id}/tools`, {
           headers: { Authorization: `Bearer ${rawToken}` }
         })
         .then((response) => response.data.items),
@@ -385,14 +394,16 @@ function GatewayPanel({ server, onClose }: { server: MCPServer; onClose: () => v
     }) =>
       gatewayApi
         .post<MCPGatewayCallResponse>(
-          `/api/v1/mcp-gateway/${server.id}/tools/${toolId}/call`,
+          `/api/v1/gateway/mcp-servers/${server.id}/tools/${toolId}/call`,
           { input_payload: payload, approval_id: approvalId },
           { headers: { Authorization: `Bearer ${rawToken}` } }
         )
         .then((response) => response.data),
     onSuccess: setCallResult
   });
-  const gatewayEndpoint = `${String(gatewayApi.defaults.baseURL ?? "").replace(/\/$/, "")}/api/v1/mcp-gateway/${server.id}`;
+  const baseUrl = String(gatewayApi.defaults.baseURL ?? "").replace(/\/$/, "");
+  const restGatewayEndpoint = `${baseUrl}/api/v1/gateway/mcp-servers/${server.id}`;
+  const mcpGatewayEndpoint = `${baseUrl}/api/v1/mcp/${server.id}`;
 
   function submitToken(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -427,13 +438,22 @@ function GatewayPanel({ server, onClose }: { server: MCPServer; onClose: () => v
         </div>
         <SecondaryButton onClick={onClose}>Close</SecondaryButton>
       </div>
-      <div className="mt-4 rounded-md bg-slate-50 p-3">
-        <div className="text-xs font-medium uppercase text-slate-500">Gateway endpoint</div>
-        <div className="mt-1 break-all font-mono text-xs text-slate-800">{gatewayEndpoint}</div>
+      <div className="mt-4 grid gap-3 rounded-md bg-slate-50 p-3 md:grid-cols-2">
+        <div>
+          <div className="text-xs font-medium uppercase text-slate-500">REST gateway endpoint</div>
+          <div className="mt-1 break-all font-mono text-xs text-slate-800">{restGatewayEndpoint}</div>
+        </div>
+        <div>
+          <div className="text-xs font-medium uppercase text-slate-500">MCP Streamable HTTP endpoint</div>
+          <div className="mt-1 break-all font-mono text-xs text-slate-800">{mcpGatewayEndpoint}</div>
+        </div>
       </div>
       <div className="mt-5 grid gap-5 xl:grid-cols-2">
         <div>
-          <h4 className="font-medium">Gateway Tokens</h4>
+          <h4 className="font-medium">Agent Gateway Credentials</h4>
+          <p className="mt-1 text-sm text-slate-500">
+            Credentials identify the linked agent and permit access only to selected MCP servers.
+          </p>
           <form className="mt-3 flex flex-col gap-2 sm:flex-row" onSubmit={submitToken}>
             <input
               name="gateway_name"
@@ -441,7 +461,9 @@ function GatewayPanel({ server, onClose }: { server: MCPServer; onClose: () => v
               placeholder="Production agent client"
               required
             />
-            <PrimaryButton disabled={createToken.isPending}>Create token</PrimaryButton>
+            <PrimaryButton disabled={createToken.isPending || !server.agent_id}>
+              Create credential
+            </PrimaryButton>
           </form>
           {rawToken ? (
             <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">

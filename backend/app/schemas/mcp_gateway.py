@@ -13,14 +13,18 @@ from app.schemas.tool_governance import ToolGovernanceStatus
 
 
 class MCPGatewayTokenCreate(BaseModel):
-    mcp_server_id: UUID
+    agent_id: UUID | None = None
+    allowed_mcp_server_ids: list[UUID] = Field(default_factory=list)
+    mcp_server_id: UUID | None = None
     name: str = Field(min_length=1, max_length=255)
     expires_at: datetime | None = None
 
 
 class MCPGatewayTokenRead(BaseModel):
     id: UUID
-    mcp_server_id: UUID
+    agent_id: UUID
+    allowed_mcp_server_ids: list[UUID]
+    mcp_server_id: UUID | None
     name: str
     status: MCPGatewayTokenStatus
     last_used_at: datetime | None
@@ -80,3 +84,15 @@ class MCPGatewayToolCallResponse(BaseModel):
     result: dict[str, object] | None = None
     error: str | None = None
     idempotent_replay: bool = False
+
+
+class MCPGatewayServer(BaseModel):
+    id: UUID
+    name: str
+    status: MCPServerStatus
+    linked_agent_id: UUID
+
+
+class MCPGatewayServerList(BaseModel):
+    items: list[MCPGatewayServer]
+    total: int

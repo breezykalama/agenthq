@@ -20,7 +20,13 @@ class MCPGatewayToken(Base):
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False)
-    mcp_server_id: Mapped[UUID] = mapped_column(ForeignKey("mcp_servers.id"), nullable=False)
+    agent_id: Mapped[UUID] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    mcp_server_id: Mapped[UUID | None] = mapped_column(ForeignKey("mcp_servers.id"), nullable=True)
+    allowed_mcp_server_ids: Mapped[list[str]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=False,
+        default=list,
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     status: Mapped[MCPGatewayTokenStatus] = mapped_column(
@@ -66,6 +72,11 @@ Index(
     "ix_mcp_gateway_tokens_organization_server",
     MCPGatewayToken.organization_id,
     MCPGatewayToken.mcp_server_id,
+)
+Index(
+    "ix_mcp_gateway_tokens_organization_agent",
+    MCPGatewayToken.organization_id,
+    MCPGatewayToken.agent_id,
 )
 Index(
     "ix_mcp_gateway_call_records_idempotency",

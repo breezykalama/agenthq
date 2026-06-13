@@ -52,10 +52,10 @@ export const endpoints = {
     api.get<ListResponse<AuditLog>>("/api/v1/audit-logs", { params }).then((r) => r.data),
   mcpServers: () =>
     api.get<ListResponse<MCPServer>>("/api/v1/mcp-servers").then((r) => r.data),
-  mcpGatewayTokens: (mcpServerId: string) =>
+  agentGatewayCredentials: (agentId: string) =>
     api
-      .get<ListResponse<MCPGatewayToken>>("/api/v1/mcp-gateway-tokens", {
-        params: { mcp_server_id: mcpServerId }
+      .get<ListResponse<MCPGatewayToken>>("/api/v1/agent-gateway-credentials", {
+        params: { agent_id: agentId }
       })
       .then((r) => r.data),
   complianceSummary: () =>

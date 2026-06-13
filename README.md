@@ -14,7 +14,7 @@ Backend API:
 
 ## Current Version
 
-AgentHQ v0.6.0
+AgentHQ v0.7.0
 
 ## Project Status
 
@@ -38,6 +38,7 @@ AgentHQ is a live, multi-tenant Enterprise AI Agent Governance Platform focused 
 * Real MCP Tool Discovery
 * Policy Simulation & Impact Analysis
 * MCP Gateway Policy Enforcement
+* Dual-Protocol REST and MCP Gateway
 
 ## The Problem
 
@@ -145,6 +146,21 @@ boundary for routed MCP tool calls.
 AgentHQ can enforce governance only for MCP traffic routed through the gateway. Production
 deployments requiring strict enforcement must prevent governed clients from reaching upstream MCP
 servers directly.
+
+## AgentHQ v0.7.0
+
+AgentHQ v0.7.0 introduces a dual-protocol governed gateway for external AI agents.
+
+* Issue agent-scoped credentials with explicit allowed MCP server sets.
+* Connect MCP-compatible agents through a Streamable HTTP gateway.
+* Connect custom agents through the REST gateway.
+* Enforce the same policies, approvals, rate limits, execution tracking, and audit trail across
+  both protocols.
+* Deny disabled, archived, soft-deleted, cross-agent, and cross-organization access.
+* Preserve REST idempotency and support MCP call idempotency metadata.
+
+See [GATEWAY_INTEGRATION.md](GATEWAY_INTEGRATION.md) for setup examples and the production
+direct-bypass safety model.
 
 ## AgentHQ v0.2.0
 
@@ -398,7 +414,7 @@ tool calls upstream.
 
 ## Quality
 
-* 338 automated tests passing
+* 346 automated tests passing
 * Ruff clean
 * MyPy clean
 * PostgreSQL migrations verified

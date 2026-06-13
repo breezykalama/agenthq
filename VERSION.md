@@ -1,7 +1,7 @@
 # AgentHQ Version
 
 Current Version:
-v0.6.0
+v0.7.0
 
 Release Date:
 June 2026
@@ -10,13 +10,13 @@ Status:
 Live
 
 Release Name:
-MCP Gateway & Policy Enforcement Proxy
+Dual-Protocol Governed Gateway
 
 Quality:
-338 tests passing
+346 tests passing
 
 Key Theme:
-Governed real MCP tool calls through an enforcement boundary
+Agent-scoped REST and MCP gateway enforcement
 
 Frontend:
 https://agenthq-seven.vercel.app/

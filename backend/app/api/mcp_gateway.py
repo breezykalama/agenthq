@@ -2,7 +2,9 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.adapters.mcp_execution import MCPExecutionAdapter, get_mcp_execution_adapter
@@ -15,6 +17,7 @@ from app.models.mcp_gateway import MCPGatewayToken
 from app.repositories import mcp_gateway as gateway_repository
 from app.schemas.mcp_gateway import (
     MCPGatewayInfo,
+    MCPGatewayServerList,
     MCPGatewayTokenCreate,
     MCPGatewayTokenCreated,
     MCPGatewayTokenListResponse,
@@ -34,6 +37,16 @@ management_router = APIRouter(
     ],
 )
 gateway_router = APIRouter(prefix="/api/v1/mcp-gateway", tags=["mcp-gateway"])
+rest_gateway_router = APIRouter(prefix="/api/v1/gateway", tags=["gateway"])
+mcp_protocol_router = APIRouter(prefix="/api/v1/mcp", tags=["mcp-gateway"])
+agent_credential_router = APIRouter(
+    prefix="/api/v1/agent-gateway-credentials",
+    tags=["agent-gateway-credentials"],
+    dependencies=[
+        Depends(require_current_organization),
+        Depends(require_org_permission(OrgPermission.MANAGE_MCP_SERVERS)),
+    ],
+)
 DatabaseSession = Annotated[Session, Depends(get_db)]
 ExecutionAdapter = Annotated[MCPExecutionAdapter, Depends(get_mcp_execution_adapter)]
 bearer = HTTPBearer(auto_error=False)
@@ -67,10 +80,12 @@ def list_gateway_tokens(
     db: DatabaseSession,
     pagination: PaginationParams,
     mcp_server_id: UUID | None = None,
+    agent_id: UUID | None = None,
 ) -> MCPGatewayTokenListResponse:
     items, total = gateway_repository.list_tokens(
         db,
         mcp_server_id=mcp_server_id,
+        agent_id=agent_id,
         limit=pagination.limit,
         offset=pagination.offset,
     )
@@ -136,6 +151,23 @@ def require_gateway_token(
 
 
 GatewayToken = Annotated[MCPGatewayToken, Depends(require_gateway_token)]
+
+
+def require_agent_gateway_token(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+    db: DatabaseSession,
+) -> MCPGatewayToken:
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Invalid gateway credential.")
+    set_request_audit_context(db, request)
+    try:
+        return gateway_service.authenticate_token(db, credentials.credentials)
+    except gateway_service.MCPGatewayTokenInvalidError as exc:
+        raise HTTPException(status_code=401, detail="Invalid gateway credential.") from exc
+
+
+AgentGatewayToken = Annotated[MCPGatewayToken, Depends(require_agent_gateway_token)]
 
 
 @gateway_router.get("/{mcp_server_id}/info", response_model=MCPGatewayInfo)
@@ -212,3 +244,230 @@ def call_gateway_tool(
             status_code=422,
             detail="Approval is invalid for this gateway tool call.",
         ) from exc
+
+
+agent_credential_router.add_api_route(
+    "",
+    create_gateway_token,
+    methods=["POST"],
+    response_model=MCPGatewayTokenCreated,
+    status_code=status.HTTP_201_CREATED,
+)
+agent_credential_router.add_api_route(
+    "",
+    list_gateway_tokens,
+    methods=["GET"],
+    response_model=MCPGatewayTokenListResponse,
+)
+agent_credential_router.add_api_route(
+    "/{token_id}/rotate",
+    rotate_gateway_token,
+    methods=["POST"],
+    response_model=MCPGatewayTokenCreated,
+)
+agent_credential_router.add_api_route(
+    "/{token_id}/revoke",
+    revoke_gateway_token,
+    methods=["POST"],
+    response_model=MCPGatewayTokenRead,
+)
+
+
+@rest_gateway_router.get("/mcp-servers", response_model=MCPGatewayServerList)
+def list_rest_gateway_servers(
+    request: Request,
+    db: DatabaseSession,
+    token: AgentGatewayToken,
+) -> MCPGatewayServerList:
+    enforce_gateway_rate_limit(
+        request,
+        db,
+        "gateway_tools",
+        gateway_token_id=token.id,
+        organization_id=token.organization_id,
+        resource_id=token.agent_id,
+    )
+    return gateway_service.list_gateway_servers(db, token)
+
+
+@rest_gateway_router.get("/mcp-servers/{server_id}/tools", response_model=MCPGatewayToolList)
+def list_rest_gateway_tools(
+    server_id: UUID,
+    request: Request,
+    db: DatabaseSession,
+    token: AgentGatewayToken,
+) -> MCPGatewayToolList:
+    enforce_gateway_rate_limit(
+        request,
+        db,
+        "gateway_tools",
+        gateway_token_id=token.id,
+        organization_id=token.organization_id,
+        resource_id=server_id,
+    )
+    try:
+        return gateway_service.list_gateway_tools(db, token, server_id, protocol="rest")
+    except gateway_service.MCPGatewayNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="MCP gateway not found.") from exc
+
+
+@rest_gateway_router.post(
+    "/mcp-servers/{server_id}/tools/{tool_id}/call",
+    response_model=MCPGatewayToolCallResponse,
+)
+def call_rest_gateway_tool(
+    server_id: UUID,
+    tool_id: UUID,
+    call: MCPGatewayToolCall,
+    request: Request,
+    db: DatabaseSession,
+    token: AgentGatewayToken,
+    adapter: ExecutionAdapter,
+) -> MCPGatewayToolCallResponse:
+    enforce_gateway_rate_limit(
+        request,
+        db,
+        "gateway_call",
+        gateway_token_id=token.id,
+        organization_id=token.organization_id,
+        resource_id=tool_id,
+    )
+    try:
+        return gateway_service.call_gateway_tool(
+            db, token, tool_id, call, adapter, server_id=server_id, protocol="rest"
+        )
+    except gateway_service.MCPGatewayToolUnavailableError as exc:
+        raise HTTPException(status_code=404, detail="Gateway tool not found.") from exc
+    except gateway_service.MCPGatewayNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="MCP gateway not found.") from exc
+    except gateway_service.MCPGatewayApprovalInvalidError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="Approval is invalid for this gateway tool call.",
+        ) from exc
+
+
+def mcp_error(request_id: object, code: int, message: str) -> JSONResponse:
+    return JSONResponse(
+        {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
+    )
+
+
+@mcp_protocol_router.post("/{server_id}")
+def mcp_streamable_http(
+    server_id: UUID,
+    payload: dict[str, object],
+    request: Request,
+    db: DatabaseSession,
+    token: AgentGatewayToken,
+    adapter: ExecutionAdapter,
+) -> Response:
+    request_id = payload.get("id")
+    method = payload.get("method")
+    if method == "notifications/initialized":
+        return Response(status_code=202)
+    if method == "initialize":
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {"tools": {"listChanged": False}},
+                    "serverInfo": {"name": "AgentHQ Governed Gateway", "version": "0.7.0"},
+                },
+            }
+        )
+    try:
+        if method == "tools/list":
+            enforce_gateway_rate_limit(
+                request, db, "gateway_tools", gateway_token_id=token.id,
+                organization_id=token.organization_id, resource_id=server_id,
+            )
+            tools = gateway_service.list_gateway_tools(db, token, server_id, protocol="mcp")
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "tools": [
+                            {
+                                "name": tool.name,
+                                "description": tool.description or "",
+                                "inputSchema": tool.input_schema or {"type": "object"},
+                            }
+                            for tool in tools.items
+                        ]
+                    },
+                }
+            )
+        if method == "tools/call":
+            params = payload.get("params")
+            if not isinstance(params, dict) or not isinstance(params.get("name"), str):
+                return mcp_error(request_id, -32602, "Invalid tool call parameters.")
+            arguments = params.get("arguments", {})
+            if not isinstance(arguments, dict):
+                return mcp_error(request_id, -32602, "Invalid tool call parameters.")
+            metadata = params.get("_meta", {})
+            metadata = metadata if isinstance(metadata, dict) else {}
+            approval = metadata.get("approval_id") or arguments.pop("_agenthq_approval_id", None)
+            idempotency = metadata.get("idempotency_key") or arguments.pop(
+                "_agenthq_idempotency_key",
+                None,
+            )
+            try:
+                call = MCPGatewayToolCall(
+                    input_payload=arguments,
+                    approval_id=approval,
+                    idempotency_key=idempotency,
+                )
+            except ValidationError:
+                return mcp_error(request_id, -32602, "Invalid tool call parameters.")
+            enforce_gateway_rate_limit(
+                request, db, "gateway_call", gateway_token_id=token.id,
+                organization_id=token.organization_id, resource_id=server_id,
+            )
+            result = gateway_service.call_gateway_tool_by_name(
+                db, token, server_id, params["name"], call, adapter, protocol="mcp"
+            )
+            if result.status.value in {"blocked", "requires_approval", "failed"}:
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": result.error or result.policy_decision_reason,
+                                }
+                            ],
+                            "isError": True,
+                        },
+                    }
+                )
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": result.result or {"content": []},
+                }
+            )
+    except gateway_service.MCPGatewayApprovalInvalidError:
+        return mcp_error(request_id, -32003, "Approval is invalid for this tool call.")
+    except (
+        gateway_service.MCPGatewayNotFoundError,
+        gateway_service.MCPGatewayToolUnavailableError,
+    ):
+        return mcp_error(request_id, -32004, "Gateway resource not found.")
+    return mcp_error(request_id, -32601, "Method not found.")
+
+
+@mcp_protocol_router.get("/{server_id}")
+def mcp_streamable_http_get(server_id: UUID, token: AgentGatewayToken) -> JSONResponse:
+    return mcp_error(None, -32000, "This gateway does not expose a server event stream.")
+
+
+@mcp_protocol_router.delete("/{server_id}", status_code=status.HTTP_204_NO_CONTENT)
+def mcp_streamable_http_delete(server_id: UUID, token: AgentGatewayToken) -> Response:
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

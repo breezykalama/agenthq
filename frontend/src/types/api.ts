@@ -324,7 +324,9 @@ export interface MCPServerSyncResponse {
 
 export interface MCPGatewayToken {
   id: string;
-  mcp_server_id: string;
+  agent_id: string;
+  allowed_mcp_server_ids: string[];
+  mcp_server_id: string | null;
   name: string;
   status: MCPGatewayTokenStatus;
   last_used_at: string | null;

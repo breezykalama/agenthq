@@ -69,6 +69,21 @@ The dashboard summary now reports total users and active users.
 * Ruff clean
 * MyPy clean
 * Frontend build and lint passing
+
+# AgentHQ v0.7.0 - Dual-Protocol Governed Gateway
+
+## Highlights
+
+* Added agent-scoped, hashed, revocable gateway credentials.
+* Added explicit allowed MCP server scopes.
+* Added MCP Streamable HTTP methods for initialization, tool listing, and tool calls.
+* Added REST gateway aliases using the same shared governance pipeline.
+* Added disabled and archived agent enforcement.
+* Added MCP approval and idempotency metadata support.
+* Updated the Gateway UI with REST and MCP endpoint configuration.
+
+AgentHQ governs only calls routed through its gateway. Strict production enforcement requires
+preventing agents from directly reaching upstream MCP servers.
 * Live frontend and backend deployment
 
 # AgentHQ v0.3.2 — Reliability & Performance Hardening

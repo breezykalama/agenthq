@@ -205,6 +205,18 @@ export function AgentsPage() {
               </Link>
             </div>
             <p className="mb-4 text-sm text-slate-500">{selectedAgent.description ?? "No description"}</p>
+            {isOrganizationAdmin ? (
+              <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                <div className="text-sm font-medium text-emerald-950">AgentHQ Gateway</div>
+                <p className="mt-1 text-sm text-emerald-800">
+                  Issue an agent-scoped credential from a linked MCP server to connect this agent
+                  through the governed REST or MCP gateway.
+                </p>
+                <Link to="/mcp-servers" className={`${actionLinkClass} mt-3 inline-flex`}>
+                  Configure gateway access
+                </Link>
+              </div>
+            ) : null}
             <DataState isLoading={tools.isLoading} error={tools.error}>
               <div className="grid gap-3 md:grid-cols-2">
                 {(tools.data as ListResponse<AgentTool> | undefined)?.items.map((tool) => (

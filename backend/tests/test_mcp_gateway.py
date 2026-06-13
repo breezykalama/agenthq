@@ -381,6 +381,202 @@ def test_gateway_call_rate_limit_returns_429(
     assert limited.headers["Retry-After"] == "60"
 
 
+def test_agent_gateway_credential_is_scoped_to_agent_and_servers(client: TestClient) -> None:
+    setup = setup_gateway(client)
+    credential = client.post(
+        "/api/v1/agent-gateway-credentials",
+        json={
+            "agent_id": setup["tool"]["agent_id"],
+            "allowed_mcp_server_ids": [setup["server"]["id"]],
+            "name": "Agent-scoped credential",
+        },
+    )
+
+    assert credential.status_code == 201
+    body = credential.json()
+    assert body["agent_id"] == setup["tool"]["agent_id"]
+    assert body["allowed_mcp_server_ids"] == [setup["server"]["id"]]
+    assert "token" in body
+    listed = client.get("/api/v1/agent-gateway-credentials")
+    assert "token" not in listed.json()["items"][0]
+    assert "token_hash" not in listed.text
+
+
+def test_agent_gateway_lists_allowed_servers_and_rest_tools(client: TestClient) -> None:
+    setup = setup_gateway(client)
+    credential = create_agent_credential(client, setup)
+
+    servers = client.get(
+        "/api/v1/gateway/mcp-servers",
+        headers=gateway_headers(credential),
+    )
+    tools = client.get(
+        f"/api/v1/gateway/mcp-servers/{setup['server']['id']}/tools",
+        headers=gateway_headers(credential),
+    )
+
+    assert servers.status_code == 200
+    assert servers.json()["items"][0]["linked_agent_id"] == setup["tool"]["agent_id"]
+    assert tools.status_code == 200
+    assert tools.json()["items"][0]["id"] == setup["tool"]["id"]
+
+
+def test_agent_gateway_denies_disabled_agent(client: TestClient) -> None:
+    setup = setup_gateway(client)
+    credential = create_agent_credential(client, setup)
+    client.patch(f"/api/v1/agents/{setup['tool']['agent_id']}", json={"status": "disabled"})
+
+    response = client.get(
+        f"/api/v1/gateway/mcp-servers/{setup['server']['id']}/tools",
+        headers=gateway_headers(credential),
+    )
+
+    assert response.status_code == 404
+
+
+def test_mcp_gateway_initialize_and_tools_list(client: TestClient) -> None:
+    setup = setup_gateway(client)
+    credential = create_agent_credential(client, setup)
+    endpoint = f"/api/v1/mcp/{setup['server']['id']}"
+
+    initialized = client.post(
+        endpoint,
+        headers=gateway_headers(credential),
+        json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+    )
+    tools = client.post(
+        endpoint,
+        headers=gateway_headers(credential),
+        json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+    )
+
+    assert initialized.status_code == 200
+    assert initialized.json()["result"]["serverInfo"]["name"] == "AgentHQ Governed Gateway"
+    assert tools.json()["result"]["tools"][0]["name"] == "transfer_funds"
+
+
+def test_mcp_gateway_tools_call_uses_shared_enforcement(client: TestClient) -> None:
+    setup = setup_gateway(client)
+    credential = create_agent_credential(client, setup)
+    adapter = ExecutionAdapter()
+    setup["app"].dependency_overrides[get_mcp_execution_adapter] = lambda: adapter
+
+    response = client.post(
+        f"/api/v1/mcp/{setup['server']['id']}",
+        headers=gateway_headers(credential),
+        json={
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {
+                "name": "transfer_funds",
+                "arguments": {
+                    "account_id": "123",
+                    "_agenthq_idempotency_key": "mcp-call-1",
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["result"]["content"][0]["text"] == "done"
+    assert adapter.calls == 1
+
+
+def test_agent_gateway_rejects_cross_agent_server_access(client: TestClient) -> None:
+    first = setup_gateway(client)
+    second_server = client.post(
+        "/api/v1/mcp-servers",
+        json={"name": "Second MCP", "server_url": "https://second.example.com/mcp"},
+    ).json()
+    second_sync = client.post(f"/api/v1/mcp-servers/{second_server['id']}/sync").json()
+    credential = client.post(
+        "/api/v1/agent-gateway-credentials",
+        json={
+            "agent_id": second_sync["agent_id"],
+            "allowed_mcp_server_ids": [second_server["id"]],
+            "name": "Second agent runtime",
+        },
+    ).json()["token"]
+
+    response = client.get(
+        f"/api/v1/gateway/mcp-servers/{first['server']['id']}/tools",
+        headers=gateway_headers(credential),
+    )
+
+    assert response.status_code == 404
+
+
+def test_mcp_blocked_call_never_reaches_upstream(client: TestClient) -> None:
+    setup = setup_gateway(client)
+    credential = create_agent_credential(client, setup)
+    adapter = ExecutionAdapter()
+    setup["app"].dependency_overrides[get_mcp_execution_adapter] = lambda: adapter
+    client.post(
+        "/api/v1/policy-rules",
+        json={
+            "name": "Block MCP transfer",
+            "scope": "tool",
+            "agent_id": setup["tool"]["agent_id"],
+            "tool_id": setup["tool"]["id"],
+            "risk_level": "low",
+            "effect": "block",
+        },
+    )
+
+    response = client.post(
+        f"/api/v1/mcp/{setup['server']['id']}",
+        headers=gateway_headers(credential),
+        json={
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {"name": "transfer_funds", "arguments": {}},
+        },
+    )
+
+    assert response.json()["result"]["isError"] is True
+    assert adapter.calls == 0
+
+
+def test_mcp_gateway_malformed_tool_call_returns_safe_error(client: TestClient) -> None:
+    setup = setup_gateway(client)
+    credential = create_agent_credential(client, setup)
+
+    response = client.post(
+        f"/api/v1/mcp/{setup['server']['id']}",
+        headers=gateway_headers(credential),
+        json={
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {
+                "name": "transfer_funds",
+                "arguments": {"_agenthq_approval_id": "not-a-uuid"},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["error"] == {
+        "code": -32602,
+        "message": "Invalid tool call parameters.",
+    }
+
+
+def create_agent_credential(client: TestClient, setup: dict[str, Any]) -> str:
+    response = client.post(
+        "/api/v1/agent-gateway-credentials",
+        json={
+            "agent_id": setup["tool"]["agent_id"],
+            "allowed_mcp_server_ids": [setup["server"]["id"]],
+            "name": "Agent runtime",
+        },
+    )
+    assert response.status_code == 201
+    return cast(str, response.json()["token"])
+
+
 def call_tool(
     client: TestClient,
     setup: dict[str, Any],
