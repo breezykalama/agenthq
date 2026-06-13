@@ -1,7 +1,7 @@
 # AgentHQ Version
 
 Current Version:
-v0.5.2
+v0.5.3
 
 Release Date:
 June 2026
@@ -10,13 +10,13 @@ Status:
 Live
 
 Release Name:
-Governance Alerts & Monitoring
+Policy Simulation & Impact Analysis
 
 Quality:
-311 tests passing
+320 tests passing
 
 Key Theme:
-Proactive governance risk visibility and alert management
+Read-only policy preview and governance impact intelligence
 
 Frontend:
 https://agenthq-seven.vercel.app/

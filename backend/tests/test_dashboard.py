@@ -111,6 +111,7 @@ def test_empty_dashboard_returns_zeros(client: TestClient) -> None:
         "open_governance_alerts": 0,
         "critical_governance_alerts": 0,
         "governance_gaps": 0,
+        "policy_coverage_percentage": 0.0,
         "total_users": 1,
         "active_users": 1,
         "total_cost_usd": "0",

@@ -14,7 +14,7 @@ Backend API:
 
 ## Current Version
 
-AgentHQ v0.5.2
+AgentHQ v0.5.3
 
 ## Project Status
 
@@ -36,6 +36,7 @@ AgentHQ is a live, multi-tenant Enterprise AI Agent Governance Platform focused 
 * Security Event Trails
 * Centralized Abuse Protection
 * Real MCP Tool Discovery
+* Policy Simulation & Impact Analysis
 
 ## The Problem
 
@@ -107,6 +108,21 @@ AgentHQ v0.5.2 adds proactive Governance Alerts and Monitoring.
 * Monitor recent alerts and governance gaps from the dashboard and Alert Center.
 
 Notifications, email delivery, MCP tool execution, and tool calls remain intentionally out of scope.
+
+## AgentHQ v0.5.3
+
+AgentHQ v0.5.3 adds read-only Policy Simulation and Impact Analysis.
+
+* Preview a proposed policy before creating, updating, or enabling it.
+* Identify affected tools, agents, and MCP servers.
+* Compare current and projected policy coverage.
+* See tools becoming blocked, approval-required, or explicitly allowed.
+* Detect overlapping policies and conflicting effects.
+* Estimate governance gaps and alerts that a policy may resolve.
+* Review policy coverage percentage from the dashboard.
+
+Simulations are organization-scoped and do not persist policies, create alerts, or change execution
+behavior.
 
 ## AgentHQ v0.2.0
 
@@ -297,6 +313,8 @@ The architecture includes organization and membership context, tenant-isolation 
 
 * Policy Rules
 * Policy Decision Engine
+* Policy Simulation
+* Policy Impact Analysis
 * Approval Workflows
 * Execution Tracking
 
@@ -353,7 +371,7 @@ The architecture includes organization and membership context, tenant-isolation 
 
 ## Quality
 
-* 311 automated tests passing
+* 320 automated tests passing
 * Ruff clean
 * MyPy clean
 * PostgreSQL migrations verified

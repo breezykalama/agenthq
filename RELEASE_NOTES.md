@@ -245,3 +245,24 @@ Real MCP tool execution remains out of scope for this release.
 * Ruff clean
 * MyPy clean
 * Frontend build and lint passing
+
+# AgentHQ v0.5.3 - Policy Simulation & Impact Analysis
+
+## Highlights
+
+* Added organization-scoped, read-only policy simulation.
+* Added affected tool, agent, and MCP server impact analysis.
+* Added current and projected policy coverage comparison.
+* Added governance-effect projections for block, require-approval, and allow outcomes.
+* Added overlapping-policy and conflicting-effect warnings.
+* Added estimated governance-gap and alert resolution impact.
+* Added preview-before-save support for policy creation and updates.
+* Added policy coverage percentage to the dashboard.
+* Preserved policy enforcement and execution behavior without simulation side effects.
+
+## Quality
+
+* 320 automated backend tests passing
+* Ruff clean
+* MyPy clean
+* Frontend build and lint passing

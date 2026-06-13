@@ -69,6 +69,11 @@ def get_summary(db: Session) -> DashboardSummary:
         open_governance_alerts=health.open_alerts,
         critical_governance_alerts=health.critical_alerts,
         governance_gaps=health.governance_gaps,
+        policy_coverage_percentage=(
+            0.0
+            if mcp_servers.discovered_tools == 0
+            else round(mcp_servers.governed_tools * 100 / mcp_servers.discovered_tools, 2)
+        ),
         total_users=users.total,
         active_users=users.active,
         total_cost_usd=executions.total_cost_usd,

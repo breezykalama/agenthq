@@ -15,9 +15,11 @@ import type {
   ListResponse,
   MCPServer,
   PolicyDecisionResponse,
+  PolicyImpactSummary,
   PolicyRule
   ,ToolGovernanceItem
-  ,ToolGovernanceSummary
+  ,ToolGovernanceSummary,
+  PolicySimulation
 } from "../types/api";
 
 export interface AuditLogFilters {
@@ -62,5 +64,9 @@ export const endpoints = {
   governanceAlerts: (params: Record<string, string | number> = {}) =>
     api.get<ListResponse<GovernanceAlert>>("/api/v1/governance-alerts", { params }).then((r) => r.data),
   governanceHealth: () =>
-    api.get<GovernanceHealth>("/api/v1/governance-health").then((r) => r.data)
+    api.get<GovernanceHealth>("/api/v1/governance-health").then((r) => r.data),
+  simulatePolicy: (payload: unknown) =>
+    api.post<PolicySimulation>("/api/v1/policy-simulations", payload).then((r) => r.data),
+  policyImpactSummary: () =>
+    api.get<PolicyImpactSummary>("/api/v1/policy-impact-summary").then((r) => r.data)
 };

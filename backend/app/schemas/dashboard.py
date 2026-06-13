@@ -32,6 +32,7 @@ class DashboardSummary(BaseModel):
     open_governance_alerts: int
     critical_governance_alerts: int
     governance_gaps: int
+    policy_coverage_percentage: float
     total_users: int
     active_users: int
     total_cost_usd: Decimal

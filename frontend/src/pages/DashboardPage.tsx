@@ -97,6 +97,7 @@ export function DashboardPage() {
           <MetricCard label="Open Alerts" value={data?.open_governance_alerts ?? 0} />
           <MetricCard label="Critical Alerts" value={data?.critical_governance_alerts ?? 0} />
           <MetricCard label="Governance Gaps" value={data?.governance_gaps ?? 0} />
+          <MetricCard label="Policy Coverage" value={`${data?.policy_coverage_percentage ?? 0}%`} />
           <MetricCard label="Active Users" value={data?.active_users ?? 0} />
           <MetricCard label="Total Cost" value={`$${data?.total_cost_usd ?? "0"}`} />
           <MetricCard label="Avg Latency" value={`${Math.round(data?.average_latency_ms ?? 0)} ms`} />

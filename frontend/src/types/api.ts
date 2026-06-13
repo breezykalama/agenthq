@@ -166,6 +166,7 @@ export interface DashboardSummary {
   open_governance_alerts: number;
   critical_governance_alerts: number;
   governance_gaps: number;
+  policy_coverage_percentage: number;
   total_users: number;
   active_users: number;
   total_cost_usd: string;
@@ -243,6 +244,52 @@ export interface GovernanceHealth {
   critical_alerts: number;
   governance_gaps: number;
   explanation: string;
+}
+
+export interface PolicySimulation {
+  affected_tools: { count: number; items: Array<{ id: string; name: string }> };
+  affected_agents: { count: number; items: Array<{ id: string; name: string }> };
+  affected_mcp_servers: { count: number; items: Array<{ id: string; name: string }> };
+  current_coverage: {
+    governed_tools: number;
+    ungoverned_tools: number;
+    policy_coverage_percentage: number;
+  };
+  projected_coverage: {
+    governed_tools: number;
+    ungoverned_tools: number;
+    policy_coverage_percentage: number;
+  };
+  governance_gaps_resolved: number;
+  governance_changes: {
+    becoming_blocked: { count: number; tools: Array<{ id: string; name: string }> };
+    becoming_approval_required: { count: number; tools: Array<{ id: string; name: string }> };
+    becoming_explicitly_allowed: { count: number; tools: Array<{ id: string; name: string }> };
+  };
+  alert_impact: {
+    potentially_resolved_ungoverned_tool: number;
+    potentially_resolved_policy_coverage_lost: number;
+    potentially_created_conflicts: number;
+    potentially_created_overlaps: number;
+  };
+  warning_count: number;
+  warnings: Array<{
+    tool_id: string;
+    tool_name: string;
+    existing_policy_name: string;
+    existing_effect: PolicyRuleEffect;
+    proposed_effect: PolicyRuleEffect;
+    conflicting_effects: boolean;
+    reason: string;
+  }>;
+}
+
+export interface PolicyImpactSummary {
+  policy_coverage_percentage: number;
+  governed_tools: number;
+  ungoverned_tools: number;
+  governance_gaps: number;
+  conflict_count: number;
 }
 
 export interface MCPServer {

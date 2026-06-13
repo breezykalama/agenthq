@@ -287,6 +287,25 @@ def test_governance_alerts_are_tenant_scoped() -> None:
         assert cross_tenant.status_code == 404
 
 
+def test_policy_simulation_rejects_cross_tenant_targets() -> None:
+    with tenant_clients() as tenants:
+        agent_b = create_agent(tenants.client, tenants.headers_b, "Simulation Target B")
+
+        response = tenants.client.post(
+            "/api/v1/policy-simulations",
+            headers=tenants.headers_a,
+            json={
+                "name": "Cross tenant simulation",
+                "scope": "agent",
+                "agent_id": agent_b["id"],
+                "risk_level": "low",
+                "effect": "allow",
+            },
+        )
+
+        assert response.status_code == 422
+
+
 def test_audit_dashboard_and_compliance_are_tenant_scoped() -> None:
     with tenant_clients() as tenants:
         create_agent(tenants.client, tenants.headers_a, "Organization A Agent")
