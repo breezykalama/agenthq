@@ -129,7 +129,8 @@ export function ToolGovernancePage() {
           {filtered.length === 0 ? (
             <EmptyState
               title="No discovered MCP tools"
-              message="Sync an MCP server to discover tool schemas for governance review."
+              message="Discovered tools become the inventory AgentHQ can review, govern, and protect. Register and sync an MCP server to bring tools into this workspace."
+              actions={<Link to="/mcp-servers" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">Register or sync MCP server</Link>}
             />
           ) : (
             <div className="overflow-x-auto">

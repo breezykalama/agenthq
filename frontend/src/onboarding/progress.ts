@@ -1,4 +1,10 @@
 export type OnboardingProgressStep =
+  | "createAgent"
+  | "registerMcpServer"
+  | "discoverTools"
+  | "reviewRisk"
+  | "createPolicy"
+  | "configureGateway"
   | "reviewLinkedAgent"
   | "testPolicyDecision"
   | "reviewCompliance";

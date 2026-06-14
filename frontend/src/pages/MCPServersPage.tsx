@@ -6,6 +6,7 @@ import { api, gatewayApi, getErrorMessage, getGatewayErrorMessage } from "../api
 import { endpoints } from "../api/queries";
 import { useAuth } from "../auth/context";
 import { getEffectiveRole } from "../auth/roles";
+import { markOnboardingStepComplete } from "../onboarding/progress";
 import {
   Badge,
   Card,
@@ -43,7 +44,10 @@ export function MCPServersPage() {
   const servers = useQuery({ queryKey: ["mcp-servers"], queryFn: endpoints.mcpServers });
   const createServer = useMutation({
     mutationFn: (payload: unknown) => api.post("/api/v1/mcp-servers", payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["mcp-servers"] })
+    onSuccess: () => {
+      if (user) markOnboardingStepComplete(user.id, "registerMcpServer");
+      void queryClient.invalidateQueries({ queryKey: ["mcp-servers"] });
+    }
   });
   const syncServer = useMutation({
     mutationFn: (serverId: string) =>
@@ -53,6 +57,7 @@ export function MCPServersPage() {
     onMutate: () => setSyncResult(null),
     onSuccess: (result) => {
       setSyncResult(result);
+      if (user) markOnboardingStepComplete(user.id, "discoverTools");
       void queryClient.invalidateQueries({ queryKey: ["mcp-servers"] });
       void queryClient.invalidateQueries({ queryKey: ["agents"] });
       void queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
@@ -141,7 +146,10 @@ export function MCPServersPage() {
                           >
                             {isSyncing ? "Syncing..." : "Sync Tools"}
                           </SecondaryButton>
-                          <SecondaryButton onClick={() => setGatewayServer(server)}>
+                          <SecondaryButton onClick={() => {
+                            setGatewayServer(server);
+                            if (user) markOnboardingStepComplete(user.id, "configureGateway");
+                          }}>
                             Manage Gateway
                           </SecondaryButton>
                           {server.agent_id ? (
@@ -165,7 +173,7 @@ export function MCPServersPage() {
               <div className="mt-4">
                 <EmptyState
                   title="No MCP servers registered for this organization"
-                  message="Register an MCP server to connect this organization workspace to governed agents and tools."
+                  message="MCP servers are how AgentHQ discovers external tools, creates linked agents, and brings them into governance. Register the first connection to begin."
                   actions={
                     isAdmin ? (
                       <a href="#register-mcp-server" className={actionLinkClass}>

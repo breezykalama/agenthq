@@ -41,6 +41,7 @@ export const router = createBrowserRouter([
             element: <RoleRoute allowedRoles={["admin"]} />,
             children: [
               { path: "mcp-servers", element: <MCPServersPage /> },
+              { path: "gateway-credentials", element: <MCPServersPage /> },
               { path: "policy-rules", element: <PolicyRulesPage /> }
             ]
           },
@@ -75,7 +76,11 @@ export const router = createBrowserRouter([
           },
           {
             element: <OrganizationAdminRoute />,
-            children: [{ path: "organization/invites", element: <OrganizationInvitesPage /> }]
+            children: [
+              { path: "organization", element: <OrganizationInvitesPage /> },
+              { path: "organization/members", element: <OrganizationInvitesPage /> },
+              { path: "organization/invites", element: <OrganizationInvitesPage /> }
+            ]
           }
         ]
       }

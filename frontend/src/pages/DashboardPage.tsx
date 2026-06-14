@@ -1,10 +1,11 @@
 import { useQueries } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import { endpoints } from "../api/queries";
 import { useAuth } from "../auth/context";
 import { getEffectiveRole } from "../auth/roles";
-import { Card, DataState, EmptyState, MetricCard, PageHeader } from "../components/Ui";
+import { Card, DataState, MetricCard, PageHeader } from "../components/Ui";
 import type { CountMap, DashboardSummary } from "../types/api";
 
 function CountList({ title, data }: { title: string; data?: CountMap }) {
@@ -62,9 +63,71 @@ export function DashboardPage() {
     "Escalation Agent"
   ]);
   const isDemoMode = agents.data?.items.some((agent) => demoAgentNames.has(agent.name)) ?? false;
+  const isEmptyWorkspace =
+    !summary.isLoading &&
+    (data?.total_mcp_servers ?? 0) === 0 &&
+    (data?.discovered_tools ?? 0) === 0;
   return (
     <>
       <PageHeader title="Dashboard" subtitle="Your organization's agent governance overview." />
+      <section className="mb-6 overflow-hidden rounded-md border border-slate-800 bg-slate-950 px-5 py-6 text-white shadow-sm sm:px-7">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-2xl">
+            <div className="text-xs font-semibold uppercase text-emerald-300">Governance command center</div>
+            <h2 className="mt-2 text-2xl font-semibold sm:text-3xl">
+              See risk. Close governance gaps. Keep agents accountable.
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              AgentHQ brings discovery, policy, approvals, execution evidence, and compliance posture into one organization workspace.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {getEffectiveRole(user) === "admin" ? (
+              <>
+                <Link to="/mcp-servers" className="rounded-md bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-300">
+                  Register MCP Server
+                </Link>
+                <Link to="/agents#create-agent" className="rounded-md border border-white/30 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10">
+                  Create Agent
+                </Link>
+                <Link to="/policy-rules" className="rounded-md border border-white/30 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10">
+                  Create Policy
+                </Link>
+              </>
+            ) : null}
+          </div>
+        </div>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <HeroMetric label="AI Risk Score" value={`${riskSummary.data?.risk_score ?? data?.governance_health ?? 100}/100`} />
+          <HeroMetric label="Compliance Score" value={`${riskSummary.data?.compliance_score ?? 100}%`} />
+          <HeroMetric label="Governed Tools" value={riskSummary.data?.governed_tools ?? data?.governed_tools ?? 0} />
+          <HeroMetric label="Open Alerts" value={data?.open_governance_alerts ?? 0} />
+        </div>
+      </section>
+      {isEmptyWorkspace ? (
+        <Card className="mb-6 border-emerald-200 bg-emerald-50">
+          <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-center">
+            <div>
+              <div className="text-xs font-semibold uppercase text-emerald-700">Welcome to AgentHQ</div>
+              <h3 className="mt-2 text-xl font-semibold text-slate-950">Build your first governed agent connection</h3>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                Discover tools from an MCP server, govern their risk and permissions, enforce policy through the gateway, and measure the resulting risk posture.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold uppercase text-slate-600">
+                <span>Discover</span><span aria-hidden="true">{"\u2192"}</span>
+                <span>Govern</span><span aria-hidden="true">{"\u2192"}</span>
+                <span>Enforce</span><span aria-hidden="true">{"\u2192"}</span>
+                <span>Measure Risk</span>
+              </div>
+            </div>
+            {getEffectiveRole(user) === "admin" ? (
+              <Link to="/mcp-servers" className="rounded-md bg-slate-900 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-slate-700">
+                Register your first MCP server
+              </Link>
+            ) : null}
+          </div>
+        </Card>
+      ) : null}
       {isDemoMode && !demoBannerDismissed ? (
         <div className="mb-4 flex flex-col gap-3 rounded-md border border-blue-200 bg-blue-50 p-4 text-blue-950 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm leading-6">
@@ -186,14 +249,15 @@ export function DashboardPage() {
           </Card>
         </DataState>
       </div> : null}
-      {data?.total_agents === 0 ? (
-        <div className="mt-6">
-          <EmptyState
-            title="Your organization governance workspace is ready"
-            message="Register an MCP server for this organization, or create its first agent manually."
-          />
-        </div>
-      ) : null}
     </>
+  );
+}
+
+function HeroMetric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-md border border-white/15 bg-white/5 p-3">
+      <div className="text-xs font-medium uppercase text-slate-400">{label}</div>
+      <div className="mt-1 text-2xl font-semibold text-white">{value}</div>
+    </div>
   );
 }

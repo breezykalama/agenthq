@@ -86,7 +86,11 @@ export function GovernanceAlertsPage() {
                 </tbody>
               </table>
             </div>
-          ) : <EmptyState title="No governance alerts" message="No alerts match the current organization filters." />}
+          ) : <EmptyState
+            title="No governance alerts"
+            message="Alerts surface schema drift, unreviewed tools, and policy coverage gaps. No active issues match the current filters."
+            actions={<SecondaryButton onClick={() => { setStatus(""); setSeverity(""); setType(""); }}>Clear filters</SecondaryButton>}
+          />}
           {transition.error ? <p className="mt-3 text-sm text-red-600">{getErrorMessage(transition.error)}</p> : null}
         </DataState>
       </Card>

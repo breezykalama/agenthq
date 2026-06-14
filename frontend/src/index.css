@@ -27,15 +27,21 @@ main table {
 main td,
 main th {
   padding-right: 0.75rem;
+  vertical-align: top;
 }
 
 main pre,
 main code {
   max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 main textarea {
   resize: vertical;
+}
+
+main table + * {
+  min-width: 0;
 }
 
 @layer components {

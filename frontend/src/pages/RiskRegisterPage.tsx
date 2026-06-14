@@ -1,7 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { endpoints } from "../api/queries";
+import { useAuth } from "../auth/context";
+import { markOnboardingStepComplete } from "../onboarding/progress";
 import {
   Badge,
   Card,
@@ -22,6 +25,7 @@ const emptyFilters = {
 };
 
 export function RiskRegisterPage() {
+  const { user } = useAuth();
   const [filters, setFilters] = useState(emptyFilters);
   const riskRegister = useQuery({
     queryKey: ["risk-register", filters],
@@ -30,6 +34,10 @@ export function RiskRegisterPage() {
         Object.fromEntries(Object.entries(filters).filter(([, value]) => value))
       )
   });
+
+  useEffect(() => {
+    if (user) markOnboardingStepComplete(user.id, "reviewRisk");
+  }, [user]);
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -131,7 +139,8 @@ export function RiskRegisterPage() {
             <div className="mt-4">
               <EmptyState
                 title="No AI risks found"
-                message="Discovered MCP tools will automatically appear in this organization's AI Risk Register."
+                message="The Risk Register measures governance and compliance posture for every discovered tool. Sync an MCP server to begin building the inventory."
+                actions={<Link to="/mcp-servers" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">Discover tools</Link>}
               />
             </div>
           ) : null}

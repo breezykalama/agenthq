@@ -67,7 +67,10 @@ export function AgentsPage() {
 
   const createAgent = useMutation({
     mutationFn: (payload: unknown) => api.post("/api/v1/agents", payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agents"] })
+    onSuccess: () => {
+      if (user) markOnboardingStepComplete(user.id, "createAgent");
+      void queryClient.invalidateQueries({ queryKey: ["agents"] });
+    }
   });
   const createTool = useMutation({
     mutationFn: ({ agentId, payload }: { agentId: string; payload: unknown }) =>
@@ -145,7 +148,7 @@ export function AgentsPage() {
               <div className="mt-4">
                 <EmptyState
                   title="No agents yet in this organization"
-                  message="Register an MCP server for this organization to create a linked agent and discover its tools, or create an agent manually."
+                  message="Agents establish identity, ownership, and risk context before tools can be governed. Sync an MCP server to create a linked agent, or register one manually."
                   actions={
                     <>
                       {isOrganizationAdmin ? (

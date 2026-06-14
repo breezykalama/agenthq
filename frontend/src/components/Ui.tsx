@@ -2,11 +2,22 @@ import type { ReactNode } from "react";
 
 import { getErrorMessage } from "../api/client";
 
-export function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+export function PageHeader({
+  title,
+  subtitle,
+  actions
+}: {
+  title: string;
+  subtitle?: string;
+  actions?: ReactNode;
+}) {
   return (
-    <div className="mb-6 min-w-0">
-      <h2 className="break-words text-2xl font-semibold text-slate-950">{title}</h2>
-      {subtitle ? <p className="mt-1 break-words text-sm text-slate-500">{subtitle}</p> : null}
+    <div className="mb-6 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0">
+        <h2 className="break-words text-2xl font-semibold text-slate-950">{title}</h2>
+        {subtitle ? <p className="mt-1 max-w-3xl break-words text-sm leading-6 text-slate-500">{subtitle}</p> : null}
+      </div>
+      {actions ? <div className="flex shrink-0 flex-wrap gap-2">{actions}</div> : null}
     </div>
   );
 }
@@ -23,7 +34,7 @@ export function MetricCard({ label, value }: { label: string; value: ReactNode }
   return (
     <Card>
       <div className="text-sm text-slate-500">{label}</div>
-      <div className="mt-2 text-2xl font-semibold text-slate-950">{value}</div>
+      <div className="mt-2 break-words text-2xl font-semibold text-slate-950">{value}</div>
     </Card>
   );
 }
@@ -92,7 +103,7 @@ export function EmptyState({
   actions?: ReactNode;
 }) {
   return (
-    <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+    <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center sm:px-8">
       <div className="font-medium text-slate-900">{title}</div>
       <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">{message}</p>
       {actions ? <div className="mt-4 flex flex-wrap justify-center gap-2">{actions}</div> : null}

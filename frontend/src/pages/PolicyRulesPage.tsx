@@ -3,6 +3,8 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { api, getErrorMessage } from "../api/client";
 import { endpoints } from "../api/queries";
+import { useAuth } from "../auth/context";
+import { markOnboardingStepComplete } from "../onboarding/progress";
 import {
   Badge,
   Card,
@@ -29,6 +31,7 @@ function formString(form: FormData, key: string) {
 
 export function PolicyRulesPage() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [previewPayload, setPreviewPayload] = useState<Record<string, unknown> | null>(null);
   const [editingRule, setEditingRule] = useState<PolicyRule | null>(null);
   const [scope, setScope] = useState<PolicyRuleScope>("global");
@@ -57,6 +60,7 @@ export function PolicyRulesPage() {
         ? api.patch(`/api/v1/policy-rules/${policyId}`, payload)
         : api.post("/api/v1/policy-rules", payload),
     onSuccess: () => {
+      if (user) markOnboardingStepComplete(user.id, "createPolicy");
       simulation.reset();
       setPreviewPayload(null);
       setEditingRule(null);
@@ -120,13 +124,15 @@ export function PolicyRulesPage() {
               <div className="mt-4">
                 <EmptyState
                   title="No policy rules created for this organization"
-                  message="Create a policy rule to govern this organization's agent behavior."
+                  message="Policies turn governance intent into consistent allow, approval, and block decisions. Create the first rule to establish coverage."
+                  actions={<a href="#create-policy" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">Create first policy</a>}
                 />
               </div>
             ) : null}
           </DataState>
         </Card>
         <Card>
+          <div id="create-policy" className="scroll-mt-24" />
           <h3 className="mb-3 font-semibold">{editingRule ? "Edit Rule" : "Create Rule"}</h3>
           <form key={editingRule?.id ?? "create"} onSubmit={submitRule} className="space-y-3">
             <Field label="Name"><input name="name" required defaultValue={editingRule?.name} className={inputClass} placeholder="Global high-risk requires approval" /></Field>

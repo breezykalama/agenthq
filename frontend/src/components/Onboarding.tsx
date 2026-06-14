@@ -1,5 +1,5 @@
-import { type ReactNode, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { type ReactNode, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { endpoints } from "../api/queries";
@@ -15,38 +15,32 @@ import { PrimaryButton, SecondaryButton } from "./Ui";
 
 const tourSteps = [
   {
-    title: "Dashboard",
-    path: "/",
-    body: "Start here to understand your governance posture, pending work, and quick-start progress."
+    title: "Measure risk",
+    path: "/dashboard",
+    body: "Start with the organization-wide risk, compliance, tool governance, and alert posture."
   },
   {
-    title: "MCP Servers",
+    title: "Discover",
     path: "/mcp-servers",
-    body: "Register an MCP server and sync it to create a linked agent and discover governed tools.",
+    body: "Register MCP servers to discover external tools and create linked agents.",
     roles: ["admin"] as UserRole[]
   },
   {
-    title: "Agents",
-    path: "/agents",
-    body: "Review registered agents, ownership, risk level, lifecycle status, and allowed tools.",
-    roles: ["admin", "agent_owner"] as UserRole[]
-  },
-  {
-    title: "Policy Rules",
-    path: "/policy-rules",
-    body: "Define rules that allow, block, or require approval for agent actions.",
-    roles: ["admin"] as UserRole[]
-  },
-  {
-    title: "Policy Decision Tester",
-    path: "/policy-decisions",
-    body: "Preview whether an agent action is allowed, blocked, or requires approval.",
+    title: "Govern",
+    path: "/tool-governance",
+    body: "Review discovered tools, assign risk and permissions, and inspect schemas.",
     roles: ["admin", "operator"] as UserRole[]
   },
   {
-    title: "Compliance",
+    title: "Set policy",
+    path: "/policy-rules",
+    body: "Define when tools are allowed, blocked, or require human approval.",
+    roles: ["admin"] as UserRole[]
+  },
+  {
+    title: "Review compliance",
     path: "/compliance",
-    body: "Use read-only reports to review incidents, activity, and governance outcomes.",
+    body: "See control violations, governance gaps, and the organization's compliance posture.",
     roles: ["admin", "auditor"] as UserRole[]
   }
 ];
@@ -61,10 +55,25 @@ export function TemporaryOnboarding() {
   );
   const role = getEffectiveRole(user);
   const isAdmin = role === "admin";
+  const agents = useQuery({
+    queryKey: ["agents"],
+    queryFn: endpoints.agents,
+    enabled: Boolean(user && (role === "admin" || role === "agent_owner"))
+  });
   const servers = useQuery({
     queryKey: ["mcp-servers"],
     queryFn: endpoints.mcpServers,
-    enabled: Boolean(isAdmin)
+    enabled: Boolean(user && isAdmin)
+  });
+  const policies = useQuery({
+    queryKey: ["policy-rules"],
+    queryFn: endpoints.policyRules,
+    enabled: Boolean(user && isAdmin)
+  });
+  const toolSummary = useQuery({
+    queryKey: ["tool-governance-summary"],
+    queryFn: endpoints.toolGovernanceSummary,
+    enabled: Boolean(user && (role === "admin" || role === "operator"))
   });
 
   useEffect(() => {
@@ -79,48 +88,60 @@ export function TemporaryOnboarding() {
 
   if (!user || !isWithinFirstSevenDays(user.created_at) || dismissed) return null;
 
-  const localProgress = {
-    reviewLinkedAgent: hasCompletedOnboardingStep(user.id, "reviewLinkedAgent"),
-    testPolicyDecision: hasCompletedOnboardingStep(user.id, "testPolicyDecision"),
-    reviewCompliance: hasCompletedOnboardingStep(user.id, "reviewCompliance")
-  };
-  const hasMcpServer = isAdmin && (servers.data?.total ?? 0) > 0;
-  const hasSyncedServer =
-    isAdmin &&
-    Boolean(servers.data?.items.some((server) => server.status === "connected" || server.last_sync_at));
   const steps = [
     {
-      label: "Register MCP Server",
-      complete: hasMcpServer,
-      path: "/mcp-servers",
-      roles: ["admin"] as UserRole[]
-    },
-    {
-      label: "Sync Tools",
-      complete: hasSyncedServer,
-      path: "/mcp-servers",
-      roles: ["admin"] as UserRole[]
-    },
-    {
-      label: "Review Linked Agent",
-      complete: localProgress.reviewLinkedAgent,
+      label: "Create Agent",
+      detail: "Register the identity that will use governed tools.",
+      complete:
+        (agents.data?.total ?? 0) > 0 || hasCompletedOnboardingStep(user.id, "createAgent"),
       path: "/agents",
       roles: ["admin", "agent_owner"] as UserRole[]
     },
     {
-      label: "Test Policy Decision",
-      complete: localProgress.testPolicyDecision,
-      path: "/policy-decisions",
+      label: "Register MCP Server",
+      detail: "Connect a source of tools for this organization.",
+      complete:
+        (servers.data?.total ?? 0) > 0 ||
+        hasCompletedOnboardingStep(user.id, "registerMcpServer"),
+      path: "/mcp-servers",
+      roles: ["admin"] as UserRole[]
+    },
+    {
+      label: "Discover Tools",
+      detail: "Sync MCP tools into the governance inventory.",
+      complete:
+        (toolSummary.data?.total_tools ?? 0) > 0 ||
+        hasCompletedOnboardingStep(user.id, "discoverTools"),
+      path: "/mcp-servers",
       roles: ["admin", "operator"] as UserRole[]
     },
     {
-      label: "Review Compliance",
-      complete: localProgress.reviewCompliance,
-      path: "/compliance",
+      label: "Review Risk",
+      detail: "Inspect the AI Risk Register and compliance posture.",
+      complete: hasCompletedOnboardingStep(user.id, "reviewRisk"),
+      path: "/risk-register",
       roles: ["admin", "auditor"] as UserRole[]
+    },
+    {
+      label: "Create Policy",
+      detail: "Define an allow, approval, or block decision.",
+      complete:
+        (policies.data?.total ?? 0) > 0 || hasCompletedOnboardingStep(user.id, "createPolicy"),
+      path: "/policy-rules",
+      roles: ["admin"] as UserRole[]
+    },
+    {
+      label: "Configure Gateway",
+      detail: "Issue governed access for an external agent.",
+      complete: hasCompletedOnboardingStep(user.id, "configureGateway"),
+      path: "/gateway-credentials",
+      roles: ["admin"] as UserRole[]
     }
   ];
-  const nextStep = steps.find((step) => !step.complete && role && step.roles.includes(role));
+  const availableSteps = steps.filter((step) => role && step.roles.includes(role));
+  const completed = availableSteps.filter((step) => step.complete).length;
+  const progress = availableSteps.length ? Math.round((completed * 100) / availableSteps.length) : 100;
+  const nextStep = availableSteps.find((step) => !step.complete);
   const dismiss = () => {
     localStorage.setItem(onboardingDismissedKey(user.id), "true");
     setDismissed(true);
@@ -130,14 +151,12 @@ export function TemporaryOnboarding() {
     <>
       <aside
         aria-label="Getting started with AgentHQ"
-        className="fixed inset-x-3 bottom-3 z-40 max-h-[75vh] overflow-y-auto rounded-md border border-slate-300 bg-white p-4 shadow-xl sm:inset-x-auto sm:bottom-5 sm:right-5 sm:w-[380px]"
+        className="fixed inset-x-3 bottom-3 z-40 max-h-[78vh] overflow-y-auto rounded-md border border-slate-300 bg-white p-4 shadow-xl sm:inset-x-auto sm:bottom-5 sm:right-5 sm:w-[400px]"
       >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-xs font-medium uppercase text-slate-500">First 7 days</div>
-            <h2 className="mt-1 text-base font-semibold text-slate-950">
-              Getting started with AgentHQ
-            </h2>
+            <div className="text-xs font-medium uppercase text-slate-500">Guided onboarding</div>
+            <h2 className="mt-1 text-base font-semibold text-slate-950">Build your governance foundation</h2>
           </div>
           <button
             type="button"
@@ -148,21 +167,26 @@ export function TemporaryOnboarding() {
             x
           </button>
         </div>
-        <p className="mt-2 text-sm leading-5 text-slate-600">
-          Register an MCP server, sync tools, review the linked agent, test a policy decision, and
-          review compliance.
-        </p>
+        <div className="mt-3">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+            <span>{completed} of {availableSteps.length} complete</span>
+            <span>{progress}%</span>
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
         {!isAdmin ? (
           <p className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
-            Ask an admin to register and sync MCP servers.
+            Ask an admin to register MCP servers, create policies, and configure gateway access.
           </p>
         ) : null}
         <ol className="mt-4 space-y-2">
-          {steps.map((step) => (
-            <li key={step.label} className="flex items-center gap-2 text-sm">
+          {availableSteps.map((step) => (
+            <li key={step.label} className="flex gap-3 rounded-md px-1 py-1.5 text-sm">
               <span
                 aria-hidden="true"
-                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
                   step.complete
                     ? "bg-emerald-100 text-emerald-800"
                     : "border border-slate-300 text-slate-400"
@@ -170,8 +194,11 @@ export function TemporaryOnboarding() {
               >
                 {step.complete ? "OK" : ""}
               </span>
-              <span className={step.complete ? "text-slate-500 line-through" : "text-slate-700"}>
-                {step.label}
+              <span>
+                <span className={step.complete ? "font-medium text-slate-500 line-through" : "font-medium text-slate-800"}>
+                  {step.label}
+                </span>
+                <span className="mt-0.5 block text-xs leading-5 text-slate-500">{step.detail}</span>
               </span>
             </li>
           ))}
@@ -183,11 +210,7 @@ export function TemporaryOnboarding() {
             </PrimaryButton>
           ) : null}
           <SecondaryButton onClick={() => setTourOpen(true)}>Guided Tour</SecondaryButton>
-          <button
-            type="button"
-            onClick={dismiss}
-            className="px-2 py-2 text-sm font-medium text-slate-500 hover:text-slate-900"
-          >
+          <button type="button" onClick={dismiss} className="px-2 py-2 text-sm font-medium text-slate-500 hover:text-slate-900">
             Dismiss for now
           </button>
         </div>
@@ -225,22 +248,12 @@ export function GuidedTour({ open, onFinish }: { open: boolean; onFinish: () => 
       </div>
       <p className="text-sm leading-6 text-slate-600">{current.body}</p>
       <div className="mt-6 flex items-center justify-between gap-3">
-        <button
-          type="button"
-          className="text-sm font-medium text-slate-500 hover:text-slate-900"
-          onClick={onFinish}
-        >
+        <button type="button" className="text-sm font-medium text-slate-500 hover:text-slate-900" onClick={onFinish}>
           End tour
         </button>
         <div className="flex gap-2">
           {step > 0 ? <SecondaryButton onClick={() => setStep(step - 1)}>Back</SecondaryButton> : null}
-          <PrimaryButton
-            type="button"
-            onClick={() => {
-              if (isLast) onFinish();
-              else setStep(step + 1);
-            }}
-          >
+          <PrimaryButton type="button" onClick={() => (isLast ? onFinish() : setStep(step + 1))}>
             {isLast ? "Finish" : "Next"}
           </PrimaryButton>
         </div>
@@ -249,15 +262,7 @@ export function GuidedTour({ open, onFinish }: { open: boolean; onFinish: () => 
   );
 }
 
-function Modal({
-  title,
-  onClose,
-  children
-}: {
-  title: string;
-  onClose: () => void;
-  children: ReactNode;
-}) {
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -267,26 +272,20 @@ function Modal({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 py-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 py-8" onMouseDown={onClose}>
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="onboarding-title"
+        onMouseDown={(event) => event.stopPropagation()}
         className="max-h-full w-full max-w-2xl overflow-y-auto rounded-md border border-slate-200 bg-white p-6 shadow-xl"
       >
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
             <div className="text-sm font-medium text-slate-500">AgentHQ onboarding</div>
-            <h2 id="onboarding-title" className="mt-1 text-2xl font-semibold text-slate-950">
-              {title}
-            </h2>
+            <h2 id="onboarding-title" className="mt-1 text-2xl font-semibold text-slate-950">{title}</h2>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close onboarding"
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-          >
+          <button type="button" onClick={onClose} aria-label="Close onboarding" className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
             Close
           </button>
         </div>
