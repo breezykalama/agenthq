@@ -5,7 +5,6 @@ import { useAuth } from "../auth/context";
 import { getEffectiveRole } from "../auth/roles";
 import type { UserRole } from "../types/api";
 import { formatRole } from "../utils/format";
-import { TemporaryOnboarding } from "./Onboarding";
 
 type NavItem = {
   to: string;
@@ -103,11 +102,11 @@ export function Layout() {
       section.items.some((item) => isPathActive(location.pathname, item.to))
     )?.label ?? "Overview";
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    () => new Set(["Overview", activeSection])
+    () => new Set([activeSection])
   );
 
   useEffect(() => {
-    setExpandedSections((current) => new Set([...current, activeSection]));
+    setExpandedSections(new Set([activeSection]));
   }, [activeSection]);
 
   useEffect(() => {
@@ -143,8 +142,7 @@ export function Layout() {
   }
 
   return (
-    <div className="min-h-screen min-w-0 bg-slate-100">
-      <TemporaryOnboarding />
+    <div className="min-h-screen min-w-0 bg-slate-50">
       {isMobileOpen ? (
         <button
           type="button"
@@ -156,38 +154,19 @@ export function Layout() {
       <aside
         id="primary-navigation"
         className={[
-          "fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-slate-200 bg-white shadow-xl transition-transform duration-300 ease-out lg:z-20 lg:w-72 lg:shadow-none",
+          "fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-slate-200 bg-white shadow-xl transition-transform duration-300 ease-out lg:z-20 lg:w-64 lg:shadow-none",
           isMobileOpen ? "translate-x-0" : "-translate-x-full",
           isDesktopOpen ? "lg:translate-x-0" : "lg:-translate-x-full"
         ].join(" ")}
       >
-        <div className="shrink-0 border-b border-slate-200 px-4 py-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-lg font-semibold text-slate-950">AgentHQ</div>
-              <div className="text-sm text-slate-500">AI governance workspace</div>
-            </div>
-            <button
-              type="button"
-              aria-label="Close navigation"
-              onClick={() => {
-                setIsMobileOpen(false);
-                if (window.innerWidth >= 1024) toggleDesktopSidebar();
-              }}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-300 text-lg text-slate-600 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
-            >
-              x
-            </button>
-          </div>
-          <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-            <div className="text-xs font-medium uppercase text-slate-500">Current organization</div>
-            <div className="mt-1 break-words text-sm font-semibold text-slate-900">
-              {workspaceIdentity}
-            </div>
+        <div className="shrink-0 border-b border-slate-100 px-4 py-3 pl-16">
+          <div className="min-w-0">
+            <div className="text-base font-semibold text-slate-950">AgentHQ</div>
+            <div className="truncate text-xs text-slate-500">{workspaceIdentity}</div>
           </div>
         </div>
-        <nav aria-label="Primary navigation" className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
-          <div className="space-y-4">
+        <nav aria-label="Primary navigation" className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+          <div className="space-y-2">
             {visibleSections.map((section) => {
               const expanded = expandedSections.has(section.label);
               const sectionActive = section.label === activeSection;
@@ -198,7 +177,7 @@ export function Layout() {
                     aria-expanded={expanded}
                     onClick={() => toggleSection(section.label)}
                     className={[
-                      "flex w-full items-center justify-between rounded-md px-3 py-1.5 text-xs font-semibold uppercase text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900",
+                      "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[11px] font-semibold uppercase text-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900",
                       sectionActive ? "text-slate-900" : "hover:text-slate-700"
                     ].join(" ")}
                   >
@@ -214,7 +193,7 @@ export function Layout() {
                           onClick={() => setIsMobileOpen(false)}
                           className={({ isActive }) =>
                             [
-                              "flex min-h-10 items-center rounded-md px-3 py-2 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900",
+                              "flex min-h-9 items-center rounded-md px-3 py-1.5 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900",
                               isActive
                                 ? "bg-slate-900 text-white"
                                 : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
@@ -231,13 +210,20 @@ export function Layout() {
             })}
           </div>
         </nav>
-        <div className="shrink-0 border-t border-slate-200 p-4">
-          <div className="break-words text-sm font-medium text-slate-900">{user?.full_name}</div>
-          <div className="mb-3 break-words text-xs text-slate-500">{user?.email}</div>
+        <div className="shrink-0 border-t border-slate-100 p-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
+              {user?.full_name?.slice(0, 1).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium text-slate-900">{user?.full_name}</div>
+              <div className="truncate text-xs text-slate-500">{formatRole(role)}</div>
+            </div>
+          </div>
           <button
             type="button"
             onClick={logout}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+            className="mt-2 w-full rounded-md px-3 py-1.5 text-left text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
           >
             Sign out
           </button>
@@ -246,34 +232,34 @@ export function Layout() {
       <div
         className={[
           "min-w-0 transition-[padding] duration-300 ease-out",
-          isDesktopOpen ? "lg:pl-72" : "lg:pl-0"
+          isDesktopOpen ? "lg:pl-64" : "lg:pl-0"
         ].join(" ")}
       >
-        <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6 lg:px-8">
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              type="button"
-              aria-label={isDesktopOpen ? "Hide navigation" : "Open navigation"}
-              aria-controls="primary-navigation"
-              aria-expanded={isMobileOpen || isDesktopOpen}
-              onClick={() => {
-                if (window.innerWidth >= 1024) toggleDesktopSidebar();
-                else setIsMobileOpen(true);
-              }}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-slate-300 text-lg font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
-            >
-              <span aria-hidden="true">{"\u2630"}</span>
-            </button>
+        <button
+          type="button"
+          aria-label={isDesktopOpen || isMobileOpen ? "Hide navigation" : "Open navigation"}
+          aria-controls="primary-navigation"
+          aria-expanded={isMobileOpen || isDesktopOpen}
+          onClick={() => {
+            if (window.innerWidth >= 1024) toggleDesktopSidebar();
+            else setIsMobileOpen((current) => !current);
+          }}
+          className="fixed left-3 top-3 z-50 flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-base font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+        >
+          <span aria-hidden="true">{"\u2630"}</span>
+        </button>
+        <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 py-2.5 pl-16 backdrop-blur sm:px-6 sm:pl-16 lg:px-8 lg:pl-16">
+          <div className="flex min-w-0 items-center">
             <div className="min-w-0">
-              <div className="truncate text-xs font-medium uppercase text-slate-500">
+              <div className="text-base font-semibold text-slate-950">AgentHQ</div>
+              <div className="mt-0.5 inline-flex max-w-full truncate rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">
                 {workspaceIdentity}
               </div>
-              <h1 className="text-lg font-semibold text-slate-950">AgentHQ</h1>
             </div>
           </div>
         </header>
-        <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto w-full max-w-[1600px]">
+        <main className="min-w-0 px-4 py-6 sm:px-6 lg:px-8 xl:px-10">
+          <div className="mx-auto w-full max-w-[1720px]">
             <Outlet />
           </div>
         </main>

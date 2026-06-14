@@ -12,9 +12,9 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-6 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mb-5 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
-        <h2 className="break-words text-2xl font-semibold text-slate-950">{title}</h2>
+        <h2 className="break-words text-2xl font-semibold tracking-tight text-slate-950">{title}</h2>
         {subtitle ? <p className="mt-1 max-w-3xl break-words text-sm leading-6 text-slate-500">{subtitle}</p> : null}
       </div>
       {actions ? <div className="flex shrink-0 flex-wrap gap-2">{actions}</div> : null}
@@ -32,9 +32,9 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
 
 export function MetricCard({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <Card>
+    <Card className="min-h-24">
       <div className="text-sm text-slate-500">{label}</div>
-      <div className="mt-2 break-words text-2xl font-semibold text-slate-950">{value}</div>
+      <div className="mt-2 break-words text-2xl font-semibold tracking-tight text-slate-950">{value}</div>
     </Card>
   );
 }
@@ -123,7 +123,7 @@ export function Field({ label, children }: { label: string; children: ReactNode 
 }
 
 export const inputClass =
-  "min-w-0 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-900 focus:ring-2 focus:ring-slate-200";
+  "min-h-9 min-w-0 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-900 focus:ring-2 focus:ring-slate-200";
 
 export function PrimaryButton({
   children,
@@ -141,7 +141,7 @@ export function PrimaryButton({
       type={type}
       disabled={disabled}
       onClick={onClick}
-      className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:cursor-not-allowed disabled:bg-slate-400"
+      className="min-h-9 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:cursor-not-allowed disabled:bg-slate-400"
     >
       {children}
     </button>
@@ -162,7 +162,7 @@ export function SecondaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+      className="min-h-9 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
     >
       {children}
     </button>

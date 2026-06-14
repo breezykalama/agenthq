@@ -84,7 +84,7 @@ export function ToolGovernancePage() {
   return (
     <>
       <PageHeader
-        title="MCP Tool Governance"
+        title="Tools"
         subtitle="Review discovered tool schemas, risk, permissions, and policy coverage."
       />
       <DataState isLoading={summary.isLoading} error={summary.error}>

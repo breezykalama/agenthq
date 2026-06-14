@@ -35,13 +35,13 @@ export function ApprovalsPage() {
                     <td>{approval.risk_level}</td>
                     <td>{approval.requested_by}</td>
                     <td>{approval.approver ?? "-"}</td>
-                    <td className="flex gap-2 py-2">
+                    <td className="py-2">
                       {approval.status === "pending" ? (
-                        <>
+                        <div className="flex flex-wrap gap-2">
                           <SecondaryButton onClick={() => action.mutate({ id: approval.id, verb: "approve" })}>Approve</SecondaryButton>
                           <SecondaryButton onClick={() => action.mutate({ id: approval.id, verb: "reject" })}>Reject</SecondaryButton>
                           <SecondaryButton onClick={() => action.mutate({ id: approval.id, verb: "cancel" })}>Cancel</SecondaryButton>
-                        </>
+                        </div>
                       ) : "-"}
                     </td>
                   </tr>

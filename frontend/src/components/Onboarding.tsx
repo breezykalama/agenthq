@@ -86,7 +86,7 @@ export function TemporaryOnboarding() {
     if (user) setDismissed(Boolean(localStorage.getItem(onboardingDismissedKey(user.id))));
   }, [user]);
 
-  if (!user || !isWithinFirstSevenDays(user.created_at) || dismissed) return null;
+  if (!user) return null;
 
   const steps = [
     {
@@ -131,7 +131,7 @@ export function TemporaryOnboarding() {
       roles: ["admin"] as UserRole[]
     },
     {
-      label: "Configure Gateway",
+      label: "Test Gateway",
       detail: "Issue governed access for an external agent.",
       complete: hasCompletedOnboardingStep(user.id, "configureGateway"),
       path: "/gateway-credentials",
@@ -142,6 +142,12 @@ export function TemporaryOnboarding() {
   const completed = availableSteps.filter((step) => step.complete).length;
   const progress = availableSteps.length ? Math.round((completed * 100) / availableSteps.length) : 100;
   const nextStep = availableSteps.find((step) => !step.complete);
+  const isEmptyWorkspace =
+    (servers.data?.total ?? 0) === 0 &&
+    (toolSummary.data?.total_tools ?? 0) === 0 &&
+    (policies.data?.total ?? 0) === 0;
+  if (dismissed && !isEmptyWorkspace) return null;
+  if (progress >= 67) return null;
   const dismiss = () => {
     localStorage.setItem(onboardingDismissedKey(user.id), "true");
     setDismissed(true);
@@ -149,72 +155,79 @@ export function TemporaryOnboarding() {
 
   return (
     <>
-      <aside
+      <section
         aria-label="Getting started with AgentHQ"
-        className="fixed inset-x-3 bottom-3 z-40 max-h-[78vh] overflow-y-auto rounded-md border border-slate-300 bg-white p-4 shadow-xl sm:inset-x-auto sm:bottom-5 sm:right-5 sm:w-[400px]"
+        className="mb-5 rounded-md border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
       >
-        <div className="flex items-start justify-between gap-3">
+        <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
           <div>
-            <div className="text-xs font-medium uppercase text-slate-500">Guided onboarding</div>
-            <h2 className="mt-1 text-base font-semibold text-slate-950">Build your governance foundation</h2>
-          </div>
-          <button
-            type="button"
-            onClick={dismiss}
-            aria-label="Dismiss onboarding"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-300 text-lg leading-none text-slate-600 hover:bg-slate-50"
-          >
-            x
-          </button>
-        </div>
-        <div className="mt-3">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-500">
-            <span>{completed} of {availableSteps.length} complete</span>
-            <span>{progress}%</span>
-          </div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
-          </div>
-        </div>
-        {!isAdmin ? (
-          <p className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
-            Ask an admin to register MCP servers, create policies, and configure gateway access.
-          </p>
-        ) : null}
-        <ol className="mt-4 space-y-2">
-          {availableSteps.map((step) => (
-            <li key={step.label} className="flex gap-3 rounded-md px-1 py-1.5 text-sm">
-              <span
-                aria-hidden="true"
-                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
-                  step.complete
-                    ? "bg-emerald-100 text-emerald-800"
-                    : "border border-slate-300 text-slate-400"
-                }`}
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-medium uppercase text-emerald-700">Welcome to AgentHQ</div>
+                <h2 className="mt-1 text-xl font-semibold text-slate-950">Build your governance foundation</h2>
+              </div>
+              <button
+                type="button"
+                onClick={dismiss}
+                aria-label="Dismiss onboarding"
+                className="rounded-md px-2 py-1 text-xs font-medium text-slate-400 hover:bg-slate-100 hover:text-slate-700"
               >
-                {step.complete ? "OK" : ""}
-              </span>
-              <span>
-                <span className={step.complete ? "font-medium text-slate-500 line-through" : "font-medium text-slate-800"}>
-                  {step.label}
-                </span>
-                <span className="mt-0.5 block text-xs leading-5 text-slate-500">{step.detail}</span>
-              </span>
-            </li>
-          ))}
-        </ol>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {nextStep ? (
-            <PrimaryButton type="button" onClick={() => navigate(nextStep.path)}>
-              {nextStep.label}
-            </PrimaryButton>
-          ) : null}
-          <SecondaryButton onClick={() => setTourOpen(true)}>Guided Tour</SecondaryButton>
-          <button type="button" onClick={dismiss} className="px-2 py-2 text-sm font-medium text-slate-500 hover:text-slate-900">
-            Dismiss for now
-          </button>
+                Dismiss
+              </button>
+            </div>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
+              Connect agents and tools, define policy, then measure the organization’s AI risk posture.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold uppercase text-slate-500">
+              <span>Discover</span><span aria-hidden="true">{"\u2192"}</span>
+              <span>Govern</span><span aria-hidden="true">{"\u2192"}</span>
+              <span>Enforce</span><span aria-hidden="true">{"\u2192"}</span>
+              <span>Measure Risk</span>
+            </div>
+            <div className="mt-5 flex flex-wrap gap-2">
+              {nextStep ? (
+                <PrimaryButton type="button" onClick={() => navigate(nextStep.path)}>
+                  {nextStep.label}
+                </PrimaryButton>
+              ) : null}
+              <SecondaryButton onClick={() => setTourOpen(true)}>Guided Tour</SecondaryButton>
+            </div>
+            {!isAdmin ? (
+              <p className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
+                Ask an admin to register MCP servers, create policies, and configure gateway access.
+              </p>
+            ) : null}
+          </div>
+          <div className="rounded-md bg-slate-50 p-4">
+            <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+              <span>Setup progress</span>
+              <span>{completed} of {availableSteps.length}</span>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+              <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
+            </div>
+            <ol className="mt-3 grid gap-1 sm:grid-cols-2">
+              {availableSteps.map((step) => (
+                <li key={step.label} className="flex items-center gap-2 rounded-md px-2 py-2 text-sm">
+                  <span
+                    aria-hidden="true"
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
+                      step.complete
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "border border-slate-300 bg-white text-slate-400"
+                    }`}
+                  >
+                    {step.complete ? "OK" : ""}
+                  </span>
+                  <span className={step.complete ? "text-slate-400 line-through" : "font-medium text-slate-700"}>
+                    {step.label}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
         </div>
-      </aside>
+      </section>
       <GuidedTour open={tourOpen} onFinish={() => setTourOpen(false)} />
     </>
   );
@@ -293,13 +306,4 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
       </section>
     </div>
   );
-}
-
-function isWithinFirstSevenDays(createdAt: string) {
-  const created = new Date(createdAt);
-  const now = new Date();
-  const createdDay = Date.UTC(created.getUTCFullYear(), created.getUTCMonth(), created.getUTCDate());
-  const currentDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const ageInDays = Math.floor((currentDay - createdDay) / (24 * 60 * 60 * 1000));
-  return ageInDays >= 0 && ageInDays <= 7;
 }

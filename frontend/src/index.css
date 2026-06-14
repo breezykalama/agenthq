@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 body {
-  background: #f5f7fb;
+  background: #f8fafc;
   color: #17202a;
   min-width: 320px;
 }
@@ -30,6 +30,18 @@ main th {
   vertical-align: top;
 }
 
+main thead {
+  letter-spacing: 0;
+}
+
+main tbody tr {
+  transition: background-color 120ms ease;
+}
+
+main tbody tr:hover {
+  background: #f8fafc;
+}
+
 main pre,
 main code {
   max-width: 100%;
@@ -45,6 +57,18 @@ main table + * {
 }
 
 @layer components {
+  .app-button {
+    @apply inline-flex min-h-9 items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900;
+  }
+
+  .app-button-primary {
+    @apply bg-slate-900 text-white hover:bg-slate-700;
+  }
+
+  .app-button-secondary {
+    @apply border border-slate-300 bg-white text-slate-700 hover:bg-slate-50;
+  }
+
   .landing-button {
     @apply inline-flex min-h-10 items-center justify-center rounded-md px-4 py-2 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2;
   }

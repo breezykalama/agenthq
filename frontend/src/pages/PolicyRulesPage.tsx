@@ -95,7 +95,7 @@ export function PolicyRulesPage() {
 
   return (
     <>
-      <PageHeader title="Policy Rules" subtitle="Policies for this organization." />
+      <PageHeader title="Policies" subtitle="Policies for this organization." />
       <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <Card>
           <h3 className="mb-3 font-semibold">Rules</h3>

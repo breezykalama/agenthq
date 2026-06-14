@@ -21,7 +21,7 @@ export function CompliancePage() {
 
   return (
     <>
-      <PageHeader title="Compliance" subtitle="Compliance reporting for this organization." />
+      <PageHeader title="Compliance Center" subtitle="Compliance reporting for this organization." />
       <Card className="mb-6 border-blue-200 bg-blue-50 text-blue-950">
         <h3 className="text-sm font-semibold">Read-only compliance view</h3>
         <p className="mt-1 text-sm leading-6">
