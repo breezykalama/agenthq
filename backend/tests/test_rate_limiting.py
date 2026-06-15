@@ -201,3 +201,17 @@ def test_production_without_redis_fails_closed(
 
     assert response.status_code == 503
     assert response.json() == {"detail": "Abuse protection is temporarily unavailable."}
+
+
+def test_risk_summary_uses_compliance_rate_limit(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_limit(monkeypatch, setting="COMPLIANCE_RATE_LIMIT_ATTEMPTS", attempts=1)
+
+    first = client.get("/api/v1/risk-summary")
+    limited = client.get("/api/v1/risk-summary")
+
+    assert first.status_code == 200
+    assert limited.status_code == 429
+    assert limited.headers["Retry-After"] == "60"

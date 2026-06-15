@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import ValidationError
@@ -356,12 +356,14 @@ def mcp_error(request_id: object, code: int, message: str) -> JSONResponse:
 @mcp_protocol_router.post("/{server_id}")
 def mcp_streamable_http(
     server_id: UUID,
-    payload: dict[str, object],
+    payload: Annotated[object, Body()],
     request: Request,
     db: DatabaseSession,
     token: AgentGatewayToken,
     adapter: ExecutionAdapter,
 ) -> Response:
+    if not isinstance(payload, dict):
+        return mcp_error(None, -32600, "Invalid JSON-RPC request.")
     request_id = payload.get("id")
     method = payload.get("method")
     if method == "notifications/initialized":
@@ -374,7 +376,7 @@ def mcp_streamable_http(
                 "result": {
                     "protocolVersion": "2025-03-26",
                     "capabilities": {"tools": {"listChanged": False}},
-                    "serverInfo": {"name": "AgentHQ Governed Gateway", "version": "0.7.0"},
+                    "serverInfo": {"name": "AgentHQ Governed Gateway", "version": "0.8.0"},
                 },
             }
         )

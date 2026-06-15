@@ -1,7 +1,8 @@
+import json
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.agent import AgentRiskLevel
 from app.models.agent_tool import AgentToolPermission
@@ -10,6 +11,8 @@ from app.models.mcp_gateway import MCPGatewayTokenStatus
 from app.models.mcp_server import MCPServerStatus
 from app.models.policy_rule import PolicyRuleEffect
 from app.schemas.tool_governance import ToolGovernanceStatus
+
+MAX_GATEWAY_INPUT_BYTES = 64 * 1024
 
 
 class MCPGatewayTokenCreate(BaseModel):
@@ -73,6 +76,14 @@ class MCPGatewayToolCall(BaseModel):
     input_payload: dict[str, object] = Field(default_factory=dict)
     approval_id: UUID | None = None
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=255)
+
+    @field_validator("input_payload")
+    @classmethod
+    def validate_input_payload_size(cls, value: dict[str, object]) -> dict[str, object]:
+        serialized = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+        if len(serialized.encode("utf-8")) > MAX_GATEWAY_INPUT_BYTES:
+            raise ValueError("Gateway input payload exceeds the 64 KiB limit.")
+        return value
 
 
 class MCPGatewayToolCallResponse(BaseModel):

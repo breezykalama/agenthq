@@ -564,6 +564,35 @@ def test_mcp_gateway_malformed_tool_call_returns_safe_error(client: TestClient) 
     }
 
 
+def test_mcp_gateway_non_object_request_returns_safe_error(client: TestClient) -> None:
+    setup = setup_gateway(client)
+    credential = create_agent_credential(client, setup)
+
+    response = client.post(
+        f"/api/v1/mcp/{setup['server']['id']}",
+        headers=gateway_headers(credential),
+        json=["not", "a", "json-rpc-object"],
+    )
+
+    assert response.status_code == 200
+    assert response.json()["error"] == {
+        "code": -32600,
+        "message": "Invalid JSON-RPC request.",
+    }
+
+
+def test_gateway_rejects_oversized_input_payload(client: TestClient) -> None:
+    setup = setup_gateway(client)
+
+    response = client.post(
+        f"/api/v1/mcp-gateway/{setup['server']['id']}/tools/{setup['tool']['id']}/call",
+        headers=gateway_headers(setup["token"]["token"]),
+        json={"input_payload": {"content": "x" * (64 * 1024)}},
+    )
+
+    assert response.status_code == 422
+
+
 def create_agent_credential(client: TestClient, setup: dict[str, Any]) -> str:
     response = client.post(
         "/api/v1/agent-gateway-credentials",

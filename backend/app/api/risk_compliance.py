@@ -1,10 +1,11 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.pagination import PaginationParams
+from app.core.rate_limit import enforce_authenticated_rate_limit
 from app.core.security import OrgPermission, require_current_organization, require_org_permission
 from app.db.session import get_db
 from app.models.agent import AgentRiskLevel
@@ -31,6 +32,7 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 
 @router.get("/risk-register", response_model=RiskRegisterListResponse)
 def list_risk_register(
+    request: Request,
     db: DatabaseSession,
     pagination: PaginationParams,
     risk_level: Annotated[AgentRiskLevel | None, Query()] = None,
@@ -38,6 +40,12 @@ def list_risk_register(
     governance_status: Annotated[ToolGovernanceStatus | None, Query()] = None,
     policy_coverage_status: Annotated[PolicyCoverageStatus | None, Query()] = None,
 ) -> RiskRegisterListResponse:
+    enforce_authenticated_rate_limit(
+        request,
+        db,
+        "compliance_access",
+        resource_type="risk_register",
+    )
     return risk_service.list_risk_register(
         db,
         risk_level=risk_level,
@@ -50,17 +58,33 @@ def list_risk_register(
 
 
 @router.get("/compliance-controls", response_model=list[ComplianceControlRead])
-def list_compliance_controls(db: DatabaseSession) -> list[ComplianceControlRead]:
+def list_compliance_controls(
+    request: Request,
+    db: DatabaseSession,
+) -> list[ComplianceControlRead]:
+    enforce_authenticated_rate_limit(
+        request,
+        db,
+        "compliance_access",
+        resource_type="compliance_controls",
+    )
     return risk_service.list_controls(db)
 
 
 @router.get("/compliance-evaluation", response_model=ComplianceEvaluation)
 def get_compliance_evaluation(
+    request: Request,
     db: DatabaseSession,
     agent_id: Annotated[UUID | None, Query()] = None,
     mcp_server_id: Annotated[UUID | None, Query()] = None,
     tool_id: Annotated[UUID | None, Query()] = None,
 ) -> ComplianceEvaluation:
+    enforce_authenticated_rate_limit(
+        request,
+        db,
+        "compliance_access",
+        resource_type="compliance_evaluation",
+    )
     return risk_service.evaluate_compliance(
         db,
         agent_id=agent_id,
@@ -70,5 +94,11 @@ def get_compliance_evaluation(
 
 
 @router.get("/risk-summary", response_model=RiskSummary)
-def get_risk_summary(db: DatabaseSession) -> RiskSummary:
+def get_risk_summary(request: Request, db: DatabaseSession) -> RiskSummary:
+    enforce_authenticated_rate_limit(
+        request,
+        db,
+        "compliance_access",
+        resource_type="risk_summary",
+    )
     return risk_service.get_summary(db)

@@ -114,6 +114,9 @@ The gateway hides unreviewed, disabled, and non-executable tools; evaluates poli
 calls; enforces approved approvals; records executions; and audits gateway outcomes. Gateway tokens
 are hashed at rest, server-scoped, revocable, rotatable, and rate limited.
 
+Gateway tool-call input payloads are limited to 64 KiB. Oversized REST requests are rejected with
+validation errors, and oversized MCP `tools/call` arguments return a safe JSON-RPC parameter error.
+
 When an `idempotency_key` is supplied, repeated calls using the same gateway token and tool return
 the previous execution status and safe summary without calling the upstream tool again. Full prior
 tool output is intentionally not persisted for replay.

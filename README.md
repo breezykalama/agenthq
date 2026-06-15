@@ -433,7 +433,7 @@ tool calls upstream.
 
 ## Quality
 
-* 354 automated tests passing
+* 357 automated tests passing
 * Ruff clean
 * MyPy clean
 * PostgreSQL migrations verified
