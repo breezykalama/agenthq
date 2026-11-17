@@ -1,13 +1,24 @@
+import logging
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from uuid import UUID
 
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import app.models  # noqa: F401  (registers every organization-owned table in the metadata)
 from app.core.audit_context import set_actor_audit_context
 from app.core.config import get_settings
 from app.core.security import create_access_token, hash_password
-from app.core.tenancy import set_current_organization_id
+from app.core.tenancy import (
+    PLACEHOLDER_ORGANIZATION_NAME,
+    PLACEHOLDER_ORGANIZATION_SLUG,
+    lock_organization_bootstrap,
+    set_current_organization_id,
+)
+from app.db.base import Base
 from app.models.audit_log import AuditAction, JsonObject
 from app.models.organization import Organization, OrganizationMembership
 from app.models.user import User, UserRole
@@ -24,6 +35,8 @@ from app.services import audit_logs as audit_log_service
 from app.services import email_outbox
 from app.services import identity as identity_service
 from app.services.email import EmailBackend, EmailDeliveryError, delivery_enabled
+
+organization_logger = logging.getLogger("agenthq.organizations")
 
 
 class OrganizationAlreadyBootstrappedError(Exception):
@@ -99,22 +112,103 @@ def get_single_membership_context(db: Session, user: User) -> MembershipContext 
     return MembershipContext(membership=membership, organization=organization)
 
 
+def organization_references(db: Session, organization_id: UUID) -> dict[str, int]:
+    """Count rows in every table holding a foreign key to organizations.id.
+
+    Derived from model metadata (kept in parity with the database by `alembic check`), so a
+    newly added organization-owned table is covered without changing this function.
+    """
+    references: dict[str, int] = {}
+    for table in Base.metadata.sorted_tables:
+        if table.name == Organization.__tablename__:
+            continue
+        for column in table.columns:
+            if not any(
+                foreign_key.column.table.name == Organization.__tablename__
+                for foreign_key in column.foreign_keys
+            ):
+                continue
+            count = db.scalar(
+                select(func.count()).select_from(table).where(column == organization_id)
+            )
+            if count:
+                references[f"{table.name}.{column.name}"] = int(count)
+    return references
+
+
+def is_unused_placeholder(db: Session, organization: Organization) -> bool:
+    """True only for the migration/runtime placeholder with no history whatsoever: its exact
+    name and slug, still active, and referenced by no row in any organization-owned table
+    (memberships of any status, invites, agents, MCP servers, policies, approvals,
+    executions, audit logs, outbox rows, ...). Anything else is treated as a real tenant."""
+    return (
+        organization.deleted_at is None
+        and organization.slug == PLACEHOLDER_ORGANIZATION_SLUG
+        and organization.name == PLACEHOLDER_ORGANIZATION_NAME
+        and not organization_references(db, organization.id)
+    )
+
+
+def _active_organizations(db: Session, *, for_update: bool) -> list[Organization]:
+    statement = (
+        select(Organization)
+        .where(Organization.deleted_at.is_(None))
+        .order_by(Organization.created_at)
+        .limit(2)
+    )
+    if for_update:
+        statement = statement.with_for_update()
+    return list(db.scalars(statement).all())
+
+
+def bootstrap_blocked(db: Session) -> bool:
+    """Unlocked pre-check for the API. bootstrap_organization re-decides under the lock."""
+    active = _active_organizations(db, for_update=False)
+    return bool(active) and not (len(active) == 1 and is_unused_placeholder(db, active[0]))
+
+
+def find_claimable_placeholder(db: Session) -> Organization | None:
+    """Must run under lock_organization_bootstrap. Returns the placeholder to retire, None
+    when no organization exists, and raises when any real organization exists.
+
+    The placeholder row is locked FOR UPDATE before its references are counted: a concurrent
+    transaction inserting a row that references it holds a conflicting FOR KEY SHARE lock, so
+    such a row is either committed (and counted) or blocked until this bootstrap finishes.
+    """
+    active = _active_organizations(db, for_update=True)
+    if not active:
+        return None
+    if len(active) == 1 and is_unused_placeholder(db, active[0]):
+        return active[0]
+    raise OrganizationAlreadyBootstrappedError
+
+
 def bootstrap_organization(
     db: Session,
     request: OrganizationBootstrapRequest,
     email_backend: EmailBackend,
 ) -> BootstrapTokenResponse:
-    if organization_repository.count_active_organizations(db) > 0:
-        raise OrganizationAlreadyBootstrappedError
-    email = request.admin_email.lower()
-    if user_repository.get_user_by_email(db, email) is not None:
-        raise BootstrapAdminEmailExistsError
-    can_deliver = delivery_enabled(email_backend)
-    if not can_deliver and get_settings().is_production:
-        # A production administrator must be able to verify; refuse before writing anything.
-        raise EmailDeliveryError("Email delivery is required in production.")
-
     try:
+        # Serialize every first-organization decision across processes. The lock is released
+        # by the commit or rollback below, never earlier.
+        lock_organization_bootstrap(db)
+        placeholder = find_claimable_placeholder(db)
+        email = request.admin_email.lower()
+        if user_repository.get_user_by_email(db, email) is not None:
+            raise BootstrapAdminEmailExistsError
+        can_deliver = delivery_enabled(email_backend)
+        if not can_deliver and get_settings().is_production:
+            # A production administrator must be able to verify; refuse before writing.
+            raise EmailDeliveryError("Email delivery is required in production.")
+
+        retired_placeholder_id: UUID | None = None
+        if placeholder is not None:
+            # Soft-delete only: the row is kept for history and can never be reused, because
+            # tenancy.get_current_organization_id refuses to recreate a retired placeholder.
+            placeholder.deleted_at = datetime.now(UTC)
+            retired_placeholder_id = placeholder.id
+            db.flush()
+
         organization = organization_repository.create_organization_pending(
             db,
             Organization(
@@ -164,6 +258,13 @@ def bootstrap_organization(
                 entity_type="organization",
                 entity_id=organization.id,
                 after=serialize_organization(organization),
+                # Recorded here rather than as a new audit action: a new enum value would need
+                # a migration and break the v0.8.1-compatible rollback build.
+                metadata=(
+                    {"retired_placeholder_organization_id": str(retired_placeholder_id)}
+                    if retired_placeholder_id is not None
+                    else None
+                ),
             ),
         )
         audit_log_service.create_critical_audit_log(
@@ -190,6 +291,12 @@ def bootstrap_organization(
         db.rollback()
         raise
 
+    if retired_placeholder_id is not None:
+        organization_logger.info(
+            "organization_placeholder_retired placeholder_id=%s organization_id=%s",
+            retired_placeholder_id,
+            organization.id,
+        )
     email_outbox.notify_worker()
     return BootstrapTokenResponse(
         access_token=create_access_token(user),

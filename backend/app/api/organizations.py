@@ -9,7 +9,6 @@ from app.core.audit_context import set_request_audit_context
 from app.core.config import get_settings
 from app.core.rate_limit import enforce_auth_rate_limit, get_client_ip
 from app.db.session import get_db
-from app.repositories import organizations as organization_repository
 from app.schemas.organization import OrganizationBootstrapRequest
 from app.schemas.user import BootstrapTokenResponse
 from app.services import organizations as organization_service
@@ -34,7 +33,7 @@ def bootstrap_organization(
     bootstrap_secret: Annotated[str | None, Header(alias="X-Bootstrap-Secret")] = None,
 ) -> BootstrapTokenResponse:
     set_request_audit_context(db, request)
-    if organization_repository.count_active_organizations(db) > 0:
+    if organization_service.bootstrap_blocked(db):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="An active organization already exists.",

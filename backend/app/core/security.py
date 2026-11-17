@@ -20,7 +20,11 @@ from app.core.audit_context import (
     set_request_audit_context,
 )
 from app.core.config import get_settings
-from app.core.tenancy import get_current_organization_id, set_current_organization_id
+from app.core.tenancy import (
+    get_current_organization_id,
+    lock_organization_bootstrap,
+    set_current_organization_id,
+)
 from app.db.session import get_db
 from app.models.audit_log import AuditAction
 from app.models.organization import Organization, OrganizationMembership
@@ -280,6 +284,9 @@ def require_org_member(
         return context
 
     if not get_settings().is_production:
+        # Non-production legacy fallback that attaches users to the default organization;
+        # serialized with bootstrap so it cannot attach to a placeholder being retired.
+        lock_organization_bootstrap(db)
         active_organization_count = organization_repository.count_active_organizations(db)
         if active_organization_count <= 1:
             organization_id = get_current_organization_id(db)

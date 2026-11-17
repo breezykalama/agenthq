@@ -4,7 +4,11 @@ from sqlalchemy.orm import Session
 
 from app.core.audit_context import set_actor_audit_context
 from app.core.security import hash_password
-from app.core.tenancy import get_current_organization_id, set_current_organization_id
+from app.core.tenancy import (
+    get_current_organization_id,
+    lock_organization_bootstrap,
+    set_current_organization_id,
+)
 from app.models.audit_log import AuditAction, JsonObject
 from app.models.organization import Organization, OrganizationMembership
 from app.models.user import User, UserRole
@@ -80,6 +84,9 @@ def register_user(db: Session, registration: UserRegister) -> User:
             role=role,
         ),
     )
+    # Legacy attach-to-default-organization decision: serialize it with organization bootstrap
+    # so a registration can never land in a placeholder that a concurrent bootstrap retires.
+    lock_organization_bootstrap(db)
     active_organization_count = organization_repository.count_active_organizations(db)
     if active_organization_count == 0:
         organization_id = get_current_organization_id(db)
