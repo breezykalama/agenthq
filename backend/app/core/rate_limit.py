@@ -1,4 +1,5 @@
 import hashlib
+import ipaddress
 import logging
 from collections import defaultdict, deque
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ from app.core.config import get_settings
 from app.core.tenancy import get_optional_organization_id
 
 security_logger = logging.getLogger("agenthq.security")
+IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
 
 SENSITIVE_LIMIT_SETTINGS = {
     "invite_create": "invite_create_rate_limit_attempts",
@@ -127,8 +129,67 @@ def reset_rate_limit_backend() -> None:
     rate_limiter.clear()
 
 
+IPV6_RATE_LIMIT_PREFIX = 64
+UNKNOWN_CLIENT_IP = "unknown"
+
+
+def parse_single_ip(value: str) -> IPAddress | None:
+    """Parse exactly one bare IPv4/IPv6 address; anything else is rejected.
+
+    Rejects empty values, comma-separated chains, embedded whitespace, ports, brackets and
+    IPv6 zone identifiers. IPv4-mapped IPv6 addresses are reduced to their IPv4 form so the
+    same client always produces the same identity.
+    """
+    candidate = value.strip()
+    if not candidate or any(char in candidate for char in ", \t%[]/"):
+        return None
+    try:
+        address = ipaddress.ip_address(candidate)
+    except ValueError:
+        return None
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        return address.ipv4_mapped
+    return address
+
+
+def _peer_may_relay_client_ip(peer: IPAddress | None) -> bool:
+    """Only an internal hop (private, loopback, shared or link-local address) can be the edge
+    proxy. A peer with a public address reached the app directly, so any client-IP header it
+    sends is client-controlled and is ignored. This does NOT distinguish the platform proxy
+    from other internal callers; that remains a documented deployment assumption."""
+    return peer is not None and not peer.is_global
+
+
 def get_client_ip(request: Request) -> str:
-    return request.client.host if request.client is not None else "unknown"
+    """Resolve the client address used for rate-limit keys and security logs.
+
+    Default: the TCP peer. When TRUSTED_CLIENT_IP_HEADER is configured, exactly one valid
+    address in that header replaces the peer, but only when the peer is an internal hop.
+    X-Forwarded-For is never consulted. Every failure falls back to the peer.
+    """
+    peer = parse_single_ip(request.client.host) if request.client is not None else None
+    header = get_settings().trusted_client_ip_header
+    if header is not None and _peer_may_relay_client_ip(peer):
+        values = request.headers.getlist(header)
+        if len(values) == 1:
+            relayed = parse_single_ip(values[0])
+            if relayed is not None:
+                return str(relayed)
+    if peer is not None:
+        return str(peer)
+    if request.client is not None and request.client.host:
+        return request.client.host  # non-IP peer, e.g. a unix socket or test transport
+    return UNKNOWN_CLIENT_IP
+
+
+def rate_limit_ip_key(client_ip: str) -> str:
+    """Bucket identity for IP-based limits: one IPv4 address, or one IPv6 /64 network
+    (a single subscriber usually controls a whole /64)."""
+    address = parse_single_ip(client_ip)
+    if isinstance(address, ipaddress.IPv6Address):
+        network = ipaddress.IPv6Network((address, IPV6_RATE_LIMIT_PREFIX), strict=False)
+        return str(network)
+    return str(address) if address is not None else client_ip
 
 
 def safe_identifier(value: str) -> str:
@@ -146,7 +207,7 @@ def enforce_auth_rate_limit(
     if not settings.rate_limits_enabled:
         return
     client_ip = get_client_ip(request)
-    keys = [f"auth:{scope}:ip:{client_ip}"]
+    keys = [f"auth:{scope}:ip:{rate_limit_ip_key(client_ip)}"]
     if identifier is not None:
         keys.append(f"auth:{scope}:identifier:{safe_identifier(identifier)}")
     _enforce_rate_limit(

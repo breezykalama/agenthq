@@ -29,6 +29,7 @@ Backend:
 | `ALLOW_PUBLIC_REGISTRATION` | `false` | Public legacy/demo registration should remain disabled in production. |
 | `REDIS_URL` | `redis://...` | Render Key Value internal URL used for production rate limiting. Protected endpoints fail closed when Redis is unavailable. |
 | `RATE_LIMITS_ENABLED` | `true` | Enables centralized abuse protection. |
+| `TRUSTED_CLIENT_IP_HEADER` | unset (Render: `cf-connecting-ip`) | Single header holding the real client IP for IP-based rate limits. **Production enablement is BLOCKED until the ingress-spoofing test below passes.** Never `x-forwarded-for`. See [Client IP and rate limiting](#client-ip-and-rate-limiting). |
 | `MCP_DISCOVERY_MODE` | `mock` or `real` | Selects deterministic demo discovery or real MCP protocol discovery. |
 | `ALLOW_PRIVATE_MCP_URLS` | `false` | Keep false in production unless private MCP connectivity is explicitly approved. |
 | `MCP_AUTH_*` | Secret value | Optional backend-only bearer token or API key referenced by an MCP server's `auth_secret_ref`. |
@@ -156,6 +157,66 @@ do not send to Vercel, in Referer headers, or to third parties. The frontend rem
 the address bar on load and keeps it in tab-scoped `sessionStorage` so a refresh still works. The
 frontend (`vercel.json`, `index.html`) and the API set `Referrer-Policy: no-referrer`. Legacy
 `?token=` links and the `/accept-invite`, `/verify-email`, and `/reset-password` routes still work.
+
+### Client IP and rate limiting
+
+Unauthenticated endpoints (login, register, bootstrap, forgot/reset password, verify and resend
+verification, invite acceptance) are limited per client IP in addition to per email or token.
+On Render the TCP peer is the platform proxy, so **with no configuration every user shares one
+IP bucket**. A single client making `AUTH_RATE_LIMIT_ATTEMPTS` failed attempts then blocks
+everyone else for the window. Per-email, per-token, per-organization, per-user and gateway
+limits are not affected.
+
+**`TRUSTED_CLIENT_IP_HEADER`** (unset by default) names one header that the edge proxy sets to
+the real client address:
+
+* When unset, the socket peer is used.
+* When set, the header is used only if all of these hold:
+  * the socket peer is an internal address (private, loopback, link-local or shared/CGNAT);
+  * exactly one such header is present;
+  * its value is a single valid IPv4 or IPv6 address.
+* Anything else falls back to the socket peer.
+* Forwarding chains (`x-forwarded-for`, `forwarded`) are refused at startup and never read.
+* Production logs `security_client_ip_header_unset` at startup when it is not set.
+* IPv6 clients are bucketed per `/64`. Logs keep the full address.
+
+**Trust assumption (not verifiable by the application).** A valid IP in the header proves
+nothing about who wrote it. On Render, `CF-Connecting-IP` is trustworthy only because:
+
+1. Cloudflare overwrites any client-supplied `CF-Connecting-IP` on every request reaching a
+   public Render web service. This is stated in Render's articles and must be confirmed
+   below.
+2. The public internet reaches the service only through that ingress.
+3. Nothing else that can reach the service directly sends a forged value. Requests over
+   Render's private network (other services in the same workspace and region) bypass
+   Cloudflare and could set this header to anything. The application cannot tell them apart
+   from the platform proxy, because both arrive from internal addresses. Do not enable the
+   setting if any untrusted workload can reach the service privately.
+
+**Never set `FORWARDED_ALLOW_IPS=*` (or `--forwarded-allow-ips="*"`).** Uvicorn then takes the
+*leftmost* `X-Forwarded-For` entry, which the caller controls, so any client can choose its
+rate-limit identity. Trusting private ranges such as `10.0.0.0/8` does not help either, because
+the rightmost untrusted hop is a shared Cloudflare edge. Leave Uvicorn's default trust
+(`127.0.0.1`) unchanged; `TRUSTED_CLIENT_IP_HEADER` replaces forwarded-header parsing.
+
+**Required ingress-spoofing test (staging, before enabling in production):**
+
+1. Deploy with `TRUSTED_CLIENT_IP_HEADER=cf-connecting-ip`.
+2. From a machine whose public IP you know, send failed logins to the public URL with a forged
+   header, for example `-H "CF-Connecting-IP: 192.0.2.123"`, until one returns `429`.
+3. In the service logs, the `security_rate_limit_exceeded ... client_ip=` line must show
+   **your real public IP**, not `192.0.2.123`.
+4. Repeat from a second network (for example a phone hotspot). It must get its own bucket:
+   `401` responses while the first network is still limited.
+5. Check that the platform has no other service able to reach this one over the private
+   network.
+
+These log lines contain the scope and client IP only, never credentials or email addresses.
+Use throwaway addresses such as `nobody@example.com` and wrong passwords, never real
+accounts.
+
+If any step fails, unset the variable. The service then falls back to the socket peer, which
+gives shared buckets but cannot be spoofed.
 
 ### Real MCP Discovery
 

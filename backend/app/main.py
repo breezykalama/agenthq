@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from uuid import uuid4
@@ -47,6 +48,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     app.state.settings = settings
     reset_rate_limit_backend()
+    if settings.is_production and settings.trusted_client_ip_header is None:
+        logging.getLogger("agenthq.security").warning(
+            "security_client_ip_header_unset: IP-based rate limits key on the connecting proxy "
+            "address; see DEPLOYMENT.md (TRUSTED_CLIENT_IP_HEADER)"
+        )
     if settings.email_outbox_worker_enabled:
         email_outbox.start_worker(get_session_local(), get_email_backend)
     try:

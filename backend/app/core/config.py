@@ -1,3 +1,4 @@
+import re
 from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
@@ -38,6 +39,9 @@ def get_cors_origins() -> list[str]:
     return [origin.strip().rstrip("/") for origin in origins.split(",") if origin.strip()]
 
 
+HEADER_NAME_PATTERN = re.compile(r"[a-z0-9!#$%&'*+.^_`|~-]+")
+FORWARDING_CHAIN_HEADERS = frozenset({"x-forwarded-for", "forwarded", "x-forwarded-host"})
+
 class Settings(BaseSettings):
     app_name: str = "AgentHQ"
     environment: str = "development"
@@ -60,6 +64,10 @@ class Settings(BaseSettings):
     )
     rate_limits_enabled: bool = Field(default=True, alias="RATE_LIMITS_ENABLED")
     redis_url: str | None = Field(default=None, alias="REDIS_URL")
+    # Name of ONE request header carrying the real client IP, set by a trusted edge proxy that
+    # overwrites any client-supplied value (Render: "cf-connecting-ip"). Unset by default: the
+    # TCP peer address is used. Enabling it is a deployment trust assumption; see DEPLOYMENT.md.
+    trusted_client_ip_header: str | None = Field(default=None, alias="TRUSTED_CLIENT_IP_HEADER")
     auth_rate_limit_attempts: int = Field(default=10, ge=1, alias="AUTH_RATE_LIMIT_ATTEMPTS")
     auth_rate_limit_window_seconds: int = Field(
         default=60,
@@ -169,6 +177,25 @@ class Settings(BaseSettings):
     @property
     def normalized_frontend_base_url(self) -> str:
         return self.frontend_base_url.rstrip("/")
+
+    @model_validator(mode="after")
+    def validate_trusted_client_ip_header(self) -> "Settings":
+        if self.trusted_client_ip_header is None:
+            return self
+        header = self.trusted_client_ip_header.strip().lower()
+        if not header:
+            self.trusted_client_ip_header = None
+            return self
+        if not HEADER_NAME_PATTERN.fullmatch(header):
+            raise ValueError("TRUSTED_CLIENT_IP_HEADER must be a single HTTP header name.")
+        if header in FORWARDING_CHAIN_HEADERS:
+            # Multi-hop headers are client-appendable chains; the leftmost entry is spoofable.
+            raise ValueError(
+                "TRUSTED_CLIENT_IP_HEADER must name a single-value header set by the edge proxy "
+                "(for example cf-connecting-ip), never a forwarding chain."
+            )
+        self.trusted_client_ip_header = header
+        return self
 
     @model_validator(mode="after")
     def validate_email_settings(self) -> "Settings":
