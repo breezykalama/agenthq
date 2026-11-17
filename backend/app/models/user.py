@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, Enum, Index, String, UniqueConstraint, Uuid
+from sqlalchemy import Boolean, DateTime, Enum, Index, Integer, String, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -33,6 +33,9 @@ class User(Base):
         default=UserRole.AGENT_OWNER,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Added by v0.8.1 (migration 202611170001). A password reset increments it; every
+    # access token carries the version it was issued with and must match.
+    auth_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
