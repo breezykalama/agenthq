@@ -1,8 +1,18 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
+from email_helpers import (
+    capture_email,
+    database_session,
+    deliver_outbox,
+    raw_token_from_message,
+    verify_pending_admin,
+)
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
+from app.models.email_outbox import EmailOutbox, EmailOutboxKind, EmailOutboxStatus
+from app.services.email import EmailDeliveryError, OutboundEmail
 from app.services.organization_invites import token_digest
 
 JsonResponse = dict[str, Any]
@@ -29,6 +39,7 @@ def bootstrap(
 
 def admin_headers(client: TestClient) -> dict[str, str]:
     result = bootstrap(client)
+    verify_pending_admin(client)
     return {"Authorization": f"Bearer {result['access_token']}"}
 
 
@@ -72,12 +83,97 @@ def test_admin_can_create_invite_and_raw_token_is_not_listed(
     listing = unauthenticated_client.get("/api/v1/organization-invites", headers=headers).json()
 
     assert invite["token"]
+    assert invite["email_delivery"] == "queued"
+    assert invite["invite_url"].startswith("http://localhost:5173/?auth=invite#token=")
     assert invite["invite_url"].endswith(invite["token"])
     assert invite["token"] != token_digest(invite["token"])
     assert "token_hash" not in invite
     assert "token" not in listing["items"][0]
     assert "token_hash" not in listing["items"][0]
     assert listing["items"][0]["organization_id"] == invite["organization_id"]
+
+
+def test_invite_email_failure_keeps_invite_retries_and_is_audited(
+    unauthenticated_client: TestClient,
+) -> None:
+    headers = admin_headers(unauthenticated_client)
+
+    class FailingEmailBackend:
+        enabled = True
+
+        def send(self, message: OutboundEmail) -> bool:
+            raise EmailDeliveryError("private SMTP detail")
+
+    response = unauthenticated_client.post(
+        "/api/v1/organization-invites",
+        headers=headers,
+        json={"email": "failed-delivery@example.com", "role": "auditor"},
+    )
+    deliver_outbox(unauthenticated_client, FailingEmailBackend())
+    listing = unauthenticated_client.get("/api/v1/organization-invites", headers=headers)
+    audits = unauthenticated_client.get(
+        "/api/v1/audit-logs",
+        headers=headers,
+        params={"action": "organization_invite.email_failed"},
+    )
+
+    # The invite committed before any email was attempted; delivery failure is recorded and
+    # the outbox retries it instead of reporting a misleading success.
+    assert response.status_code == 201
+    assert response.json()["email_delivery"] == "queued"
+    assert listing.json()["total"] == 1
+    assert audits.json()["total"] == 1
+    assert "private SMTP detail" not in audits.text
+    with database_session(unauthenticated_client) as db:
+        row = db.scalar(
+            select(EmailOutbox).where(EmailOutbox.kind == EmailOutboxKind.ORGANIZATION_INVITE)
+        )
+        assert row is not None
+        assert row.status == EmailOutboxStatus.PENDING
+        assert row.attempts == 1
+
+
+def test_invite_email_link_is_sent_after_commit_and_accepts(
+    unauthenticated_client: TestClient,
+) -> None:
+    headers = admin_headers(unauthenticated_client)
+    backend = capture_email(unauthenticated_client)
+
+    invite = create_invite(unauthenticated_client, headers, email="linked@example.com")
+    assert backend.messages == []
+    deliver_outbox(unauthenticated_client)
+
+    assert len(backend.messages) == 1
+    message = backend.messages[0]
+    assert message.to == "linked@example.com"
+    assert "Equity Bank" in message.text_body
+    assert "expires in 7 days" in message.text_body
+    raw_token = raw_token_from_message(message.text_body)
+    assert raw_token == invite["token"]
+    accepted = accept_invite(unauthenticated_client, raw_token, full_name=None)
+    assert accepted["user"]["email"] == "linked@example.com"
+    assert accepted["user"]["email_verified"] is True
+
+
+def test_revoked_invite_email_is_not_sent(unauthenticated_client: TestClient) -> None:
+    headers = admin_headers(unauthenticated_client)
+    backend = capture_email(unauthenticated_client)
+    invite = create_invite(unauthenticated_client, headers, email="revoked-early@example.com")
+
+    revoked = unauthenticated_client.post(
+        f"/api/v1/organization-invites/{invite['id']}/revoke", headers=headers
+    )
+    deliver_outbox(unauthenticated_client)
+
+    assert revoked.status_code == 200
+    assert backend.messages == []
+    with database_session(unauthenticated_client) as db:
+        row = db.scalar(
+            select(EmailOutbox).where(EmailOutbox.kind == EmailOutboxKind.ORGANIZATION_INVITE)
+        )
+        assert row is not None
+        assert row.status == EmailOutboxStatus.CANCELLED
+        assert row.token_nonce is None
 
 
 def test_non_admin_cannot_create_invite(unauthenticated_client: TestClient) -> None:

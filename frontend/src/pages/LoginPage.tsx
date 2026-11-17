@@ -61,6 +61,11 @@ export function LoginPage() {
           {isSubmitting ? "Signing in..." : "Sign in"}
         </PrimaryButton>
       </form>
+      <p className="mt-4 text-sm text-slate-500">
+        <Link className="font-medium text-slate-950 underline" to="/?auth=forgot-password">
+          Forgot password?
+        </Link>
+      </p>
       <p className="mt-6 text-sm text-slate-500">
         Need legacy or demo access?{" "}
         <Link className="font-medium text-slate-950 underline" to="/register">

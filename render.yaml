@@ -16,3 +16,19 @@ services:
         sync: false
       - key: REDIS_URL
         sync: false
+      - key: FRONTEND_BASE_URL
+        sync: false
+      - key: EMAIL_BACKEND
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_USE_TLS
+        sync: false

@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import pytest
+from email_helpers import verify_pending_admin
 from fastapi.testclient import TestClient
 from sqlalchemy import StaticPool, create_engine
 from sqlalchemy.exc import IntegrityError
@@ -45,6 +46,8 @@ def test_bootstrap_creates_organization_admin_membership_and_token(
     assert membership["role"] == "admin"
     assert membership["organization"]["name"] == "Equity Bank"
     assert membership["organization"]["slug"] == "equity-bank"
+    assert result["user"]["email_verification_required"] is True
+    verify_pending_admin(unauthenticated_client)
     bootstrap_headers = {"Authorization": f"Bearer {result['access_token']}"}
     organization_audits = client.get(
         "/api/v1/audit-logs",

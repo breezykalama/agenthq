@@ -20,11 +20,34 @@ export interface BootstrapPayload {
   bootstrap_secret?: string;
 }
 
+export interface IdentityActionResponse {
+  message: string;
+}
+
 export const authApi = {
   register: (payload: RegisterPayload) =>
     api.post<User>("/api/v1/auth/register", payload).then((response) => response.data),
   login: (payload: LoginPayload) =>
     api.post<TokenResponse>("/api/v1/auth/login", payload).then((response) => response.data),
+  verifyEmail: (token: string) =>
+    api
+      .post<IdentityActionResponse>("/api/v1/auth/verify-email", { token })
+      .then((response) => response.data),
+  forgotPassword: (email: string) =>
+    api
+      .post<IdentityActionResponse>("/api/v1/auth/forgot-password", { email })
+      .then((response) => response.data),
+  resendVerification: (email: string) =>
+    api
+      .post<IdentityActionResponse>("/api/v1/auth/resend-verification", { email })
+      .then((response) => response.data),
+  resetPassword: (token: string, newPassword: string) =>
+    api
+      .post<IdentityActionResponse>("/api/v1/auth/reset-password", {
+        token,
+        new_password: newPassword
+      })
+      .then((response) => response.data),
   bootstrap: ({ bootstrap_secret, ...payload }: BootstrapPayload) =>
     api
       .post<BootstrapTokenResponse>("/api/v1/organizations/bootstrap", payload, {

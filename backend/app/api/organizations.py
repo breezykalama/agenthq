@@ -13,10 +13,12 @@ from app.repositories import organizations as organization_repository
 from app.schemas.organization import OrganizationBootstrapRequest
 from app.schemas.user import BootstrapTokenResponse
 from app.services import organizations as organization_service
+from app.services.email import EmailBackend, EmailDeliveryError, get_email_backend
 
 router = APIRouter(prefix="/api/v1/organizations", tags=["organizations"])
 security_logger = logging.getLogger("agenthq.security")
 DatabaseSession = Annotated[Session, Depends(get_db)]
+EmailService = Annotated[EmailBackend, Depends(get_email_backend)]
 
 
 @router.post(
@@ -28,6 +30,7 @@ def bootstrap_organization(
     bootstrap_request: OrganizationBootstrapRequest,
     request: Request,
     db: DatabaseSession,
+    email_backend: EmailService,
     bootstrap_secret: Annotated[str | None, Header(alias="X-Bootstrap-Secret")] = None,
 ) -> BootstrapTokenResponse:
     set_request_audit_context(db, request)
@@ -54,7 +57,7 @@ def bootstrap_organization(
         )
 
     try:
-        return organization_service.bootstrap_organization(db, bootstrap_request)
+        return organization_service.bootstrap_organization(db, bootstrap_request, email_backend)
     except organization_service.OrganizationAlreadyBootstrappedError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -64,4 +67,9 @@ def bootstrap_organization(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Admin email already registered.",
+        ) from exc
+    except EmailDeliveryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Organization email could not be delivered. Please try again.",
         ) from exc

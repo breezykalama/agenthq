@@ -1,9 +1,10 @@
 import axios from "axios";
 import { type FormEvent, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { getErrorMessage } from "../api/client";
 import { useAuth } from "../auth/context";
+import { captureIdentityToken, clearIdentityToken } from "../utils/identityTokens";
 import { Field, inputClass, PrimaryButton } from "../components/Ui";
 import { AuthError, AuthPageFrame } from "./LoginPage";
 
@@ -13,8 +14,8 @@ const INVALID_INVITE_MESSAGE =
 export function AcceptInvitePage() {
   const { acceptInvite } = useAuth();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get("token") ?? "";
+  // Captured once on mount; the token is stripped from the address bar immediately.
+  const [token] = useState(() => captureIdentityToken("invite"));
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -34,6 +35,7 @@ export function AcceptInvitePage() {
         full_name: fullName || null,
         password
       });
+      clearIdentityToken("invite");
       navigate("/dashboard", { replace: true });
     } catch (requestError) {
       setError(getInviteErrorMessage(requestError));

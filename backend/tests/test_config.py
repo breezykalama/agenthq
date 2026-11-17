@@ -93,6 +93,15 @@ def test_private_mcp_url_default_depends_on_environment() -> None:
     assert production.private_mcp_urls_allowed is False
 
 
+def test_smtp_email_backend_requires_host() -> None:
+    with pytest.raises(ValidationError, match="SMTP_HOST is required"):
+        Settings(
+            _env_file=None,
+            DATABASE_URL="postgresql://agenthq:agenthq@localhost:5432/agenthq",
+            EMAIL_BACKEND="smtp",
+        )
+
+
 def test_production_startup_rejects_default_jwt_secret(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -109,3 +118,42 @@ def test_production_startup_rejects_default_jwt_secret(
             pass
 
     get_settings.cache_clear()
+
+
+def smtp_production_settings(frontend_url: str) -> Settings:
+    return Settings(
+        _env_file=None,
+        DATABASE_URL="postgresql://agenthq:agenthq@localhost:5432/agenthq",
+        environment="production",
+        JWT_SECRET_KEY="A-strong-production-secret-with-32-characters!",
+        EMAIL_BACKEND="smtp",
+        SMTP_HOST="smtp.example.com",
+        FRONTEND_BASE_URL=frontend_url,
+    )
+
+
+@pytest.mark.parametrize(
+    "frontend_url",
+    ["http://localhost:5173", "http://agenthq.example.com", "https://localhost"],
+)
+def test_production_smtp_requires_public_https_frontend(frontend_url: str) -> None:
+    with pytest.raises(ValidationError, match="FRONTEND_BASE_URL"):
+        smtp_production_settings(frontend_url)
+
+
+def test_production_smtp_accepts_public_https_frontend() -> None:
+    settings = smtp_production_settings("https://agenthq.example.com/")
+
+    assert settings.normalized_frontend_base_url == "https://agenthq.example.com"
+
+
+def test_smtp_ssl_and_starttls_are_mutually_exclusive() -> None:
+    with pytest.raises(ValidationError, match="SMTP_USE_SSL"):
+        Settings(
+            _env_file=None,
+            DATABASE_URL="postgresql://agenthq:agenthq@localhost:5432/agenthq",
+            EMAIL_BACKEND="smtp",
+            SMTP_HOST="smtp.example.com",
+            SMTP_USE_SSL=True,
+            SMTP_USE_TLS=True,
+        )

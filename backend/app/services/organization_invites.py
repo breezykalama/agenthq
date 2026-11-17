@@ -1,5 +1,4 @@
 import hashlib
-import secrets
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -7,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.audit_context import set_actor_audit_context
+from app.core.config import get_settings
 from app.core.security import (
     CurrentOrganizationContext,
     create_access_token,
@@ -15,6 +15,7 @@ from app.core.security import (
 )
 from app.core.tenancy import set_current_organization_id
 from app.models.audit_log import AuditAction, JsonObject
+from app.models.email_outbox import EmailOutboxKind
 from app.models.organization import OrganizationMembership
 from app.models.organization_invite import OrganizationInvite, OrganizationInviteStatus
 from app.models.user import User, UserRole
@@ -30,7 +31,9 @@ from app.schemas.organization_invite import (
 )
 from app.schemas.user import BootstrapTokenResponse, UserRead
 from app.services import audit_logs as audit_log_service
+from app.services import email_outbox
 from app.services import organizations as organization_service
+from app.services.email import EmailBackend, EmailDeliveryError, delivery_enabled
 
 
 class DuplicatePendingInviteError(Exception):
@@ -75,6 +78,7 @@ def create_invite(
     db: Session,
     context: CurrentOrganizationContext,
     invite_create: OrganizationInviteCreate,
+    email_backend: EmailBackend,
 ) -> OrganizationInviteCreateResponse:
     organization = context.current_organization
     if organization is None:
@@ -87,13 +91,18 @@ def create_invite(
         existing.status = OrganizationInviteStatus.EXPIRED
         invite_repository.update_invite_pending(db, existing)
 
-    raw_token = secrets.token_urlsafe(32)
+    settings = get_settings()
+    can_deliver = delivery_enabled(email_backend)
+    if not can_deliver and settings.is_production:
+        # Production never returns the raw token, so without email the invite is unusable.
+        raise EmailDeliveryError("Email delivery is required in production.")
+    issued = email_outbox.issue_token()
     invite = OrganizationInvite(
         organization_id=organization.id,
         email=email,
         full_name=invite_create.full_name,
         role=invite_create.role,
-        token_hash=token_digest(raw_token),
+        token_hash=issued.token_hash,
         invited_by_user_id=context.current_user.id,
         expires_at=datetime.now(UTC) + timedelta(days=invite_create.expires_in_days),
     )
@@ -110,6 +119,15 @@ def create_invite(
                 after=serialize_invite(invite),
             ),
         )
+        if can_deliver:
+            # Same transaction as the invite: the email can only go out once both commit.
+            email_outbox.enqueue(
+                db,
+                kind=EmailOutboxKind.ORGANIZATION_INVITE,
+                token_id=invite.id,
+                issued=issued,
+                organization_id=organization.id,
+            )
         db.commit()
         db.refresh(invite)
     except IntegrityError as exc:
@@ -118,10 +136,16 @@ def create_invite(
     except Exception:
         db.rollback()
         raise
+    if can_deliver:
+        email_outbox.notify_worker()
+    expose_token = not settings.is_production
     return OrganizationInviteCreateResponse(
         **OrganizationInviteRead.model_validate(invite).model_dump(),
-        token=raw_token,
-        invite_url=f"/accept-invite?token={raw_token}",
+        token=issued.raw_token if expose_token else None,
+        invite_url=(
+            email_outbox.frontend_action_url("invite", issued.raw_token) if expose_token else None
+        ),
+        email_delivery="queued" if can_deliver else "disabled",
     )
 
 
@@ -192,6 +216,10 @@ def accept_invite(
     accept: OrganizationInviteAccept,
 ) -> BootstrapTokenResponse:
     invite = invite_repository.get_invite_by_token_hash(db, token_digest(accept.token))
+    if invite is not None:
+        # Lock the invite row so concurrent accepts of one token are serialized; the loser
+        # re-reads a non-pending status below.
+        db.refresh(invite, with_for_update=True)
     now = datetime.now(UTC)
     if (
         invite is None
@@ -220,6 +248,8 @@ def accept_invite(
             full_name=full_name,
             password_hash=hash_password(accept.password),
             role=UserRole.AGENT_OWNER,
+            email_verified=True,
+            email_verified_at=now,
         )
     set_actor_audit_context(db, user_id=user.id, role=invite.role)
 

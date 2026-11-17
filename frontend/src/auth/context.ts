@@ -12,6 +12,7 @@ export interface AuthContextValue {
   bootstrap: (payload: BootstrapPayload) => Promise<void>;
   acceptInvite: (payload: AcceptOrganizationInvitePayload) => Promise<void>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);

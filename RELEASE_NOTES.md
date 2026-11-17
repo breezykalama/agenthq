@@ -1,3 +1,36 @@
+# AgentHQ v0.8.1 - Email Identity & Invite Delivery
+
+## Highlights
+
+* Added organization-admin email verification with one-time, hash-only tokens.
+* Added enumeration-safe forgot-password and password-reset flows.
+* Added organization invitation email delivery with role and workspace context.
+* Added provider-agnostic console, SMTP, and disabled email backends.
+* Added professional HTML and plain-text identity email templates.
+* Added rate limiting and sanitized audit events for identity flows.
+* Added landing-page inline verification and password recovery experiences.
+
+### Identity security hardening
+
+* Password reset revokes every previously issued access token (per-user `auth_version` claim).
+* Identity emails are delivered through a transactional outbox after commit, never inside the
+  request. No raw token is persisted, retries use backoff, and every attempt is audited.
+* Forgot-password and resend-verification return identical, time-padded responses.
+* Added `POST /api/v1/auth/resend-verification` and a frontend resend action.
+* Newly bootstrapped administrators must verify their email before using organization features.
+  Existing accounts are grandfathered.
+* Token consumption is atomic (conditional `UPDATE`), and concurrent invite acceptance is row-locked.
+* Emailed links use URL fragments. Tokens are stripped from the address bar and
+  `Referrer-Policy: no-referrer` is set.
+* SMTP gains a configurable timeout, implicit-TLS support (`SMTP_USE_SSL`), and sanitized errors.
+* Production startup rejects SMTP delivery without a public HTTPS `FRONTEND_BASE_URL`.
+* API change: invite creation returns `email_delivery` (`queued` / `disabled`) instead of `email_sent`.
+* Migration `202611170001` adds `users.auth_version`, `users.email_verification_required`, and
+  the `email_outbox` table.
+
+Production environments must configure an SMTP-compatible transactional email provider. Raw
+tokens are never stored or written to audit logs.
+
 # AgentHQ v0.2.0 — MCP Server Registration & Tool Discovery
 
 AgentHQ v0.2.0 expands the governance platform with MCP server registration and adapter-based tool discovery.

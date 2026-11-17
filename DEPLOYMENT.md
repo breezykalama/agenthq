@@ -12,6 +12,20 @@ Backend:
 | `BACKEND_CORS_ORIGINS` | `https://agenthq.example.com,https://agenthq-git-main-team.vercel.app` | Comma-separated exact frontend origins. Do not use `*` in production. |
 | `JWT_SECRET_KEY` | Strong random value of at least 32 characters | Signs access tokens. Never reuse another service secret. |
 | `BOOTSTRAP_SECRET` | Separate strong random value | Protects first-organization bootstrap in production. |
+| `FRONTEND_BASE_URL` | `https://agenthq.example.com` | Builds verification, reset, and invite links. Use the canonical HTTPS frontend origin. |
+| `EMAIL_BACKEND` | `smtp` | Use `console` only locally. Production console delivery is disabled to prevent token logging. |
+| `EMAIL_FROM` | `AgentHQ <no-reply@example.com>` | Verified transactional sender identity. |
+| `SMTP_HOST` | Provider SMTP hostname | Required when `EMAIL_BACKEND=smtp`. |
+| `SMTP_PORT` | `587` | SMTP submission port. |
+| `SMTP_USERNAME` | Provider credential | Store only in Render secrets. |
+| `SMTP_PASSWORD` | Provider credential | Store only in Render secrets; never expose to the frontend. |
+| `SMTP_USE_TLS` | `true` | Enables STARTTLS before authentication and delivery (ports 587/2587). |
+| `SMTP_USE_SSL` | `false` | Implicit TLS for port 465. Mutually exclusive with `SMTP_USE_TLS`. |
+| `SMTP_TIMEOUT_SECONDS` | `10` | Per-connection SMTP timeout used by the outbox worker. |
+| `EMAIL_OUTBOX_WORKER_ENABLED` | `true` | Runs the in-process email outbox worker. Keep enabled on the web service. |
+| `EMAIL_OUTBOX_POLL_SECONDS` | `5` | Fallback poll interval; new mail is also dispatched immediately after commit. |
+| `EMAIL_OUTBOX_MAX_ATTEMPTS` | `6` | Delivery attempts before a message is marked failed (backoff 30s to 1h). |
+| `IDENTITY_MIN_RESPONSE_MS` | `400` | Constant response floor for forgot-password and resend-verification. |
 | `ALLOW_PUBLIC_REGISTRATION` | `false` | Public legacy/demo registration should remain disabled in production. |
 | `REDIS_URL` | `redis://...` | Render Key Value internal URL used for production rate limiting. Protected endpoints fail closed when Redis is unavailable. |
 | `RATE_LIMITS_ENABLED` | `true` | Enables centralized abuse protection. |
@@ -53,6 +67,10 @@ The repository includes [render.yaml](render.yaml) and a Dockerfile at `backend/
    * `BACKEND_CORS_ORIGINS`: exact Vercel production URL and any approved preview/custom domains
    * `JWT_SECRET_KEY`: strong random signing secret
    * `BOOTSTRAP_SECRET`: separate strong bootstrap secret
+   * `FRONTEND_BASE_URL`: canonical Vercel production URL
+   * `EMAIL_BACKEND`: `smtp`
+   * `EMAIL_FROM`: verified sender address
+   * `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS`
    * `ALLOW_PUBLIC_REGISTRATION`: `false`
    * `REDIS_URL`: Render Key Value internal Redis connection string
    * `RATE_LIMITS_ENABLED`: `true`
@@ -63,6 +81,81 @@ The repository includes [render.yaml](render.yaml) and a Dockerfile at `backend/
 7. Confirm `https://<service>.onrender.com/health` returns a successful response.
 
 The container runs `alembic upgrade head` before starting Uvicorn and binds to Render's injected `PORT`.
+
+### Transactional Email
+
+AgentHQ uses a provider-agnostic SMTP adapter. Resend, SendGrid, Postmark, Amazon SES, and similar
+providers can be used through their SMTP credentials. Verify the `EMAIL_FROM` domain or sender with
+the selected provider before deploying.
+
+Organization bootstrap sends a 24-hour verification link. Password resets use 30-minute links and
+always return a generic response to prevent account enumeration. Organization invitations include
+the organization name, assigned role, and expiry. `FRONTEND_BASE_URL` must point to the public
+frontend so links open the correct inline landing-page flow.
+
+Only token hashes are stored. Raw tokens exist transiently while constructing email and are shown
+only by the local console backend. SMTP passwords, raw tokens, and passwords are excluded from
+audit metadata and application security logs.
+
+#### Delivery model (transactional outbox)
+
+Identity emails are never sent inside an HTTP request. Bootstrap, invite creation, forgot-password,
+and resend-verification write the token hash and an `email_outbox` row in the same database
+transaction. An in-process worker thread delivers the message only after that transaction commits,
+so a link is never emailed for a token that was rolled back, and SMTP latency never reaches the
+public request path.
+
+* No raw token is stored, not even encrypted. Each outbox row holds a random nonce; the raw token is
+  `HMAC(key derived from JWT_SECRET_KEY, nonce)` and is re-derived at send time. The nonce is cleared
+  when the row is sent, cancelled, or permanently failed.
+* Rotating `JWT_SECRET_KEY` invalidates undelivered links. The worker detects the mismatch and marks
+  those rows failed instead of sending a dead link; users request a new link.
+* Superseded, used, revoked, or expired tokens are cancelled at send time rather than emailed.
+* Failures retry with backoff up to `EMAIL_OUTBOX_MAX_ATTEMPTS`. Every attempt is audited
+  (`auth.email_verification_failed`, `auth.password_reset_email_failed`,
+  `organization_invite.email_failed`) with a sanitized error code and no provider text.
+* Delivery is at-least-once. A crash after the SMTP hand-off but before the status update can cause
+  one duplicate email after the 2-minute lease expires.
+* Rows left pending while the Render instance sleeps or restarts are delivered on the next start.
+  Multiple instances are safe: rows are claimed with `SELECT ... FOR UPDATE SKIP LOCKED`.
+
+Invite creation now returns `email_delivery: "queued" | "disabled"` instead of `email_sent`, because
+delivery happens after the response. In production, bootstrap and invite creation return 503
+before writing anything if no delivery channel is configured.
+
+#### Email verification enforcement
+
+* Mandatory: administrators created by organization bootstrap on v0.8.1 or later
+  (`users.email_verification_required = true`). Until verified they can sign in, call
+  `/api/v1/auth/me`, verify, resend verification, and reset their password. Every
+  organization-scoped API returns `403 Email verification required.`
+* Grandfathered: every account that existed before migration `202611170001`, including existing
+  unverified administrators. The column defaults to false, so nobody is locked out by the deploy.
+  These users may still verify voluntarily through resend-verification.
+* Not required: users who join through an invitation (holding the emailed invite token verifies the
+  address) and legacy/demo self-registered users.
+
+#### Session invalidation
+
+Access tokens carry an `av` (auth version) claim. A completed password reset increments
+`users.auth_version` atomically, so every access token issued earlier is rejected immediately.
+Tokens issued before this release carry no claim and are treated as version 0, so the deploy does
+not sign anyone out.
+
+#### Abuse limits
+
+Forgot-password and resend-verification are limited per IP and per email by the shared rate limiter,
+and additionally per account: at most one message per 60 seconds and five per hour. Throttled
+requests return the same generic response, are padded to `IDENTITY_MIN_RESPONSE_MS`, and are
+audited with outcome `denied`.
+
+#### Token URLs
+
+Emailed links carry the token in the URL fragment (`/?auth=verify-email#token=...`), which browsers
+do not send to Vercel, in Referer headers, or to third parties. The frontend removes the token from
+the address bar on load and keeps it in tab-scoped `sessionStorage` so a refresh still works. The
+frontend (`vercel.json`, `index.html`) and the API set `Referrer-Policy: no-referrer`. Legacy
+`?token=` links and the `/accept-invite`, `/verify-email`, and `/reset-password` routes still work.
 
 ### Real MCP Discovery
 
@@ -167,6 +260,7 @@ Do not automatically seed a production database.
 
 * Keep `DATABASE_URL` only in Render's secret environment variables.
 * Keep `JWT_SECRET_KEY`, `BOOTSTRAP_SECRET`, and `REDIS_URL` only in secret environment variables.
+* Keep `SMTP_PASSWORD` and provider credentials only in Render secret environment variables.
 * Keep all `MCP_AUTH_*` values only in backend secret environment variables.
 * Store raw gateway tokens only in the calling client's secret store; AgentHQ shows them once.
 * Restrict direct upstream MCP access when using AgentHQ as an enforcement boundary.

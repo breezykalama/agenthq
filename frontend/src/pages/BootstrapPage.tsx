@@ -18,9 +18,10 @@ export function BootstrapPage() {
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  if (user) return <Navigate to="/dashboard" replace />;
+  if (user && !success) return <Navigate to="/dashboard" replace />;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -33,7 +34,7 @@ export function BootstrapPage() {
         admin_email: adminEmail,
         admin_password: adminPassword
       });
-      navigate("/dashboard", { replace: true });
+      setSuccess(true);
     } catch (requestError) {
       setError(
         axios.isAxiosError(requestError) && requestError.response?.status === 409
@@ -53,6 +54,16 @@ export function BootstrapPage() {
       <p className="mb-5 text-sm text-slate-600">
         You will become the first administrator for this organization.
       </p>
+      {success ? (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
+          <p className="text-sm font-medium text-emerald-950">
+            Organization created. Check your email to verify your account.
+          </p>
+          <PrimaryButton onClick={() => navigate("/dashboard")}>
+            Go to dashboard
+          </PrimaryButton>
+        </div>
+      ) : (
       <form className="space-y-4" onSubmit={submit}>
         <Field label="Organization name">
           <input
@@ -102,6 +113,7 @@ export function BootstrapPage() {
           {isSubmitting ? "Creating workspace..." : "Create organization workspace"}
         </PrimaryButton>
       </form>
+      )}
       <p className="mt-6 text-sm text-slate-500">
         Already set up?{" "}
         <Link className="font-medium text-slate-950 underline" to="/login">

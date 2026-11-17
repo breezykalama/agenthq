@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -115,6 +116,29 @@ class Settings(BaseSettings):
         ge=1,
         alias="COMPLIANCE_RATE_LIMIT_ATTEMPTS",
     )
+    email_backend: Literal["console", "smtp", "disabled"] = Field(
+        default="console",
+        alias="EMAIL_BACKEND",
+    )
+    email_from: str = Field(default="AgentHQ <no-reply@agenthq.local>", alias="EMAIL_FROM")
+    smtp_host: str | None = Field(default=None, alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, ge=1, le=65535, alias="SMTP_PORT")
+    smtp_username: str | None = Field(default=None, alias="SMTP_USERNAME")
+    smtp_password: str | None = Field(default=None, alias="SMTP_PASSWORD")
+    smtp_use_tls: bool = Field(default=True, alias="SMTP_USE_TLS")
+    smtp_use_ssl: bool = Field(default=False, alias="SMTP_USE_SSL")
+    smtp_timeout_seconds: float = Field(default=10.0, gt=0, le=60, alias="SMTP_TIMEOUT_SECONDS")
+    email_outbox_worker_enabled: bool = Field(default=True, alias="EMAIL_OUTBOX_WORKER_ENABLED")
+    email_outbox_poll_seconds: float = Field(
+        default=5.0, gt=0, le=300, alias="EMAIL_OUTBOX_POLL_SECONDS"
+    )
+    email_outbox_max_attempts: int = Field(
+        default=6, ge=1, le=20, alias="EMAIL_OUTBOX_MAX_ATTEMPTS"
+    )
+    identity_min_response_ms: int = Field(
+        default=400, ge=0, le=5000, alias="IDENTITY_MIN_RESPONSE_MS"
+    )
+    frontend_base_url: str = Field(default="http://localhost:5173", alias="FRONTEND_BASE_URL")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -141,6 +165,25 @@ class Settings(BaseSettings):
         if self.allow_private_mcp_urls is not None:
             return self.allow_private_mcp_urls
         return not self.is_production
+
+    @property
+    def normalized_frontend_base_url(self) -> str:
+        return self.frontend_base_url.rstrip("/")
+
+    @model_validator(mode="after")
+    def validate_email_settings(self) -> "Settings":
+        if self.email_backend == "smtp" and not self.smtp_host:
+            raise ValueError("SMTP_HOST is required when EMAIL_BACKEND=smtp.")
+        if self.smtp_use_ssl and self.smtp_use_tls:
+            raise ValueError("SMTP_USE_SSL and SMTP_USE_TLS cannot both be enabled.")
+        if self.is_production and self.email_backend == "smtp":
+            parsed = urlsplit(self.frontend_base_url)
+            if parsed.scheme != "https" or parsed.hostname in {None, "localhost", "127.0.0.1"}:
+                raise ValueError(
+                    "Production email delivery requires FRONTEND_BASE_URL to be the public "
+                    "HTTPS frontend origin."
+                )
+        return self
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":

@@ -48,6 +48,9 @@ def organization_member_read(
         full_name=user.full_name,
         role=membership.role,
         is_active=membership.is_active,
+        email_verified=user.email_verified,
+        email_verified_at=user.email_verified_at,
+        email_verification_required=user.email_verification_required,
         created_at=user.created_at,
         updated_at=user.updated_at,
         organization_membership=OrganizationMembershipRead(

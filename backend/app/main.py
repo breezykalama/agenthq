@@ -36,7 +36,10 @@ from app.api.tool_governance import summary_router as tool_governance_summary_ro
 from app.api.users import router as users_router
 from app.core.config import get_cors_origins, get_settings
 from app.core.rate_limit import reset_rate_limit_backend
+from app.db.session import get_session_local
+from app.services import email_outbox
 from app.services.audit_logs import AuditLoggingError
+from app.services.email import get_email_backend
 
 
 @asynccontextmanager
@@ -44,11 +47,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     app.state.settings = settings
     reset_rate_limit_backend()
-    yield
+    if settings.email_outbox_worker_enabled:
+        email_outbox.start_worker(get_session_local(), get_email_backend)
+    try:
+        yield
+    finally:
+        email_outbox.stop_worker()
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="AgentHQ", version="0.8.0", lifespan=lifespan)
+    app = FastAPI(title="AgentHQ", version="0.8.1", lifespan=lifespan)
 
     @app.middleware("http")
     async def request_context_middleware(
@@ -58,6 +66,9 @@ def create_app() -> FastAPI:
         request.state.request_id = request.headers.get("X-Request-ID") or str(uuid4())
         response = await call_next(request)
         response.headers["X-Request-ID"] = request.state.request_id
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        if request.url.path.startswith(("/api/v1/auth/", "/api/v1/organization-invites")):
+            response.headers.setdefault("Cache-Control", "no-store")
         return response
 
     @app.exception_handler(AuditLoggingError)

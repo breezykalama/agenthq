@@ -19,9 +19,11 @@ from app.schemas.organization_invite import (
 )
 from app.schemas.user import BootstrapTokenResponse
 from app.services import organization_invites as invite_service
+from app.services.email import EmailBackend, EmailDeliveryError, get_email_backend
 
 router = APIRouter(prefix="/api/v1/organization-invites", tags=["organization-invites"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
+EmailService = Annotated[EmailBackend, Depends(get_email_backend)]
 OrganizationAdmin = Annotated[
     CurrentOrganizationContext,
     Depends(require_current_organization_admin),
@@ -38,6 +40,7 @@ def create_invite(
     request: Request,
     db: DatabaseSession,
     context: OrganizationAdmin,
+    email_backend: EmailService,
 ) -> OrganizationInviteCreateResponse:
     enforce_authenticated_rate_limit(
         request,
@@ -46,11 +49,16 @@ def create_invite(
         resource_type="organization_invite",
     )
     try:
-        return invite_service.create_invite(db, context, invite_create)
+        return invite_service.create_invite(db, context, invite_create, email_backend)
     except invite_service.DuplicatePendingInviteError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A pending invite already exists for this email.",
+        ) from exc
+    except EmailDeliveryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Invitation email could not be delivered. Please try again.",
         ) from exc
 
 

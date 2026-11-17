@@ -14,12 +14,15 @@ SENSITIVE_KEYS = {
     "database_url",
     "invite_token",
     "jwt",
+    "nonce",
     "password",
     "password_hash",
     "refresh_token",
     "secret",
+    "smtp_password",
     "token",
     "token_hash",
+    "token_nonce",
 }
 BEARER_TOKEN_PATTERN = re.compile(r"^bearer\s+\S+$", re.IGNORECASE)
 JWT_PATTERN = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$")
@@ -62,4 +65,5 @@ def is_risky_string(value: str) -> bool:
         parsed.username is not None
         or parsed.password is not None
         or any(normalize_key(key) in SENSITIVE_KEYS for key, _ in parse_qsl(parsed.query))
+        or any(normalize_key(key) in SENSITIVE_KEYS for key, _ in parse_qsl(parsed.fragment))
     )

@@ -40,6 +40,9 @@ export interface User {
   full_name: string;
   role: UserRole;
   is_active: boolean;
+  email_verified: boolean;
+  email_verified_at: string | null;
+  email_verification_required?: boolean;
   created_at: string;
   updated_at: string;
   organization_membership: OrganizationMembership | null;
@@ -79,8 +82,9 @@ export interface OrganizationInvite {
 }
 
 export interface OrganizationInviteCreateResponse extends OrganizationInvite {
-  token: string;
-  invite_url: string;
+  token: string | null;
+  invite_url: string | null;
+  email_delivery: "queued" | "disabled";
 }
 
 export interface TokenResponse {

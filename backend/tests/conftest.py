@@ -11,6 +11,16 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import create_app
 from app.models.user import User, UserRole
+from app.services.email import reset_email_backend
+
+
+@pytest.fixture(autouse=True)
+def isolate_identity_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Tests deliver outbox email explicitly (tests/email_helpers.py); never start the
+    # background worker against a real database, and skip anti-enumeration padding.
+    monkeypatch.setenv("EMAIL_OUTBOX_WORKER_ENABLED", "false")
+    monkeypatch.setenv("IDENTITY_MIN_RESPONSE_MS", "0")
+    get_settings.cache_clear()
 
 
 @pytest.fixture()
@@ -21,6 +31,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     )
     monkeypatch.setenv("REDIS_URL", "")
     get_settings.cache_clear()
+    reset_email_backend()
 
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
@@ -59,6 +70,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     app.dependency_overrides.clear()
     Base.metadata.drop_all(bind=engine)
     get_settings.cache_clear()
+    reset_email_backend()
 
 
 @pytest.fixture()

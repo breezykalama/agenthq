@@ -1,7 +1,7 @@
 # AgentHQ Version
 
 Current Version:
-v0.8.0
+v0.8.1
 
 Release Date:
 June 2026
@@ -10,13 +10,13 @@ Status:
 Live
 
 Release Name:
-AI Risk & Compliance Center
+Email Identity & Invite Delivery
 
 Quality:
-357 tests passing
+408 tests passing
 
 Key Theme:
-Enterprise AI risk visibility and compliance posture
+Secure organization onboarding and account recovery
 
 Frontend:
 https://agenthq-seven.vercel.app/

@@ -162,6 +162,7 @@ def test_audit_redaction_redacts_top_level_and_nested_secrets() -> None:
         "nested": {
             "api_key": "provider-secret",
             "Authorization": "Bearer sensitive-token",
+            "smtp_password": "smtp-secret",
             "safe_status": "connected",
         },
         "items": [{"bootstrap-secret": "bootstrap-value"}, {"risk_level": "high"}],
@@ -176,6 +177,7 @@ def test_audit_redaction_redacts_top_level_and_nested_secrets() -> None:
     assert redacted["TOKEN_HASH"] == REDACTED
     assert redacted["nested"]["api_key"] == REDACTED  # type: ignore[index]
     assert redacted["nested"]["Authorization"] == REDACTED  # type: ignore[index]
+    assert redacted["nested"]["smtp_password"] == REDACTED  # type: ignore[index]
     assert redacted["nested"]["safe_status"] == "connected"  # type: ignore[index]
     assert redacted["items"][0]["bootstrap-secret"] == REDACTED  # type: ignore[index]
     assert redacted["items"][1]["risk_level"] == "high"  # type: ignore[index]

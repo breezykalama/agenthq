@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.audit_context import set_actor_audit_context
+from app.core.config import get_settings
 from app.core.security import create_access_token, hash_password
 from app.core.tenancy import set_current_organization_id
 from app.models.audit_log import AuditAction, JsonObject
@@ -20,6 +21,9 @@ from app.schemas.organization import (
 )
 from app.schemas.user import BootstrapTokenResponse, UserRead
 from app.services import audit_logs as audit_log_service
+from app.services import email_outbox
+from app.services import identity as identity_service
+from app.services.email import EmailBackend, EmailDeliveryError, delivery_enabled
 
 
 class OrganizationAlreadyBootstrappedError(Exception):
@@ -71,6 +75,9 @@ def user_read_with_membership(db: Session, user: User) -> UserRead:
         full_name=user.full_name,
         role=user.role,
         is_active=user.is_active,
+        email_verified=user.email_verified,
+        email_verified_at=user.email_verified_at,
+        email_verification_required=user.email_verification_required,
         created_at=user.created_at,
         updated_at=user.updated_at,
         organization_membership=(
@@ -95,12 +102,17 @@ def get_single_membership_context(db: Session, user: User) -> MembershipContext 
 def bootstrap_organization(
     db: Session,
     request: OrganizationBootstrapRequest,
+    email_backend: EmailBackend,
 ) -> BootstrapTokenResponse:
     if organization_repository.count_active_organizations(db) > 0:
         raise OrganizationAlreadyBootstrappedError
     email = request.admin_email.lower()
     if user_repository.get_user_by_email(db, email) is not None:
         raise BootstrapAdminEmailExistsError
+    can_deliver = delivery_enabled(email_backend)
+    if not can_deliver and get_settings().is_production:
+        # A production administrator must be able to verify; refuse before writing anything.
+        raise EmailDeliveryError("Email delivery is required in production.")
 
     try:
         organization = organization_repository.create_organization_pending(
@@ -117,6 +129,9 @@ def bootstrap_organization(
                 full_name=request.admin_full_name,
                 password_hash=hash_password(request.admin_password),
                 role=UserRole.ADMIN,
+                # Mandatory verification applies to administrators bootstrapped from v0.8.1 on,
+                # whenever a delivery channel exists to complete it.
+                email_verification_required=can_deliver,
             ),
         )
         membership = organization_repository.create_membership_pending(
@@ -162,6 +177,8 @@ def bootstrap_organization(
                 after=serialize_membership(membership, organization),
             ),
         )
+        if can_deliver:
+            identity_service.queue_email_verification(db, user)
         db.commit()
         db.refresh(organization)
         db.refresh(user)
@@ -173,6 +190,7 @@ def bootstrap_organization(
         db.rollback()
         raise
 
+    email_outbox.notify_worker()
     return BootstrapTokenResponse(
         access_token=create_access_token(user),
         user=user_read_with_membership(db, user),

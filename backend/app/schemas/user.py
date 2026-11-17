@@ -30,6 +30,9 @@ class UserRead(BaseModel):
     full_name: str
     role: UserRole
     is_active: bool
+    email_verified: bool
+    email_verified_at: datetime | None
+    email_verification_required: bool = False
     created_at: datetime
     updated_at: datetime
     organization_membership: OrganizationMembershipRead | None = None

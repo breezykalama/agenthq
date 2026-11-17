@@ -71,7 +71,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStoredToken(result.access_token);
         setUser(await authApi.me());
       },
-      logout
+      logout,
+      refreshUser: async () => {
+        setUser(await authApi.me());
+      }
     }),
     [user, isLoading, logout]
   );

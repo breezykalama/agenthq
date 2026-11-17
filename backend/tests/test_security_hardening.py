@@ -1,10 +1,14 @@
 import logging
+from typing import cast
 
 import pytest
+from email_helpers import verify_pending_admin
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
 from app.core.rate_limit import rate_limiter
+from app.services.email import ConsoleEmailBackend, get_email_backend
 
 STRONG_JWT_SECRET = "A-strong-production-secret-with-32-characters!"
 BOOTSTRAP_SECRET = "A-separate-bootstrap-secret-for-production!"
@@ -84,6 +88,8 @@ def test_production_bootstrap_accepts_valid_secret(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     configure_production(monkeypatch)
+    app = cast(FastAPI, unauthenticated_client.app)
+    app.dependency_overrides[get_email_backend] = lambda: ConsoleEmailBackend()
 
     response = unauthenticated_client.post(
         "/api/v1/organizations/bootstrap",
@@ -202,3 +208,62 @@ def test_invite_accept_rate_limit_returns_429_without_logging_token(
     assert limited.status_code == 429
     assert invite_token not in caplog.text
     assert payload["password"] not in caplog.text
+
+
+def test_production_bootstrap_without_email_delivery_fails_closed(
+    unauthenticated_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_production(monkeypatch)
+
+    failed = unauthenticated_client.post(
+        "/api/v1/organizations/bootstrap",
+        headers={"X-Bootstrap-Secret": BOOTSTRAP_SECRET},
+        json=bootstrap_payload(),
+    )
+    app = cast(FastAPI, unauthenticated_client.app)
+    app.dependency_overrides[get_email_backend] = lambda: ConsoleEmailBackend()
+    retried = unauthenticated_client.post(
+        "/api/v1/organizations/bootstrap",
+        headers={"X-Bootstrap-Secret": BOOTSTRAP_SECRET},
+        json=bootstrap_payload(),
+    )
+
+    # Production falls back to the disabled backend: refuse before creating anything.
+    assert failed.status_code == 503
+    assert retried.status_code == 201
+    assert retried.json()["user"]["email_verification_required"] is True
+
+
+def test_production_invite_never_returns_raw_token(
+    unauthenticated_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_production(monkeypatch)
+    app = cast(FastAPI, unauthenticated_client.app)
+    app.dependency_overrides[get_email_backend] = lambda: ConsoleEmailBackend()
+    result = unauthenticated_client.post(
+        "/api/v1/organizations/bootstrap",
+        headers={"X-Bootstrap-Secret": BOOTSTRAP_SECRET},
+        json=bootstrap_payload(),
+    ).json()
+    verify_pending_admin(unauthenticated_client)
+    headers = {"Authorization": f"Bearer {result['access_token']}"}
+
+    invite = unauthenticated_client.post(
+        "/api/v1/organization-invites",
+        headers=headers,
+        json={"email": "prod-invitee@example.com", "role": "auditor"},
+    )
+    app.dependency_overrides.pop(get_email_backend)
+    disabled = unauthenticated_client.post(
+        "/api/v1/organization-invites",
+        headers=headers,
+        json={"email": "prod-invitee-2@example.com", "role": "auditor"},
+    )
+
+    assert invite.status_code == 201
+    assert invite.json()["token"] is None
+    assert invite.json()["invite_url"] is None
+    assert invite.json()["email_delivery"] == "queued"
+    assert disabled.status_code == 503

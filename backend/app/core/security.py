@@ -103,7 +103,12 @@ def create_access_token(user: User) -> str:
     settings = get_settings()
     expires_at = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
     return jwt.encode(
-        {"sub": str(user.id), "role": user.role.value, "exp": expires_at},
+        {
+            "sub": str(user.id),
+            "role": user.role.value,
+            "av": user.auth_version or 0,
+            "exp": expires_at,
+        },
         settings.jwt_secret_key,
         algorithm=settings.jwt_algorithm,
     )
@@ -122,7 +127,10 @@ def get_current_user(
     try:
         payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
         user_id = payload.get("sub")
-        if not isinstance(user_id, str):
+        # Tokens issued before auth_version existed carry no "av" claim and map to version 0,
+        # so existing sessions stay valid until a password reset bumps the user's version.
+        token_auth_version = payload.get("av", 0)
+        if not isinstance(user_id, str) or type(token_auth_version) is not int:
             raise credentials_error
     except InvalidTokenError as exc:
         raise credentials_error from exc
@@ -132,9 +140,18 @@ def get_current_user(
     except ValueError as exc:
         raise credentials_error from exc
     user = user_repository.get_user_by_id(db, parsed_user_id)
-    if user is None or not user.is_active:
+    if user is None or not user.is_active or token_auth_version != user.auth_version:
         raise credentials_error
     return user
+
+
+EMAIL_VERIFICATION_REQUIRED_DETAIL = "Email verification required."
+
+
+def requires_email_verification(user: User) -> bool:
+    """Only accounts explicitly flagged (organization bootstrap administrators created from
+    v0.8.1 onward) must verify. Existing and invited accounts are not flagged."""
+    return bool(user.email_verification_required) and not user.email_verified
 
 
 def _log_access_denied(
@@ -219,6 +236,17 @@ def get_current_organization_context(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> CurrentOrganizationContext:
+    # Every organization-scoped route resolves through this dependency, so the verification
+    # gate lives here. /auth/me and the public identity endpoints use get_current_user (or no
+    # auth) and stay reachable for an unverified administrator.
+    if requires_email_verification(current_user):
+        security_logger.warning(
+            "security_email_verification_required actor_user_id=%s", current_user.id
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=EMAIL_VERIFICATION_REQUIRED_DETAIL,
+        )
     memberships = organization_repository.list_active_memberships_for_user(db, current_user.id)
     if len(memberships) == 1:
         membership, organization = memberships[0]

@@ -14,7 +14,7 @@ Backend API:
 
 ## Current Version
 
-AgentHQ v0.8.0
+AgentHQ v0.8.1
 
 ## Project Status
 
@@ -42,6 +42,8 @@ AgentHQ is a live, multi-tenant Enterprise AI Agent Governance Platform focused 
 * AI Risk Register
 * Compliance Controls and Evaluation
 * Executive AI Risk Reporting
+* Email Verification and Password Recovery
+* Organization Invite Email Delivery
 
 ## The Problem
 
@@ -180,6 +182,24 @@ AgentHQ v0.8.0 introduces the AI Risk & Compliance Center for enterprise governa
   Compliance Center.
 
 Compliance evaluation is informational and does not change policy enforcement behavior.
+
+## AgentHQ v0.8.1
+
+AgentHQ v0.8.1 adds production-ready email identity and organization onboarding flows.
+
+* Send verification email when the first organization administrator is created.
+* Require newly bootstrapped administrators to verify before using organization features; existing accounts are grandfathered.
+* Revoke all previously issued sessions when a password is reset.
+* Deliver identity email through a transactional outbox after commit, never inside the request.
+* Provide enumeration-safe forgot-password and one-time password-reset flows.
+* Deliver organization invitations by email with organization and role context.
+* Store only SHA-256 token hashes and enforce short token expiry windows.
+* Rate limit verification, recovery, and invitation endpoints.
+* Support console, SMTP, and explicitly disabled local email backends.
+
+Production deployments should use `EMAIL_BACKEND=smtp` with a transactional provider such as
+Resend, SendGrid, Postmark, Amazon SES, or another SMTP-compatible service. Raw verification,
+reset, and invitation tokens are never stored in the database or included in audit metadata.
 
 ## AgentHQ v0.2.0
 
@@ -433,7 +453,7 @@ tool calls upstream.
 
 ## Quality
 
-* 357 automated tests passing
+* 408 automated tests passing
 * Ruff clean
 * MyPy clean
 * PostgreSQL migrations verified

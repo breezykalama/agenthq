@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -37,8 +38,9 @@ class OrganizationInviteRead(BaseModel):
 
 
 class OrganizationInviteCreateResponse(OrganizationInviteRead):
-    token: str
-    invite_url: str
+    token: str | None = None
+    invite_url: str | None = None
+    email_delivery: Literal["queued", "disabled"]
 
 
 class OrganizationInviteListResponse(BaseModel):

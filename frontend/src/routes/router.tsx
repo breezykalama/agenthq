@@ -13,6 +13,7 @@ import { CompliancePage } from "../pages/CompliancePage";
 import { DashboardPage } from "../pages/DashboardPage";
 import { ExecutionsPage } from "../pages/ExecutionsPage";
 import { IncidentsPage } from "../pages/IncidentsPage";
+import { IdentityRedirectPage } from "../pages/IdentityRedirectPage";
 import { PolicyDecisionPage } from "../pages/PolicyDecisionPage";
 import { PolicyRulesPage } from "../pages/PolicyRulesPage";
 import { LoginPage } from "../pages/LoginPage";
@@ -30,6 +31,9 @@ export const router = createBrowserRouter([
   { path: "/register", element: <RegisterPage /> },
   { path: "/bootstrap", element: <BootstrapPage /> },
   { path: "/accept-invite", element: <AcceptInvitePage /> },
+  { path: "/verify-email", element: <IdentityRedirectPage mode="verify-email" /> },
+  { path: "/forgot-password", element: <IdentityRedirectPage mode="forgot-password" /> },
+  { path: "/reset-password", element: <IdentityRedirectPage mode="reset-password" /> },
   {
     element: <ProtectedRoute />,
     children: [

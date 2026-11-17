@@ -61,7 +61,7 @@ export function OrganizationInvitesPage() {
   }
 
   async function copyInviteLink() {
-    if (!createdInvite) return;
+    if (!createdInvite?.invite_url) return;
     try {
       await navigator.clipboard.writeText(toPublicInviteUrl(createdInvite.invite_url));
       setCopyFeedback("Invite link copied");
@@ -87,17 +87,26 @@ export function OrganizationInvitesPage() {
         <Card className="mb-4 border-emerald-200 bg-emerald-50">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
-              <h3 className="font-semibold text-emerald-950">Invite ready to share</h3>
+              <h3 className="font-semibold text-emerald-950">
+                {createdInvite.email_delivery === "queued" ? "Invitation queued" : "Invite ready for local testing"}
+              </h3>
               <p className="mt-1 text-sm text-emerald-800">
-                Send this secure link to {createdInvite.email}. It expires{" "}
-                {formatDate(createdInvite.expires_at)}.
+                {createdInvite.email_delivery === "queued"
+                  ? "An invitation email is being sent to "
+                  : "Email delivery is disabled. Share this invite with "}
+                <a className="underline" href={`mailto:${createdInvite.email}`}>{createdInvite.email}</a>.
+                It expires {formatDate(createdInvite.expires_at)}. Delivery outcomes are recorded in the audit log.
               </p>
-              <div className="mt-3 break-all rounded-md border border-emerald-200 bg-white p-3 font-mono text-xs text-slate-700">
-                {toPublicInviteUrl(createdInvite.invite_url)}
-              </div>
+              {createdInvite.invite_url ? (
+                <div className="mt-3 break-all rounded-md border border-emerald-200 bg-white p-3 font-mono text-xs text-slate-700">
+                  {toPublicInviteUrl(createdInvite.invite_url)}
+                </div>
+              ) : null}
               {copyFeedback ? <p className="mt-2 text-sm text-emerald-800">{copyFeedback}</p> : null}
             </div>
-            <SecondaryButton onClick={() => void copyInviteLink()}>Copy invite link</SecondaryButton>
+            {createdInvite.invite_url ? (
+              <SecondaryButton onClick={() => void copyInviteLink()}>Copy invite link</SecondaryButton>
+            ) : null}
           </div>
         </Card>
       ) : null}
@@ -173,8 +182,8 @@ export function OrganizationInvitesPage() {
         <Card>
           <h3 className="mb-1 font-semibold text-slate-950">Invite a User</h3>
           <p className="mb-4 text-sm text-slate-500">
-            The generated link is shown once for you to share directly. The recipient will join{" "}
-            {organizationName}.
+            AgentHQ emails a secure invitation to the recipient. Local environments may also show
+            a copyable link for testing. The recipient will join {organizationName}.
           </p>
           <form className="space-y-4" onSubmit={submit}>
             <Field label="Email">

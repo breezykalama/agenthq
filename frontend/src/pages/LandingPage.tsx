@@ -3,11 +3,30 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { getErrorMessage } from "../api/client";
+import { authApi } from "../api/auth";
 import { useAuth } from "../auth/context";
+import { captureIdentityToken, clearIdentityToken } from "../utils/identityTokens";
 
-type AuthMode = "login" | "bootstrap" | "invite" | "register";
+type AuthMode =
+  | "login"
+  | "bootstrap"
+  | "invite"
+  | "register"
+  | "verify-email"
+  | "forgot-password"
+  | "reset-password"
+  | "resend-verification";
 
-const authModes = new Set<AuthMode>(["login", "bootstrap", "invite", "register"]);
+const authModes = new Set<AuthMode>([
+  "login",
+  "bootstrap",
+  "invite",
+  "register",
+  "verify-email",
+  "forgot-password",
+  "reset-password",
+  "resend-verification"
+]);
 
 const risks = [
   ["Unknown agents", "Teams lose sight of which agents exist, who owns them, and what they can reach."],
@@ -52,11 +71,12 @@ const fieldClass =
   "mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100";
 
 function LandingPage() {
-  const { user, login, register, bootstrap, acceptInvite } = useAuth();
+  const { user, login, register, bootstrap, acceptInvite, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [bootstrapForm, setBootstrapForm] = useState({
     organization_name: "",
@@ -66,20 +86,28 @@ function LandingPage() {
     bootstrap_secret: "",
   });
   const [inviteForm, setInviteForm] = useState({
-    token: searchParams.get("token") ?? "",
+    token: "",
     full_name: "",
     password: "",
   });
   const [registerForm, setRegisterForm] = useState({ full_name: "", email: "", password: "" });
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [identityToken, setIdentityToken] = useState("");
+  const [resendEmail, setResendEmail] = useState("");
+  const [resetForm, setResetForm] = useState({ password: "", confirmPassword: "" });
   const dialogRef = useRef<HTMLDivElement>(null);
 
   const authParam = searchParams.get("auth");
   const mode = authParam && authModes.has(authParam as AuthMode) ? (authParam as AuthMode) : null;
 
+  // Capture any emailed token and strip it from the address bar immediately.
   useEffect(() => {
-    const token = searchParams.get("token");
-    if (mode === "invite" && token) {
-      setInviteForm((current) => ({ ...current, token }));
+    if (mode === "invite") {
+      const token = captureIdentityToken("invite");
+      if (token) setInviteForm((current) => ({ ...current, token }));
+    } else if (mode === "verify-email" || mode === "reset-password") {
+      const token = captureIdentityToken(mode);
+      if (token) setIdentityToken(token);
     }
   }, [mode, searchParams]);
 
@@ -89,6 +117,7 @@ function LandingPage() {
     }
 
     setError(null);
+    setSuccess(null);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     window.setTimeout(() => dialogRef.current?.querySelector<HTMLInputElement>("input")?.focus(), 0);
@@ -108,7 +137,9 @@ function LandingPage() {
 
   const openAuth = (nextMode: AuthMode) => {
     setError(null);
-    setSearchParams(nextMode === "invite" && inviteForm.token ? { auth: nextMode, token: inviteForm.token } : { auth: nextMode });
+    setSuccess(null);
+    // Tokens are never written back into the URL; they live in component state only.
+    setSearchParams({ auth: nextMode });
   };
 
   const closeAuth = () => {
@@ -125,6 +156,7 @@ function LandingPage() {
 
     setIsSubmitting(true);
     setError(null);
+    setSuccess(null);
     try {
       if (mode === "login") {
         await login(loginForm);
@@ -133,10 +165,38 @@ function LandingPage() {
           ...bootstrapForm,
           bootstrap_secret: bootstrapForm.bootstrap_secret || undefined,
         });
+        setSuccess("Organization created. Check your email to verify your account.");
+        return;
       } else if (mode === "invite") {
         await acceptInvite(inviteForm);
-      } else {
+        clearIdentityToken("invite");
+      } else if (mode === "register") {
         await register(registerForm);
+      } else if (mode === "verify-email") {
+        await authApi.verifyEmail(identityToken);
+        clearIdentityToken("verify-email");
+        setIdentityToken("");
+        if (user) await refreshUser();
+        setSuccess("Your email has been verified. You can now sign in to AgentHQ.");
+        return;
+      } else if (mode === "resend-verification") {
+        const response = await authApi.resendVerification(resendEmail);
+        setSuccess(response.message);
+        return;
+      } else if (mode === "forgot-password") {
+        const response = await authApi.forgotPassword(forgotEmail);
+        setSuccess(response.message);
+        return;
+      } else {
+        if (resetForm.password !== resetForm.confirmPassword) {
+          setError("Passwords do not match.");
+          return;
+        }
+        await authApi.resetPassword(identityToken, resetForm.password);
+        clearIdentityToken("reset-password");
+        setIdentityToken("");
+        setSuccess("Your password has been reset. Sign in with your new password.");
+        return;
       }
       navigate("/dashboard", { replace: true });
     } catch (caught) {
@@ -392,22 +452,10 @@ function LandingPage() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">AgentHQ access</p>
                 <h2 className="mt-2 text-2xl font-semibold" id="auth-dialog-title">
-                  {mode === "login"
-                    ? "Sign in"
-                    : mode === "bootstrap"
-                      ? "Create your organization"
-                      : mode === "invite"
-                        ? "Accept organization invite"
-                        : "Legacy/demo registration"}
+                  {authTitle(mode)}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  {mode === "login"
-                    ? "Continue to your organization governance workspace."
-                    : mode === "bootstrap"
-                      ? "Create the first organization workspace and administrator account for this deployment."
-                      : mode === "invite"
-                        ? "Join an AgentHQ organization using the invitation shared by its administrator."
-                        : "Direct registration is retained for legacy and demo access. Organization access normally happens through an invite."}
+                  {authDescription(mode)}
                 </p>
               </div>
               <button
@@ -421,6 +469,18 @@ function LandingPage() {
               </button>
             </div>
 
+            {success ? (
+              <div className="mt-6 rounded-md border border-emerald-200 bg-emerald-50 p-4">
+                <p className="text-sm font-medium text-emerald-950">{success}</p>
+                <button
+                  className="mt-4 font-semibold text-emerald-800 underline"
+                  onClick={() => (user ? navigate("/dashboard") : openAuth("login"))}
+                  type="button"
+                >
+                  {user ? "Go to dashboard" : "Sign in"}
+                </button>
+              </div>
+            ) : (
             <form className="mt-6 space-y-4" onSubmit={submit}>
               {mode === "login" ? (
                 <>
@@ -469,6 +529,66 @@ function LandingPage() {
                 </>
               ) : null}
 
+              {mode === "verify-email" ? (
+                <TextField
+                  label="Verification token"
+                  onChange={setIdentityToken}
+                  placeholder="Paste your verification token"
+                  value={identityToken}
+                />
+              ) : null}
+
+              {mode === "resend-verification" ? (
+                <TextField
+                  autoComplete="email"
+                  label="Email"
+                  onChange={setResendEmail}
+                  placeholder="you@company.com"
+                  type="email"
+                  value={resendEmail}
+                />
+              ) : null}
+
+              {mode === "forgot-password" ? (
+                <TextField
+                  autoComplete="email"
+                  label="Email"
+                  onChange={setForgotEmail}
+                  placeholder="you@company.com"
+                  type="email"
+                  value={forgotEmail}
+                />
+              ) : null}
+
+              {mode === "reset-password" ? (
+                <>
+                  <TextField
+                    label="Reset token"
+                    onChange={setIdentityToken}
+                    placeholder="Paste your password reset token"
+                    value={identityToken}
+                  />
+                  <TextField
+                    autoComplete="new-password"
+                    label="New password"
+                    minLength={12}
+                    onChange={(value) => setResetForm((current) => ({ ...current, password: value }))}
+                    placeholder="At least 12 characters"
+                    type="password"
+                    value={resetForm.password}
+                  />
+                  <TextField
+                    autoComplete="new-password"
+                    label="Confirm password"
+                    minLength={12}
+                    onChange={(value) => setResetForm((current) => ({ ...current, confirmPassword: value }))}
+                    placeholder="Enter the new password again"
+                    type="password"
+                    value={resetForm.confirmPassword}
+                  />
+                </>
+              ) : null}
+
               {error ? <p className="border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
 
               <button
@@ -476,20 +596,15 @@ function LandingPage() {
                 disabled={isSubmitting}
                 type="submit"
               >
-                {isSubmitting
-                  ? "Please wait..."
-                  : mode === "login"
-                    ? "Sign in"
-                    : mode === "bootstrap"
-                      ? "Create organization"
-                      : mode === "invite"
-                        ? "Accept invite"
-                        : "Create demo account"}
+                {isSubmitting ? "Please wait..." : authSubmitLabel(mode)}
               </button>
             </form>
+            )}
 
             <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 border-t border-slate-200 pt-4 text-sm">
               {mode !== "login" ? <AuthSwitch label="Sign in instead" onClick={() => openAuth("login")} /> : null}
+              {mode === "login" ? <AuthSwitch label="Forgot password?" onClick={() => openAuth("forgot-password")} /> : null}
+              {mode === "verify-email" ? <AuthSwitch label="Link expired? Send a new one" onClick={() => openAuth("resend-verification")} /> : null}
               {mode !== "bootstrap" ? <AuthSwitch label="Create organization" onClick={() => openAuth("bootstrap")} /> : null}
               {mode !== "invite" ? <AuthSwitch label="Accept invite" onClick={() => openAuth("invite")} /> : null}
             </div>
@@ -534,6 +649,48 @@ function TextField({
       />
     </label>
   );
+}
+
+function authTitle(mode: AuthMode): string {
+  const titles: Record<AuthMode, string> = {
+    login: "Sign in",
+    bootstrap: "Create your organization",
+    invite: "Accept organization invite",
+    register: "Legacy/demo registration",
+    "verify-email": "Verify your email",
+    "forgot-password": "Reset your password",
+    "reset-password": "Choose a new password",
+    "resend-verification": "Send a new verification link"
+  };
+  return titles[mode];
+}
+
+function authDescription(mode: AuthMode): string {
+  const descriptions: Record<AuthMode, string> = {
+    login: "Continue to your organization governance workspace.",
+    bootstrap: "Create the first organization workspace and administrator account for this deployment.",
+    invite: "Join an AgentHQ organization using the invitation shared by its administrator.",
+    register: "Direct registration is retained for legacy and demo access. Organization access normally happens through an invite.",
+    "verify-email": "Confirm the email address associated with your AgentHQ administrator account.",
+    "forgot-password": "Enter your email. If an active account exists, AgentHQ will send a secure reset link.",
+    "reset-password": "Set a new password using the secure link sent to your email.",
+    "resend-verification": "Enter your account email. If it still needs verification, AgentHQ will send a new link and cancel older ones."
+  };
+  return descriptions[mode];
+}
+
+function authSubmitLabel(mode: AuthMode): string {
+  const labels: Record<AuthMode, string> = {
+    login: "Sign in",
+    bootstrap: "Create organization",
+    invite: "Accept invite",
+    register: "Create demo account",
+    "verify-email": "Verify email",
+    "forgot-password": "Send reset link",
+    "reset-password": "Reset password",
+    "resend-verification": "Send new link"
+  };
+  return labels[mode];
 }
 
 function getInviteErrorMessage(error: unknown): string {
