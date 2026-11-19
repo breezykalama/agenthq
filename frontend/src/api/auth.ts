@@ -54,5 +54,13 @@ export const authApi = {
         headers: bootstrap_secret ? { "X-Bootstrap-Secret": bootstrap_secret } : undefined
       })
       .then((response) => response.data),
-  me: () => api.get<User>("/api/v1/auth/me").then((response) => response.data)
+  /**
+   * The caller's identity. `organization: null` asks without any selection (membership
+   * discovery); a string asks the backend to resolve that candidate against the caller's own
+   * memberships. Omitted: the tab's current selection.
+   */
+  me: (options: { organization?: string | null } = {}) =>
+    api
+      .get<User>("/api/v1/auth/me", { organization: options.organization })
+      .then((response) => response.data)
 };

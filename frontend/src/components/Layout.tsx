@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { useAuth } from "../auth/context";
-import { getEffectiveRole } from "../auth/roles";
+import { getEffectiveRole, getSelectedMembership } from "../auth/roles";
 import type { UserRole } from "../types/api";
 import { formatRole } from "../utils/format";
+import { OrganizationSwitcher } from "./OrganizationSwitcher";
 
 type NavItem = {
   to: string;
@@ -82,11 +83,12 @@ export function Layout() {
     () => localStorage.getItem("agenthq_sidebar_open") !== "false"
   );
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const membership = user?.organization_membership;
+  // Role and organization come only from the backend-confirmed selected membership.
+  const membership = getSelectedMembership(user);
   const role = getEffectiveRole(user);
   const workspaceIdentity = membership
     ? `${membership.organization.name} \u00b7 ${formatRole(membership.role)}`
-    : formatRole(role);
+    : "";
   const visibleSections = useMemo(
     () =>
       navigation
@@ -252,9 +254,7 @@ export function Layout() {
           <div className="flex min-w-0 items-center">
             <div className="min-w-0">
               <div className="text-base font-semibold text-slate-950">AgentHQ</div>
-              <div className="mt-0.5 inline-flex max-w-full truncate rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">
-                {workspaceIdentity}
-              </div>
+              <OrganizationSwitcher />
             </div>
           </div>
         </header>

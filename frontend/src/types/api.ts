@@ -45,7 +45,12 @@ export interface User {
   email_verification_required?: boolean;
   created_at: string;
   updated_at: string;
+  /** The selected (or only) membership; null when none, or several and none selected. */
   organization_membership: OrganizationMembership | null;
+  /** v0.8.2: the caller's own active memberships. Absent from older backends. */
+  organization_memberships?: OrganizationMembership[];
+  /** v0.8.2: the organization the backend resolved for this request. Absent from older backends. */
+  selected_organization_id?: string | null;
 }
 
 export interface Organization {

@@ -3,10 +3,12 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import { authApi } from "../api/auth";
 import { getErrorMessage } from "../api/client";
+import { NoOrganizationPage } from "../pages/NoOrganizationPage";
+import { SelectOrganizationPage } from "../pages/SelectOrganizationPage";
 import { useAuth } from "./context";
 
 export function ProtectedRoute() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, organizationStatus } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -26,6 +28,10 @@ export function ProtectedRoute() {
   if (user.email_verification_required && !user.email_verified) {
     return <EmailVerificationRequired email={user.email} />;
   }
+
+  // Organization pages render only once the backend has confirmed a selected organization.
+  if (organizationStatus === "none") return <NoOrganizationPage />;
+  if (organizationStatus !== "selected") return <SelectOrganizationPage />;
 
   return <Outlet />;
 }

@@ -18,6 +18,7 @@ import {
   inputClass
 } from "../components/Ui";
 import { useAuth } from "../auth/context";
+import { getSelectedMembership } from "../auth/roles";
 import type { OrganizationInviteCreateResponse, UserRole } from "../types/api";
 import { formatRole } from "../utils/format";
 
@@ -27,7 +28,7 @@ export function OrganizationInvitesPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const organizationName =
-    user?.organization_membership?.organization.name ?? "your current organization";
+    getSelectedMembership(user)?.organization.name ?? "your current organization";
   const [createdInvite, setCreatedInvite] = useState<OrganizationInviteCreateResponse | null>(null);
   const [copyFeedback, setCopyFeedback] = useState("");
   const invites = useQuery({

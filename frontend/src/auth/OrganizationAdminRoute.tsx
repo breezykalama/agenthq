@@ -1,11 +1,13 @@
 import { Navigate, Outlet } from "react-router-dom";
 
 import { useAuth } from "./context";
+import { getEffectiveRole } from "./roles";
 
 export function OrganizationAdminRoute() {
   const { user } = useAuth();
 
-  if (user?.organization_membership?.role !== "admin") {
+  // Admin of the selected organization only (presentation; the backend authorizes).
+  if (getEffectiveRole(user) !== "admin") {
     return <Navigate to="/" replace />;
   }
 
