@@ -9,7 +9,6 @@ from app.core.security import (
     CurrentOrganizationContext,
     OrgPermission,
     ensure_agent_access,
-    get_current_organization_context,
     get_current_user,
     require_current_organization,
     require_org_permission,
@@ -29,9 +28,10 @@ router = APIRouter(
 )
 DatabaseSession = Annotated[Session, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
+# The authorized context (selected membership, db.info populated), never the raw resolver.
 OrganizationContext = Annotated[
     CurrentOrganizationContext,
-    Depends(get_current_organization_context),
+    Depends(require_current_organization),
 ]
 
 

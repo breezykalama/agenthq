@@ -191,6 +191,37 @@ def test_concurrent_accepts_by_existing_user_create_one_membership(
     assert_one_membership_and_loser_pending(pg, tokens, successes)
 
 
+def test_flag_enabled_concurrent_accepts_create_one_membership_per_organization(
+    pg: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # With MULTI_ORGANIZATION_MEMBERSHIPS_ENABLED (never enabled anywhere yet) both accepts may
+    # succeed, still serialized by the user-row lock, and never produce duplicate memberships.
+    monkeypatch.setenv("MULTI_ORGANIZATION_MEMBERSHIPS_ENABLED", "true")
+    get_settings.cache_clear()
+    tokens = seed(pg, invitee_exists=True)
+
+    successes, failures = race(pg, list(tokens))
+
+    assert failures == []
+    assert sorted(successes) == sorted(tokens)
+    with pg() as db:
+        assert active_memberships(db) == 2
+        organizations = db.scalars(
+            select(OrganizationMembership.organization_id)
+            .join(User, User.id == OrganizationMembership.user_id)
+            .where(User.email == INVITEE)
+        ).all()
+        assert len(set(organizations)) == 2
+        assert {
+            db.get(OrganizationInvite, invite_id).status  # type: ignore[union-attr]
+            for invite_id in tokens.values()
+        } == {OrganizationInviteStatus.ACCEPTED}
+
+
+def test_flag_defaults_off_in_postgres_runs(pg: sessionmaker[Session]) -> None:
+    assert get_settings().multi_organization_memberships_enabled is False
+
+
 def test_concurrent_accepts_creating_a_new_user_create_one_membership(
     pg: sessionmaker[Session],
 ) -> None:

@@ -3,6 +3,7 @@ from typing import Any, cast
 
 import pytest
 from email_helpers import verify_pending_admin
+from fastapi import Request
 from fastapi.testclient import TestClient
 from sqlalchemy import StaticPool, create_engine
 from sqlalchemy.exc import IntegrityError
@@ -193,7 +194,9 @@ def test_current_organization_context_uses_single_active_membership() -> None:
         )
         db.commit()
 
-        context = get_current_organization_context(user, db)
+        # A request without the organization header: single-membership auto-selection.
+        no_header = Request({"type": "http", "method": "GET", "path": "/", "headers": []})
+        context = get_current_organization_context(no_header, user, db)
 
         assert context.current_user.id == user.id
         assert context.current_organization is not None

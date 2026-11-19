@@ -8,8 +8,17 @@ from sqlalchemy.orm import Session
 from app.core.audit_context import set_request_audit_context
 from app.core.config import get_settings
 from app.core.rate_limit import enforce_auth_rate_limit, get_client_ip
+from app.core.security import (
+    EMAIL_VERIFICATION_REQUIRED_DETAIL,
+    get_current_user,
+    requires_email_verification,
+)
 from app.db.session import get_db
-from app.schemas.organization import OrganizationBootstrapRequest
+from app.models.user import User
+from app.schemas.organization import (
+    OrganizationBootstrapRequest,
+    OrganizationMembershipListResponse,
+)
 from app.schemas.user import BootstrapTokenResponse
 from app.services import organizations as organization_service
 from app.services.email import EmailBackend, EmailDeliveryError, get_email_backend
@@ -18,6 +27,26 @@ router = APIRouter(prefix="/api/v1/organizations", tags=["organizations"])
 security_logger = logging.getLogger("agenthq.security")
 DatabaseSession = Annotated[Session, Depends(get_db)]
 EmailService = Annotated[EmailBackend, Depends(get_email_backend)]
+CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+@router.get("", response_model=OrganizationMembershipListResponse)
+def list_my_organizations(
+    current_user: CurrentUser,
+    db: DatabaseSession,
+) -> OrganizationMembershipListResponse:
+    """The caller's own active memberships in non-deleted organizations, for choosing one.
+
+    Needs no organization selection (that is what it is for) and ignores the organization
+    header. Applies the same email-verification gate as every organization-scoped route.
+    """
+    if requires_email_verification(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=EMAIL_VERIFICATION_REQUIRED_DETAIL,
+        )
+    items = organization_service.list_user_memberships(db, current_user)
+    return OrganizationMembershipListResponse(items=items, total=len(items))
 
 
 @router.post(

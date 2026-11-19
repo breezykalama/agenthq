@@ -12,7 +12,11 @@ from app.core.rate_limit import (
     get_client_ip,
     safe_identifier,
 )
-from app.core.security import get_current_user
+from app.core.security import (
+    InvalidOrganizationHeaderError,
+    get_current_user,
+    requested_organization_id,
+)
 from app.db.session import get_db
 from app.models.audit_log import AuditAction, AuditOutcome
 from app.models.user import User
@@ -111,8 +115,21 @@ def login(credentials: UserLogin, request: Request, db: DatabaseSession) -> Toke
 
 
 @router.get("/me", response_model=UserRead)
-def me(current_user: CurrentUser, db: DatabaseSession) -> UserRead:
-    return organization_service.user_read_with_membership(db, current_user)
+def me(request: Request, current_user: CurrentUser, db: DatabaseSession) -> UserRead:
+    # Never blocks: a user with zero or several memberships, or a stale or malformed selection,
+    # still gets their identity and membership list so a client can (re)select an organization.
+    # A selection that is not one of the caller's active memberships selects nothing.
+    try:
+        requested = requested_organization_id(request)
+        explicit = requested is not None
+    except InvalidOrganizationHeaderError:
+        requested, explicit = None, True
+    return organization_service.user_read_with_membership(
+        db,
+        current_user,
+        selected_organization_id=requested,
+        explicit_selection=explicit,
+    )
 
 
 @router.post("/verify-email", response_model=IdentityActionResponse)

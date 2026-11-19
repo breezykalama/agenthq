@@ -151,6 +151,60 @@ def get_current_user(
 
 EMAIL_VERIFICATION_REQUIRED_DETAIL = "Email verification required."
 
+# Optional request header naming the organization a multi-organization user is acting in. It
+# is only ever used to choose among the caller's own active memberships, never as authority.
+ORGANIZATION_HEADER = "X-AgentHQ-Organization"
+INVALID_ORGANIZATION_HEADER_DETAIL = "Invalid organization header."
+# One response for unknown, foreign, deleted and inactive selections, so it reveals nothing.
+ORGANIZATION_ACCESS_DENIED_DETAIL = "Organization access denied."
+ORGANIZATION_SELECTION_REQUIRED_DETAIL = "Organization selection required."
+ORGANIZATION_MEMBERSHIP_REQUIRED_DETAIL = "Organization membership required."
+
+
+class InvalidOrganizationHeaderError(ValueError):
+    pass
+
+
+def requested_organization_id(request: Request) -> UUID | None:
+    """The organization named by the request header, or None when the header is absent.
+
+    Exactly one header in canonical UUID form is accepted. Empty, repeated, comma-joined or
+    non-canonical values raise, so no proxy or client quirk can make two values ambiguous.
+    """
+    values = request.headers.getlist(ORGANIZATION_HEADER)
+    if not values:
+        return None
+    if len(values) != 1:
+        raise InvalidOrganizationHeaderError
+    raw = values[0].strip().lower()
+    if len(raw) != 36:
+        raise InvalidOrganizationHeaderError
+    try:
+        parsed = UUID(raw)
+    except ValueError as exc:
+        raise InvalidOrganizationHeaderError from exc
+    if str(parsed) != raw:
+        raise InvalidOrganizationHeaderError
+    return parsed
+
+
+def select_membership(
+    memberships: list[tuple[OrganizationMembership, Organization]],
+    requested: UUID | None,
+) -> tuple[OrganizationMembership, Organization] | None:
+    """Pick the caller's membership: the requested organization when given (None if the caller
+    has no active membership there), otherwise the only membership (None if zero or several)."""
+    if requested is not None:
+        return next(
+            (
+                (membership, organization)
+                for membership, organization in memberships
+                if organization.id == requested
+            ),
+            None,
+        )
+    return memberships[0] if len(memberships) == 1 else None
+
 
 def requires_email_verification(user: User) -> bool:
     """Only accounts explicitly flagged (organization bootstrap administrators created from
@@ -236,13 +290,53 @@ def require_roles(*roles: UserRole) -> Callable[..., User]:
     return require_org_role(*roles)
 
 
+def _deny_organization_selection(
+    request: Request,
+    db: Session,
+    user: User,
+    memberships: list[tuple[OrganizationMembership, Organization]],
+) -> HTTPException:
+    """Audit a rejected selection without ever touching the requested organization.
+
+    The event is attributed to the caller's own organization only when that is unambiguous
+    (exactly one active membership); otherwise it is recorded without an organization. The
+    requested identifier is not stored, so a guessed UUID never reaches any tenant's audit log.
+    """
+    set_request_audit_context(db, request)
+    if len(memberships) == 1:
+        own_membership, own_organization = memberships[0]
+        set_actor_audit_context(db, user_id=user.id, role=own_membership.role)
+        set_current_organization_id(db, own_organization.id)
+    else:
+        set_actor_audit_context(db, user_id=user.id, role=user.role)
+    security_logger.warning(
+        "security_organization_selection_denied actor_user_id=%s request_id=%s path=%s",
+        user.id,
+        request.headers.get("X-Request-ID", "none"),
+        request.url.path,
+    )
+    record_denied_event(
+        db,
+        action=AuditAction.SECURITY_CROSS_ORG_ACCESS_DENIED,
+        attempted_action="select_organization",
+        target_resource=request.url.path,
+        reason="Requested organization is not available to this user.",
+    )
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=ORGANIZATION_ACCESS_DENIED_DETAIL,
+    )
+
+
 def get_current_organization_context(
+    request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> CurrentOrganizationContext:
-    # Every organization-scoped route resolves through this dependency, so the verification
-    # gate lives here. /auth/me and the public identity endpoints use get_current_user (or no
-    # auth) and stay reachable for an unverified administrator.
+    # Every organization-scoped route resolves through this dependency (FastAPI caches it per
+    # request), so the verification gate and organization selection live here. /auth/me and
+    # the public identity endpoints use get_current_user (or no auth) and stay reachable for an
+    # unverified administrator and for users who have not selected an organization.
     if requires_email_verification(current_user):
         security_logger.warning(
             "security_email_verification_required actor_user_id=%s", current_user.id
@@ -251,15 +345,33 @@ def get_current_organization_context(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=EMAIL_VERIFICATION_REQUIRED_DETAIL,
         )
+    try:
+        requested = requested_organization_id(request)
+    except InvalidOrganizationHeaderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=INVALID_ORGANIZATION_HEADER_DETAIL,
+        ) from exc
+    # Only the caller's own active memberships in non-deleted organizations are ever loaded;
+    # the requested organization is never looked up on its own.
     memberships = organization_repository.list_active_memberships_for_user(db, current_user.id)
-    if len(memberships) == 1:
-        membership, organization = memberships[0]
+    selected = select_membership(memberships, requested)
+    if selected is not None:
+        membership, organization = selected
         return CurrentOrganizationContext(
             current_user=current_user,
             current_organization=organization,
             current_membership=membership,
             current_role=membership.role,
         )
+    if requested is not None:
+        raise _deny_organization_selection(request, db, current_user, memberships)
+    if len(memberships) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=ORGANIZATION_SELECTION_REQUIRED_DETAIL,
+        )
+    # No active membership: require_org_member applies the legacy fallback or denies.
     return CurrentOrganizationContext(
         current_user=current_user,
         current_organization=None,
@@ -338,7 +450,7 @@ def require_org_member(
         )
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail="Organization membership required.",
+        detail=ORGANIZATION_MEMBERSHIP_REQUIRED_DETAIL,
     )
 
 

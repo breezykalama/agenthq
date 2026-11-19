@@ -32,3 +32,10 @@ class OrganizationMembershipRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     organization: OrganizationRead
+
+
+class OrganizationMembershipListResponse(BaseModel):
+    """The caller's own active memberships in non-deleted organizations."""
+
+    items: list[OrganizationMembershipRead]
+    total: int

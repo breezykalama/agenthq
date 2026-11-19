@@ -152,6 +152,12 @@ class Settings(BaseSettings):
         default=400, ge=0, le=5000, alias="IDENTITY_MIN_RESPONSE_MS"
     )
     frontend_base_url: str = Field(default="http://localhost:5173", alias="FRONTEND_BASE_URL")
+    # v0.8.2: whether accepting an invite may give a user a second active membership. Keep it
+    # off until the frontend organization switcher ships and a rollback build that supports
+    # organization selection exists: the v0.8.1 rollback build locks multi-membership users out.
+    multi_organization_memberships_enabled: bool = Field(
+        default=False, alias="MULTI_ORGANIZATION_MEMBERSHIPS_ENABLED"
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

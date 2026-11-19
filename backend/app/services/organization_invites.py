@@ -255,7 +255,9 @@ def accept_invite(
             raise DuplicateOrganizationMembershipError
         # Same membership set the organization-context resolver uses (active memberships in
         # organizations that are not deleted), so the guard blocks exactly the lockout case.
-        if any(
+        # It stays on until MULTI_ORGANIZATION_MEMBERSHIPS_ENABLED is set; the user-row lock
+        # above applies either way.
+        if not get_settings().multi_organization_memberships_enabled and any(
             organization.id != invite.organization_id
             for _, organization in organization_repository.list_active_memberships_for_user(
                 db, user.id
@@ -337,5 +339,7 @@ def accept_invite(
         raise
     return BootstrapTokenResponse(
         access_token=create_access_token(user),
-        user=organization_service.user_read_with_membership(db, user),
+        user=organization_service.user_read_with_membership(
+            db, user, selected_organization_id=invite.organization_id
+        ),
     )

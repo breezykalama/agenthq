@@ -35,7 +35,13 @@ class UserRead(BaseModel):
     email_verification_required: bool = False
     created_at: datetime
     updated_at: datetime
+    # The selected membership (or the only one). Kept for clients written before multiple
+    # memberships; null when the user has none, or several and none is selected.
     organization_membership: OrganizationMembershipRead | None = None
+    # Additive (v0.8.2). Populated only for the caller's own identity responses (/auth/me and
+    # the bootstrap and invite-acceptance token responses); empty and null in member listings.
+    organization_memberships: list[OrganizationMembershipRead] = Field(default_factory=list)
+    selected_organization_id: UUID | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

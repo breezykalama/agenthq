@@ -1,6 +1,5 @@
 import logging
 import re
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -11,7 +10,7 @@ from sqlalchemy.orm import Session
 import app.models  # noqa: F401  (registers every organization-owned table in the metadata)
 from app.core.audit_context import set_actor_audit_context
 from app.core.config import get_settings
-from app.core.security import create_access_token, hash_password
+from app.core.security import create_access_token, hash_password, select_membership
 from app.core.tenancy import (
     PLACEHOLDER_ORGANIZATION_NAME,
     PLACEHOLDER_ORGANIZATION_SLUG,
@@ -47,12 +46,6 @@ class BootstrapAdminEmailExistsError(Exception):
     pass
 
 
-@dataclass(frozen=True)
-class MembershipContext:
-    membership: OrganizationMembership
-    organization: Organization
-
-
 def serialize_organization(organization: Organization) -> JsonObject:
     return OrganizationRead.model_validate(organization).model_dump(mode="json")
 
@@ -80,8 +73,46 @@ def membership_read(
     )
 
 
-def user_read_with_membership(db: Session, user: User) -> UserRead:
-    membership_context = get_single_membership_context(db, user)
+def _active_memberships(
+    db: Session, user: User
+) -> list[tuple[OrganizationMembership, Organization]]:
+    """The user's own active memberships in non-deleted organizations, oldest first."""
+    memberships = organization_repository.list_active_memberships_for_user(db, user.id)
+    memberships.sort(key=lambda pair: (pair[1].created_at, str(pair[1].id)))
+    return memberships
+
+
+def list_user_memberships(db: Session, user: User) -> list[OrganizationMembershipRead]:
+    return [
+        membership_read(membership, organization)
+        for membership, organization in _active_memberships(db, user)
+    ]
+
+
+def user_read_with_membership(
+    db: Session,
+    user: User,
+    *,
+    selected_organization_id: UUID | None = None,
+    explicit_selection: bool = False,
+) -> UserRead:
+    """The caller's identity with their own memberships and the selected one.
+
+    With an explicit selection (a header, or the organization just joined or created) the
+    singular field is that organization's membership, or null when the caller has no active
+    membership there; an explicit selection of None (a malformed header) selects nothing.
+    Without one it is the only membership, or null when there are several. The selection is
+    resolved against the caller's memberships only, exactly like the request resolver.
+    """
+    memberships = _active_memberships(db, user)
+    if explicit_selection or selected_organization_id is not None:
+        selected = (
+            select_membership(memberships, selected_organization_id)
+            if selected_organization_id is not None
+            else None
+        )
+    else:
+        selected = select_membership(memberships, None)
     return UserRead(
         id=user.id,
         email=user.email,
@@ -93,23 +124,12 @@ def user_read_with_membership(db: Session, user: User) -> UserRead:
         email_verification_required=user.email_verification_required,
         created_at=user.created_at,
         updated_at=user.updated_at,
-        organization_membership=(
-            membership_read(
-                membership_context.membership,
-                membership_context.organization,
-            )
-            if membership_context is not None
-            else None
-        ),
+        organization_membership=membership_read(*selected) if selected is not None else None,
+        organization_memberships=[
+            membership_read(membership, organization) for membership, organization in memberships
+        ],
+        selected_organization_id=selected[1].id if selected is not None else None,
     )
-
-
-def get_single_membership_context(db: Session, user: User) -> MembershipContext | None:
-    memberships = organization_repository.list_active_memberships_for_user(db, user.id)
-    if len(memberships) != 1:
-        return None
-    membership, organization = memberships[0]
-    return MembershipContext(membership=membership, organization=organization)
 
 
 def organization_references(db: Session, organization_id: UUID) -> dict[str, int]:
@@ -300,7 +320,7 @@ def bootstrap_organization(
     email_outbox.notify_worker()
     return BootstrapTokenResponse(
         access_token=create_access_token(user),
-        user=user_read_with_membership(db, user),
+        user=user_read_with_membership(db, user, selected_organization_id=organization.id),
     )
 
 
