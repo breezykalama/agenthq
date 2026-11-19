@@ -56,6 +56,15 @@ class InviteFullNameRequiredError(Exception):
     pass
 
 
+class MultipleOrganizationsNotSupportedError(Exception):
+    """The invitee already has an active membership in another organization.
+
+    Temporary safety guard: the organization-context resolver only works for users with exactly
+    one active membership, so a second one would lock the user out of both organizations. The
+    invite is left pending so it can be accepted once organization selection exists.
+    """
+
+
 class DuplicateOrganizationMembershipError(Exception):
     pass
 
@@ -235,10 +244,26 @@ def accept_invite(
     user = user_repository.get_user_by_email(db, invite.email)
     is_new_user = user is None
     if user is not None:
+        # Lock the user row so every acceptance for this account is serialized. The invite lock
+        # above only serializes accepts of one token; two different organizations' invites for
+        # the same user would otherwise both pass the membership check below. Lock order is
+        # always invite, then user.
+        db.refresh(user, with_for_update=True)
         if not user.is_active or not verify_password(accept.password, user.password_hash):
             raise InvalidInviteTokenError
         if organization_repository.get_active_membership(db, invite.organization_id, user.id):
             raise DuplicateOrganizationMembershipError
+        # Same membership set the organization-context resolver uses (active memberships in
+        # organizations that are not deleted), so the guard blocks exactly the lockout case.
+        if any(
+            organization.id != invite.organization_id
+            for _, organization in organization_repository.list_active_memberships_for_user(
+                db, user.id
+            )
+        ):
+            # Release the row locks without writing anything: the invite stays pending.
+            db.rollback()
+            raise MultipleOrganizationsNotSupportedError
     else:
         full_name = invite.full_name or accept.full_name
         if not full_name:

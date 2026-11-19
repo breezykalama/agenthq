@@ -134,6 +134,11 @@ def accept_invite(
             status_code=status.HTTP_409_CONFLICT,
             detail="User is already a member of this organization.",
         ) from exc
+    except invite_service.MultipleOrganizationsNotSupportedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Multiple organizations are not yet supported.",
+        ) from exc
     except invite_service.InvalidInviteTokenError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
