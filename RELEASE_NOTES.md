@@ -5,7 +5,7 @@
 * Added organization-admin email verification with one-time, hash-only tokens.
 * Added enumeration-safe forgot-password and password-reset flows.
 * Added organization invitation email delivery with role and workspace context.
-* Added provider-agnostic console, SMTP, and disabled email backends.
+* Added provider-agnostic console, SMTP, Resend HTTPS API, and disabled email backends.
 * Added professional HTML and plain-text identity email templates.
 * Added rate limiting and sanitized audit events for identity flows.
 * Added landing-page inline verification and password recovery experiences.
@@ -24,11 +24,17 @@
   `Referrer-Policy: no-referrer` is set.
 * SMTP gains a configurable timeout, implicit-TLS support (`SMTP_USE_SSL`), and sanitized errors.
 * Production startup rejects SMTP delivery without a public HTTPS `FRONTEND_BASE_URL`.
+* Added `EMAIL_BACKEND=resend` (Resend HTTPS API, `RESEND_API_KEY`) for hosts that block outbound
+  SMTP. Requests are bounded, never follow redirects, and reuse a per-outbox-row
+  `Idempotency-Key`, so retries after ambiguous outcomes do not send duplicates. Permanent
+  provider rejections stop retries immediately; provider error text is never logged.
+* Settings validation errors no longer echo configuration values (secrets, connection strings).
 * API change: invite creation returns `email_delivery` (`queued` / `disabled`) instead of `email_sent`.
 * Migration `202611170001` adds `users.auth_version`, `users.email_verification_required`, and
   the `email_outbox` table.
 
-Production environments must configure an SMTP-compatible transactional email provider. Raw
+Production environments must configure an SMTP-compatible transactional email provider or the
+Resend HTTPS backend. Raw
 tokens are never stored or written to audit logs.
 
 # AgentHQ v0.2.0 — MCP Server Registration & Tool Discovery

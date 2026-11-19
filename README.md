@@ -195,10 +195,11 @@ AgentHQ v0.8.1 adds production-ready email identity and organization onboarding 
 * Deliver organization invitations by email with organization and role context.
 * Store only SHA-256 token hashes and enforce short token expiry windows.
 * Rate limit verification, recovery, and invitation endpoints.
-* Support console, SMTP, and explicitly disabled local email backends.
+* Support console, SMTP, Resend HTTPS API, and explicitly disabled email backends.
 
 Production deployments should use `EMAIL_BACKEND=smtp` with a transactional provider such as
-Resend, SendGrid, Postmark, Amazon SES, or another SMTP-compatible service. Raw verification,
+Resend, SendGrid, Postmark, Amazon SES, or another SMTP-compatible service, or
+`EMAIL_BACKEND=resend` (Resend HTTPS API) where outbound SMTP is blocked. Raw verification,
 reset, and invitation tokens are never stored in the database or included in audit metadata.
 
 ## AgentHQ v0.2.0

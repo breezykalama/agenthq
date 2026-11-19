@@ -1,9 +1,10 @@
 import re
+from email.utils import parseaddr
 from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, PostgresDsn, model_validator
+from pydantic import Field, PostgresDsn, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_JWT_SECRET_KEY = "change-me-in-production-at-least-32-bytes"
@@ -124,7 +125,7 @@ class Settings(BaseSettings):
         ge=1,
         alias="COMPLIANCE_RATE_LIMIT_ATTEMPTS",
     )
-    email_backend: Literal["console", "smtp", "disabled"] = Field(
+    email_backend: Literal["console", "smtp", "resend", "disabled"] = Field(
         default="console",
         alias="EMAIL_BACKEND",
     )
@@ -136,6 +137,10 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = Field(default=True, alias="SMTP_USE_TLS")
     smtp_use_ssl: bool = Field(default=False, alias="SMTP_USE_SSL")
     smtp_timeout_seconds: float = Field(default=10.0, gt=0, le=60, alias="SMTP_TIMEOUT_SECONDS")
+    resend_api_key: SecretStr | None = Field(default=None, alias="RESEND_API_KEY")
+    resend_timeout_seconds: float = Field(
+        default=10.0, gt=0, le=60, alias="RESEND_TIMEOUT_SECONDS"
+    )
     email_outbox_worker_enabled: bool = Field(default=True, alias="EMAIL_OUTBOX_WORKER_ENABLED")
     email_outbox_poll_seconds: float = Field(
         default=5.0, gt=0, le=300, alias="EMAIL_OUTBOX_POLL_SECONDS"
@@ -152,6 +157,8 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        # Validation errors must never echo configuration values (secrets, DSNs) to logs.
+        hide_input_in_errors=True,
     )
 
     @property
@@ -203,7 +210,9 @@ class Settings(BaseSettings):
             raise ValueError("SMTP_HOST is required when EMAIL_BACKEND=smtp.")
         if self.smtp_use_ssl and self.smtp_use_tls:
             raise ValueError("SMTP_USE_SSL and SMTP_USE_TLS cannot both be enabled.")
-        if self.is_production and self.email_backend == "smtp":
+        if self.email_backend == "resend":
+            self._validate_resend_settings()
+        if self.is_production and self.email_backend in {"smtp", "resend"}:
             parsed = urlsplit(self.frontend_base_url)
             if parsed.scheme != "https" or parsed.hostname in {None, "localhost", "127.0.0.1"}:
                 raise ValueError(
@@ -211,6 +220,33 @@ class Settings(BaseSettings):
                     "HTTPS frontend origin."
                 )
         return self
+
+    def _validate_resend_settings(self) -> None:
+        key = self.resend_api_key.get_secret_value().strip() if self.resend_api_key else ""
+        if not key:
+            raise ValueError("RESEND_API_KEY is required when EMAIL_BACKEND=resend.")
+        if any(char.isspace() for char in key) or not key.isprintable():
+            raise ValueError("RESEND_API_KEY must be a single API key value.")
+        self.resend_api_key = SecretStr(key)
+        sender = self.email_from.strip()
+        _, address = parseaddr(sender)
+        domain = address.rpartition("@")[2].lower()
+        if (
+            not address
+            or "@" not in address
+            or not domain
+            or any(char in sender for char in "\r\n")
+        ):
+            raise ValueError(
+                "EMAIL_FROM must be a sender such as 'AgentHQ <no-reply@example.com>' "
+                "when EMAIL_BACKEND=resend."
+            )
+        if self.is_production and (domain.endswith(".local") or "." not in domain):
+            raise ValueError(
+                "Production EMAIL_FROM must use a domain verified in Resend, not the "
+                "development default."
+            )
+        self.email_from = sender
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":

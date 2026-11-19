@@ -10,7 +10,13 @@ No raw token is ever persisted. Each outbox row stores a random nonce; the raw t
 still matches the stored hash, and clears the nonce once the row reaches a terminal state.
 
 Delivery is at-least-once: a process crash between a successful SMTP hand-off and the status
-update can cause one duplicate email after the row's lease expires.
+update can cause one duplicate email after the row's lease expires. Every attempt for a row
+carries the same idempotency key (``agenthq-email-outbox-<row id>``); the Resend backend sends
+it as ``Idempotency-Key``, so Resend (which keeps keys for 24 hours) returns the original
+result instead of sending again. SMTP has no such guarantee.
+
+A backend raising ``EmailDeliveryError(permanent=True)`` ends the row as failed at once;
+all other failures back off and retry up to ``EMAIL_OUTBOX_MAX_ATTEMPTS``.
 """
 
 import base64
@@ -20,7 +26,7 @@ import logging
 import secrets
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -57,6 +63,7 @@ LEASE_SECONDS = 120
 RETRY_DELAYS_SECONDS = (30, 120, 600, 1800, 3600)
 CLAIM_BATCH_SIZE = 20
 TOKEN_DERIVATION_CONTEXT = b"agenthq:email-token-derivation:v1"
+IDEMPOTENCY_KEY_PREFIX = "agenthq-email-outbox-"
 
 DELIVERY_AUDIT_ACTIONS: dict[EmailOutboxKind, tuple[AuditAction, AuditAction]] = {
     EmailOutboxKind.EMAIL_VERIFICATION: (
@@ -330,6 +337,11 @@ def _finish(row: EmailOutbox, status: EmailOutboxStatus, now: datetime) -> None:
         row.last_error = None
 
 
+def idempotency_key(outbox_id: UUID) -> str:
+    """Identical for every attempt of one row, unique across rows."""
+    return f"{IDEMPOTENCY_KEY_PREFIX}{outbox_id}"
+
+
 def deliver_claimed(db: Session, backend: EmailBackend, outbox_id: UUID) -> None:
     row = db.get(EmailOutbox, outbox_id)
     if row is None or row.status != EmailOutboxStatus.SENDING:
@@ -362,13 +374,16 @@ def deliver_claimed(db: Session, backend: EmailBackend, outbox_id: UUID) -> None
         return
 
     error: str | None = None
+    permanent = False
+    message = replace(prepared.message, idempotency_key=idempotency_key(row.id))
     try:
-        delivered = backend.send(prepared.message)
+        delivered = backend.send(message)
         if not delivered:
             error = "email_backend_disabled"
-    except EmailDeliveryError:
+    except EmailDeliveryError as exc:
         delivered = False
-        error = "delivery_failed"
+        error = exc.reason
+        permanent = exc.permanent
     except Exception as exc:
         delivered = False
         error = "unexpected_error"
@@ -381,7 +396,7 @@ def deliver_claimed(db: Session, backend: EmailBackend, outbox_id: UUID) -> None
     if delivered:
         _finish(row, EmailOutboxStatus.SENT, now)
         final = True
-    elif row.attempts >= max_attempts:
+    elif permanent or row.attempts >= max_attempts:
         _finish(row, EmailOutboxStatus.FAILED, now)
         row.last_error = error
         final = True

@@ -13,7 +13,7 @@ Release Name:
 Email Identity & Invite Delivery
 
 Quality:
-408 tests passing
+546 tests passing (9 PostgreSQL-only tests run when AGENTHQ_TEST_POSTGRES_URL is set)
 
 Key Theme:
 Secure organization onboarding and account recovery

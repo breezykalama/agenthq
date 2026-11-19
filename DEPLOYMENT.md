@@ -13,8 +13,8 @@ Backend:
 | `JWT_SECRET_KEY` | Strong random value of at least 32 characters | Signs access tokens. Never reuse another service secret. |
 | `BOOTSTRAP_SECRET` | Separate strong random value | Protects first-organization bootstrap in production. |
 | `FRONTEND_BASE_URL` | `https://agenthq.example.com` | Builds verification, reset, and invite links. Use the canonical HTTPS frontend origin. |
-| `EMAIL_BACKEND` | `smtp` | Use `console` only locally. Production console delivery is disabled to prevent token logging. |
-| `EMAIL_FROM` | `AgentHQ <no-reply@example.com>` | Verified transactional sender identity. |
+| `EMAIL_BACKEND` | `smtp` or `resend` | `resend` uses Resend's HTTPS API (required where SMTP egress is blocked, e.g. Railway Hobby). Use `console` only locally. Production console delivery is disabled to prevent token logging. |
+| `EMAIL_FROM` | `AgentHQ <no-reply@example.com>` | Verified transactional sender identity. With `resend`, a sender on a domain verified in Resend. |
 | `SMTP_HOST` | Provider SMTP hostname | Required when `EMAIL_BACKEND=smtp`. |
 | `SMTP_PORT` | `587` | SMTP submission port. |
 | `SMTP_USERNAME` | Provider credential | Store only in Render secrets. |
@@ -22,6 +22,8 @@ Backend:
 | `SMTP_USE_TLS` | `true` | Enables STARTTLS before authentication and delivery (ports 587/2587). |
 | `SMTP_USE_SSL` | `false` | Implicit TLS for port 465. Mutually exclusive with `SMTP_USE_TLS`. |
 | `SMTP_TIMEOUT_SECONDS` | `10` | Per-connection SMTP timeout used by the outbox worker. |
+| `RESEND_API_KEY` | Resend API key | Required when `EMAIL_BACKEND=resend`. Backend secret only; never a `VITE_` variable. |
+| `RESEND_TIMEOUT_SECONDS` | `10` | Per-request timeout for the Resend HTTPS API (max 60). |
 | `EMAIL_OUTBOX_WORKER_ENABLED` | `true` | Runs the in-process email outbox worker. Keep enabled on the web service. |
 | `EMAIL_OUTBOX_POLL_SECONDS` | `5` | Fallback poll interval; new mail is also dispatched immediately after commit. |
 | `EMAIL_OUTBOX_MAX_ATTEMPTS` | `6` | Delivery attempts before a message is marked failed (backoff 30s to 1h). |
@@ -55,7 +57,9 @@ AgentHQ uses SQLAlchemy and Alembic directly against PostgreSQL. It does not use
 
 ## Render Backend Setup
 
-The repository includes [render.yaml](render.yaml) and a Dockerfile at `backend/Dockerfile`.
+The repository includes [render.yaml](render.yaml) and the production [Dockerfile](Dockerfile) at
+the repository root (build context: repository root; it copies `backend/`). `backend/Dockerfile`
+is used only by `docker-compose.yml` for local development.
 
 1. Push the repository to GitHub, GitLab, or Bitbucket.
 2. Create a Render Key Value service in the same region as the API. Use `noeviction` so security
@@ -69,9 +73,10 @@ The repository includes [render.yaml](render.yaml) and a Dockerfile at `backend/
    * `JWT_SECRET_KEY`: strong random signing secret
    * `BOOTSTRAP_SECRET`: separate strong bootstrap secret
    * `FRONTEND_BASE_URL`: canonical Vercel production URL
-   * `EMAIL_BACKEND`: `smtp`
+   * `EMAIL_BACKEND`: `smtp` (or `resend`, see [Railway Staging](#railway-staging-resend-https-email))
    * `EMAIL_FROM`: verified sender address
-   * `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS`
+   * `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS` (SMTP only)
+   * `RESEND_API_KEY` (Resend only)
    * `ALLOW_PUBLIC_REGISTRATION`: `false`
    * `REDIS_URL`: Render Key Value internal Redis connection string
    * `RATE_LIMITS_ENABLED`: `true`
@@ -85,9 +90,15 @@ The container runs `alembic upgrade head` before starting Uvicorn and binds to R
 
 ### Transactional Email
 
-AgentHQ uses a provider-agnostic SMTP adapter. Resend, SendGrid, Postmark, Amazon SES, and similar
-providers can be used through their SMTP credentials. Verify the `EMAIL_FROM` domain or sender with
-the selected provider before deploying.
+AgentHQ supports two delivery backends:
+
+* `smtp`: a provider-agnostic SMTP adapter. Resend, SendGrid, Postmark, Amazon SES, and similar
+  providers can be used through their SMTP credentials.
+* `resend`: Resend's HTTPS API (`POST https://api.resend.com/emails`), for platforms that block
+  outbound SMTP. It sends `Authorization: Bearer <RESEND_API_KEY>`, a fixed `User-Agent`, and the
+  outbox row's `Idempotency-Key`; it never follows redirects.
+
+Verify the `EMAIL_FROM` domain or sender with the selected provider before deploying.
 
 Organization bootstrap sends a 24-hour verification link. Password resets use 30-minute links and
 always return a generic response to prevent account enumeration. Organization invitations include
@@ -95,8 +106,9 @@ the organization name, assigned role, and expiry. `FRONTEND_BASE_URL` must point
 frontend so links open the correct inline landing-page flow.
 
 Only token hashes are stored. Raw tokens exist transiently while constructing email and are shown
-only by the local console backend. SMTP passwords, raw tokens, and passwords are excluded from
-audit metadata and application security logs.
+only by the local console backend. SMTP passwords, Resend API keys, raw tokens, and passwords are
+excluded from audit metadata and application security logs. Provider error messages are never
+logged or stored; only a fixed reason code, the HTTP status, and Resend's error `name` are.
 
 #### Delivery model (transactional outbox)
 
@@ -115,8 +127,22 @@ public request path.
 * Failures retry with backoff up to `EMAIL_OUTBOX_MAX_ATTEMPTS`. Every attempt is audited
   (`auth.email_verification_failed`, `auth.password_reset_email_failed`,
   `organization_invite.email_failed`) with a sanitized error code and no provider text.
-* Delivery is at-least-once. A crash after the SMTP hand-off but before the status update can cause
-  one duplicate email after the 2-minute lease expires.
+* A failure the provider reports as permanent ends the row as failed immediately instead of
+  retrying. With Resend that is a rejected request (400/422), a wrong endpoint (404/405), or an
+  idempotency key reused with a different body. Timeouts, network errors, 401/403 (key or sender
+  misconfiguration that an operator can fix), 408, 409 in-progress, 429 (rate limit or quota),
+  5xx, and malformed success responses are retried. A malformed 2xx is never counted as sent.
+* Delivery is at-least-once. A crash after the provider hand-off but before the status update
+  causes a retry after the 2-minute lease expires. Every attempt for a row uses the same
+  idempotency key (`agenthq-email-outbox-<row id>`), and Resend keeps keys for 24 hours and returns
+  the original result, so with `resend` such a retry does not send a second email. Duplicates
+  remain possible with SMTP, or with Resend only if a retry happens more than 24 hours after the
+  first attempt. The retry schedule alone never gets there (about 1.7 hours by default, under 16
+  hours at the maximum of 20 attempts); the service being down for more than a day while a row is
+  pending would.
+* A row's request body must stay identical across attempts for its key. If it changes (for example
+  an organization is renamed between attempts of an invite email), Resend answers 409
+  `invalid_idempotent_request` and the row is marked failed without a second send.
 * Rows left pending while the Render instance sleeps or restarts are delivered on the next start.
   Multiple instances are safe: rows are claimed with `SELECT ... FOR UPDATE SKIP LOCKED`.
 
@@ -157,6 +183,32 @@ do not send to Vercel, in Referer headers, or to third parties. The frontend rem
 the address bar on load and keeps it in tab-scoped `sessionStorage` so a refresh still works. The
 frontend (`vercel.json`, `index.html`) and the API set `Referrer-Policy: no-referrer`. Legacy
 `?token=` links and the `/accept-invite`, `/verify-email`, and `/reset-password` routes still work.
+
+### Railway Staging (Resend HTTPS Email)
+
+Railway disables outbound SMTP on its Free, Trial, and Hobby plans and recommends HTTPS email APIs
+instead. Use the native Resend backend there; it needs no SMTP settings.
+
+Set these on the Railway API service only:
+
+```
+EMAIL_BACKEND=resend
+RESEND_API_KEY=<secret: Resend API key with sending access only>
+EMAIL_FROM=<sender on a domain verified in Resend, e.g. "AgentHQ Staging <no-reply@staging.example.com>">
+FRONTEND_BASE_URL=<staging frontend HTTPS URL>
+```
+
+* Store `RESEND_API_KEY` as a secret service variable. It belongs to the backend only: never put it
+  in any `VITE_` variable, the Vercel project, the repository, or a shared Railway variable that a
+  frontend service can read. Anything prefixed `VITE_` is compiled into public JavaScript.
+* Create a separate, sending-only key for each environment and revoke it when the environment is
+  torn down.
+* Leave the `SMTP_*` variables unset. `RESEND_TIMEOUT_SECONDS` (default `10`) bounds each request.
+* Startup validation (which runs before migrations) rejects a missing or malformed key, an invalid
+  `EMAIL_FROM`, a `.local` sender in production, and a non-public or non-HTTPS
+  `FRONTEND_BASE_URL` in production. Validation errors never echo configuration values.
+* Railway builds the root `Dockerfile` from the repository root. Leave the service's Root
+  Directory empty.
 
 ### Client IP and rate limiting
 
@@ -321,7 +373,8 @@ Do not automatically seed a production database.
 
 * Keep `DATABASE_URL` only in Render's secret environment variables.
 * Keep `JWT_SECRET_KEY`, `BOOTSTRAP_SECRET`, and `REDIS_URL` only in secret environment variables.
-* Keep `SMTP_PASSWORD` and provider credentials only in Render secret environment variables.
+* Keep `SMTP_PASSWORD`, `RESEND_API_KEY`, and provider credentials only in backend secret
+  environment variables (Render or Railway). Never expose them through `VITE_` variables.
 * Keep all `MCP_AUTH_*` values only in backend secret environment variables.
 * Store raw gateway tokens only in the calling client's secret store; AgentHQ shows them once.
 * Restrict direct upstream MCP access when using AgentHQ as an enforcement boundary.
