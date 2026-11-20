@@ -24,6 +24,7 @@ from app.repositories import approvals as approval_repository
 from app.repositories import executions as execution_repository
 from app.repositories import mcp_gateway as gateway_repository
 from app.repositories import mcp_servers as mcp_server_repository
+from app.repositories import organizations as organization_repository
 from app.repositories import tool_governance as governance_repository
 from app.schemas.audit_log import AuditLogCreate
 from app.schemas.execution import ExecutionCreate
@@ -163,8 +164,15 @@ def authenticate_token(
         raise MCPGatewayTokenInvalidError
     set_current_organization_id(db, token.organization_id)
     db.info[AUDIT_ACTOR_ROLE] = "gateway"
+    # The credential's own organization must still exist (the lookup excludes soft-deleted
+    # organizations). It is never taken from a client header, and the caller sees the same
+    # generic 401 as for an unknown token.
+    organization_available = (
+        organization_repository.get_organization_by_id(db, token.organization_id) is not None
+    )
     if (
-        token.status != MCPGatewayTokenStatus.ACTIVE
+        not organization_available
+        or token.status != MCPGatewayTokenStatus.ACTIVE
         or (mcp_server_id is not None and not token_allows_server(token, mcp_server_id))
         or (token.expires_at is not None and token.expires_at <= now)
     ):
@@ -174,7 +182,11 @@ def authenticate_token(
             token=token,
             resource_id=token.id,
             outcome=AuditOutcome.DENIED,
-            reason="Gateway credential is inactive, expired, or outside its allowed server scope.",
+            reason=(
+                "Gateway credential's organization is not available."
+                if not organization_available
+                else "Gateway credential is inactive, expired, or outside its allowed server scope."
+            ),
         )
         db.commit()
         raise MCPGatewayTokenInvalidError
