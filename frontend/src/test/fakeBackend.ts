@@ -59,7 +59,20 @@ export class FakeBackend {
   users = new Map<string, FakeUser>();
   organizations = new Map<string, FakeOrganization>();
   memberships: FakeMembership[] = [];
-  invites = new Map<string, { organizationId: string; email: string; role: UserRole }>();
+  /** fullName null: the invite carries no name, so a new account must supply one (422). */
+  invites = new Map<
+    string,
+    { organizationId: string; email: string; role: UserRole; fullName?: string | null }
+  >();
+  /**
+   * One-shot failure for the next matching request: "before-commit" fails in transit before the
+   * server does anything; "after-commit" applies the request, then loses the reply in transit;
+   * "server-error-after-commit" applies it, then answers 500 (the reply failed to build).
+   */
+  networkFailure: {
+    match: (request: RecordedRequest) => boolean;
+    when: "before-commit" | "after-commit" | "server-error-after-commit";
+  } | null = null;
   requests: RecordedRequest[] = [];
   forcedError: { status: number; detail: string } | null = null;
   multiOrganizationEnabled = false;
@@ -197,15 +210,26 @@ export class FakeBackend {
     if (request.url === "/api/v1/organization-invites/accept") {
       const invite = this.invites.get(body.token);
       if (!invite) return [400, { detail: "Invite is invalid or expired." }];
+      // Same order as backend accept_invite: token, password, duplicate, phase 0 guard.
       let invitee = [...this.users.values()].find((candidate) => candidate.email === invite.email);
-      if (!invitee) {
+      if (invitee) {
+        if (invitee.password !== body.password) return [400, { detail: "Invite is invalid or expired." }];
+        if (this.activeMemberships(invitee.id).some((m) => m.organizationId === invite.organizationId)) {
+          return [409, { detail: "User is already a member of this organization." }];
+        }
+        if (
+          !this.multiOrganizationEnabled &&
+          this.activeMemberships(invitee.id).some((m) => m.organizationId !== invite.organizationId)
+        ) {
+          return [409, { detail: "Multiple organizations are not yet supported." }];
+        }
+      } else {
+        if (invite.fullName === null && !body.full_name) {
+          return [422, { detail: "Full name is required to accept this invite." }];
+        }
         this.addUser(`user-${invite.email}`, invite.email);
         invitee = this.users.get(`user-${invite.email}`)!;
-      } else if (
-        !this.multiOrganizationEnabled &&
-        this.activeMemberships(invitee.id).some((m) => m.organizationId !== invite.organizationId)
-      ) {
-        return [409, { detail: "Multiple organizations are not yet supported." }];
+        invitee.password = body.password;
       }
       this.addMembership(invitee.id, invite.organizationId, invite.role);
       this.invites.delete(body.token);
@@ -270,7 +294,16 @@ export class FakeBackend {
       await Promise.race([hold.promise, aborted]);
     }
     if (this.latencyMs > 0) await new Promise((resolve) => setTimeout(resolve, this.latencyMs));
+    const failure = this.networkFailure?.match(request) ? this.networkFailure : null;
+    if (failure) this.networkFailure = null;
+    const transportError = () => new AxiosError("Network Error", "ERR_NETWORK", config, {});
+    if (failure?.when === "before-commit") throw transportError();
     const [status, data] = this.route(config, request);
+    if (failure?.when === "after-commit") throw transportError();
+    if (failure?.when === "server-error-after-commit") {
+      const error = { data: { detail: "Internal Server Error" }, status: 500, statusText: "500", headers: {}, config, request: {} };
+      throw new AxiosError("Request failed with status code 500", "ERR_BAD_RESPONSE", config, {}, error);
+    }
     const response: AxiosResponse = { data, status, statusText: String(status), headers: {}, config, request: {} };
     if (status >= 400) {
       throw new AxiosError(`Request failed with status code ${status}`, "ERR_BAD_REQUEST", config, {}, response);

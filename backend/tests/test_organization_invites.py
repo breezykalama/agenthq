@@ -1,6 +1,8 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
+from uuid import UUID
 
+import pytest
 from email_helpers import (
     capture_email,
     database_session,
@@ -9,9 +11,13 @@ from email_helpers import (
     verify_pending_admin,
 )
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
+from app.models.audit_log import AuditLog
 from app.models.email_outbox import EmailOutbox, EmailOutboxKind, EmailOutboxStatus
+from app.models.organization import OrganizationMembership
+from app.models.organization_invite import OrganizationInvite
+from app.models.user import User
 from app.services.email import EmailDeliveryError, OutboundEmail
 from app.services.organization_invites import token_digest
 
@@ -360,3 +366,76 @@ def test_expired_invite_rejected(
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Invite is invalid or expired."
+
+
+def _replay_state(client: TestClient, invite_id: str) -> tuple[int, int, int, tuple[object, ...]]:
+    """Counts and invite-row state a replayed acceptance must leave untouched."""
+    with database_session(client) as db:
+        invite = db.get(OrganizationInvite, UUID(invite_id))
+        assert invite is not None
+        return (
+            db.scalar(select(func.count()).select_from(AuditLog)) or 0,
+            db.scalar(select(func.count()).select_from(OrganizationMembership)) or 0,
+            db.scalar(select(func.count()).select_from(User)) or 0,
+            (invite.status, invite.accepted_at, invite.updated_at),
+        )
+
+
+def _accepted_invite(client: TestClient, *, existing_user: bool) -> tuple[JsonResponse, str]:
+    headers = admin_headers(client)
+    password = "InvitePassword123!"
+    if existing_user:
+        password = "ExistingPassword123!"
+        registered = client.post(
+            "/api/v1/auth/register",
+            json={"email": "existing@example.com", "full_name": "Existing", "password": password},
+        )
+        assert registered.status_code == 201
+    invite = create_invite(
+        client, headers, email="existing@example.com" if existing_user else "invitee@example.com"
+    )
+    accept_invite(client, cast(str, invite["token"]), password=password)
+    return invite, password
+
+
+@pytest.mark.parametrize("existing_user", [False, True], ids=["new-user", "existing-user"])
+def test_replaying_an_accepted_invite_with_the_correct_password_changes_nothing(
+    unauthenticated_client: TestClient, existing_user: bool
+) -> None:
+    invite, password = _accepted_invite(unauthenticated_client, existing_user=existing_user)
+    before = _replay_state(unauthenticated_client, cast(str, invite["id"]))
+
+    replay = unauthenticated_client.post(
+        "/api/v1/organization-invites/accept",
+        json={"token": invite["token"], "password": password},
+    )
+
+    assert replay.status_code == 400
+    assert replay.json() == {"detail": "Invite is invalid or expired."}
+    assert "access_token" not in replay.text
+    # No audit record, membership, account or invite-state change: the token stays single-use.
+    assert _replay_state(unauthenticated_client, cast(str, invite["id"])) == before
+
+
+@pytest.mark.parametrize("existing_user", [False, True], ids=["new-user", "existing-user"])
+def test_replaying_an_accepted_invite_discloses_nothing_about_the_password(
+    unauthenticated_client: TestClient, existing_user: bool
+) -> None:
+    invite, password = _accepted_invite(unauthenticated_client, existing_user=existing_user)
+    before = _replay_state(unauthenticated_client, cast(str, invite["id"]))
+
+    correct = unauthenticated_client.post(
+        "/api/v1/organization-invites/accept",
+        json={"token": invite["token"], "password": password},
+    )
+    wrong = unauthenticated_client.post(
+        "/api/v1/organization-invites/accept",
+        json={"token": invite["token"], "password": "WrongPassword123!"},
+    )
+
+    # Byte-identical replies: a consumed token cannot be used to test the account's password,
+    # to learn whether the account exists, or to learn that the invitation was accepted.
+    assert wrong.status_code == correct.status_code == 400
+    assert wrong.content == correct.content
+    assert wrong.headers.get("content-type") == correct.headers.get("content-type")
+    assert _replay_state(unauthenticated_client, cast(str, invite["id"])) == before

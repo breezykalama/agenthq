@@ -25,10 +25,36 @@ declare module "axios" {
 
 /** A response for an organization context that is no longer current; never shown or cached. */
 export class StaleOrganizationContextError extends Error {
-  constructor() {
+  /**
+   * False only when this client refused the request before it could reach the network (it is
+   * then provably not sent). True whenever the request may have reached the server: a
+   * response arrived and was discarded, or it was cancelled at an unknown point.
+   */
+  readonly mayHaveReachedServer: boolean;
+
+  constructor(options: { mayHaveReachedServer?: boolean } = {}) {
     super("The organization context changed while this request was in flight.");
     this.name = "StaleOrganizationContextError";
+    this.mayHaveReachedServer = options.mayHaveReachedServer ?? true;
   }
+}
+
+/**
+ * What a failed request tells us about the server side:
+ * - "not-sent": refused by this client before dispatch; the server never saw it.
+ * - "unknown": it may have reached the server and been processed (transport failure, timeout,
+ *   cancellation after dispatch, or a response discarded because the identity changed).
+ * - "response": the server answered with an HTTP status (check it; a 5xx can still mean the
+ *   work was committed before the error).
+ */
+export type RequestFailureOutcome = "not-sent" | "unknown" | "response";
+
+export function classifyRequestFailure(error: unknown): RequestFailureOutcome {
+  if (error instanceof StaleOrganizationContextError) {
+    return error.mayHaveReachedServer ? "unknown" : "not-sent";
+  }
+  if (axios.isAxiosError(error) && error.response) return "response";
+  return "unknown";
 }
 
 // Exact backend responses (backend/app/core/security.py) that mean the selection is unusable.
@@ -85,7 +111,8 @@ function announceIdentityChange(): void {
 }
 
 /** Stands in for the network: the request is refused locally and never leaves the browser. */
-const refuseSuperseded: AxiosAdapter = () => Promise.reject(new StaleOrganizationContextError());
+const refuseSuperseded: AxiosAdapter = () =>
+  Promise.reject(new StaleOrganizationContextError({ mayHaveReachedServer: false }));
 
 export function attachAuthAndOrganization(
   config: InternalAxiosRequestConfig
@@ -108,6 +135,10 @@ export function attachAuthAndOrganization(
     // re-resolves its identity. (Throwing here would not stop it: axios still dispatches after
     // a synchronous interceptor throws.)
     config.adapter = refuseSuperseded;
+    // It never reaches the network, so it needs no cancellation. Detached from the context
+    // signal, which the identity reload below aborts, axios cannot replace the "not sent"
+    // refusal with a CanceledError (whose server-side outcome would be unknown).
+    config.signal = new AbortController().signal;
     announceIdentityChange();
     return config;
   }
