@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router-dom";
+import { type RouteObject, createBrowserRouter } from "react-router-dom";
 
 import { ProtectedRoute } from "../auth/ProtectedRoute";
 import { OrganizationAdminRoute } from "../auth/OrganizationAdminRoute";
@@ -25,7 +25,8 @@ import { RiskRegisterPage } from "../pages/RiskRegisterPage";
 import { ToolGovernancePage } from "../pages/ToolGovernancePage";
 import { GovernanceAlertsPage } from "../pages/GovernanceAlertsPage";
 
-export const router = createBrowserRouter([
+// Exported so tests can mount the production route tree with a memory router.
+export const routes: RouteObject[] = [
   { path: "/", element: <LandingPage /> },
   { path: "/login", element: <LoginPage /> },
   { path: "/register", element: <RegisterPage /> },
@@ -90,4 +91,6 @@ export const router = createBrowserRouter([
       }
     ]
   }
-]);
+];
+
+export const router = createBrowserRouter(routes);
