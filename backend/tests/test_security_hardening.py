@@ -6,7 +6,7 @@ from email_helpers import verify_pending_admin
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.rate_limit import rate_limiter
 from app.services.email import ConsoleEmailBackend, get_email_backend
 
@@ -154,7 +154,22 @@ def test_public_registration_disabled_in_production_by_default(
     assert "StrongPassword123!" not in caplog.text
 
 
-def test_local_registration_remains_enabled(unauthenticated_client: TestClient) -> None:
+def test_local_registration_requires_explicit_opt_in(
+    unauthenticated_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = {
+        "email": "local-user@example.com",
+        "full_name": "Local User",
+        "password": "StrongPassword123!",
+    }
+    monkeypatch.setitem(Settings.model_config, "env_file", None)  # ignore a developer .env
+    monkeypatch.delenv("ALLOW_PUBLIC_REGISTRATION", raising=False)
+    get_settings.cache_clear()
+    blocked = unauthenticated_client.post("/api/v1/auth/register", json=payload)
+    assert blocked.status_code == 403
+
+    monkeypatch.setenv("ALLOW_PUBLIC_REGISTRATION", "true")
+    get_settings.cache_clear()
     response = unauthenticated_client.post(
         "/api/v1/auth/register",
         json={

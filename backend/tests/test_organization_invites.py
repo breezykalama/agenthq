@@ -21,6 +21,9 @@ from app.models.user import User
 from app.services.email import EmailDeliveryError, OutboundEmail
 from app.services.organization_invites import token_digest
 
+# These tests register accounts through the legacy endpoint, which is off by default.
+pytestmark = pytest.mark.usefixtures("public_registration")
+
 
 @pytest.fixture()
 def client(fresh_install_client: TestClient) -> TestClient:

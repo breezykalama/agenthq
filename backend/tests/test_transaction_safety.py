@@ -8,6 +8,9 @@ from app.models.audit_log import AuditAction
 from app.schemas.audit_log import AuditLogCreate
 from app.services import audit_logs as audit_log_service
 
+# These tests register accounts through the legacy endpoint, which is off by default.
+pytestmark = pytest.mark.usefixtures("public_registration")
+
 
 def create_agent(client: TestClient, name: str) -> dict[str, Any]:
     response = client.post(

@@ -69,7 +69,9 @@ def register_user(db: Session, registration: UserRegister) -> User:
     email = registration.email.lower()
     if user_repository.get_user_by_email(db, email) is not None:
         raise DuplicateUserEmailError
-    role = UserRole.ADMIN if user_repository.count_users(db) == 0 else UserRole.AGENT_OWNER
+    # Compatibility global role only: it grants nothing (access comes from memberships), and the
+    # first account is no longer promoted to admin. Bootstrap creates administrators.
+    role = UserRole.AGENT_OWNER
     user = user_repository.create_user(
         db,
         User(

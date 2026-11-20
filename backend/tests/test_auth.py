@@ -1,12 +1,17 @@
 from typing import Any, cast
 from uuid import UUID
 
+import pytest
 from email_helpers import database_session
 from fastapi.testclient import TestClient
 from membership_helpers import enroll
 from sqlalchemy import select
 
 from app.models.audit_log import AuditAction, AuditLog
+
+# These tests register accounts through the legacy endpoint, which is off by default.
+pytestmark = pytest.mark.usefixtures("public_registration")
+
 
 JsonResponse = dict[str, Any]
 

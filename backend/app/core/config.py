@@ -177,9 +177,8 @@ class Settings(BaseSettings):
 
     @property
     def public_registration_enabled(self) -> bool:
-        if self.allow_public_registration is not None:
-            return self.allow_public_registration
-        return not self.is_production
+        # Legacy registration is off in every environment unless explicitly enabled.
+        return self.allow_public_registration is True
 
     @property
     def private_mcp_urls_allowed(self) -> bool:

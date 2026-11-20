@@ -25,6 +25,13 @@ def isolate_identity_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     get_settings.cache_clear()
 
 
+@pytest.fixture()
+def public_registration(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Legacy registration is disabled unless explicitly enabled; tests that register enable it."""
+    monkeypatch.setenv("ALLOW_PUBLIC_REGISTRATION", "true")
+    get_settings.cache_clear()
+
+
 def _test_client(monkeypatch: pytest.MonkeyPatch, *, admin_is_member: bool) -> Iterator[TestClient]:
     monkeypatch.setenv(
         "DATABASE_URL",

@@ -37,6 +37,9 @@ from app.services import identity as identity_service
 from app.services import organizations as organization_service
 from app.services.email import ConsoleEmailBackend
 
+# These tests register accounts through the legacy endpoint, which is off by default.
+pytestmark = pytest.mark.usefixtures("public_registration")
+
 
 @pytest.fixture()
 def client(fresh_install_client: TestClient) -> TestClient:

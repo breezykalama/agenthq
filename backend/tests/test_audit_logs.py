@@ -13,6 +13,10 @@ from app.models.audit_log import AuditAction, AuditLog, AuditOutcome, JsonObject
 from app.repositories import audit_logs as audit_log_repository
 from app.schemas.audit_log import AuditLogCreate
 
+# These tests register accounts through the legacy endpoint, which is off by default.
+pytestmark = pytest.mark.usefixtures("public_registration")
+
+
 JsonResponse = dict[str, Any]
 
 

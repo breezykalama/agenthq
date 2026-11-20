@@ -66,14 +66,14 @@ def test_production_public_registration_defaults_to_disabled() -> None:
     assert settings.public_registration_enabled is False
 
 
-def test_development_public_registration_defaults_to_enabled() -> None:
+def test_development_public_registration_defaults_to_disabled() -> None:
     settings = Settings(
         _env_file=None,
         DATABASE_URL="postgresql://agenthq:agenthq@localhost:5432/agenthq",
         environment="development",
     )
 
-    assert settings.public_registration_enabled is True
+    assert settings.public_registration_enabled is False
 
 
 def test_private_mcp_url_default_depends_on_environment() -> None:

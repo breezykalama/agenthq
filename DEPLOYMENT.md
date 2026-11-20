@@ -28,7 +28,7 @@ Backend:
 | `EMAIL_OUTBOX_POLL_SECONDS` | `5` | Fallback poll interval; new mail is also dispatched immediately after commit. |
 | `EMAIL_OUTBOX_MAX_ATTEMPTS` | `6` | Delivery attempts before a message is marked failed (backoff 30s to 1h). |
 | `IDENTITY_MIN_RESPONSE_MS` | `400` | Constant response floor for forgot-password and resend-verification. |
-| `ALLOW_PUBLIC_REGISTRATION` | `false` | Public legacy/demo registration should remain disabled in production. |
+| `ALLOW_PUBLIC_REGISTRATION` | `false` | Legacy/demo registration. Disabled unless explicitly `true`, in every environment. Registered accounts get no organization access. |
 | `REDIS_URL` | `redis://...` | Render Key Value internal URL used for production rate limiting. Protected endpoints fail closed when Redis is unavailable. |
 | `RATE_LIMITS_ENABLED` | `true` | Enables centralized abuse protection. |
 | `TRUSTED_CLIENT_IP_HEADER` | unset (Render: `cf-connecting-ip`) | Single header holding the real client IP for IP-based rate limits. **Production enablement is BLOCKED until the ingress-spoofing test below passes.** Never `x-forwarded-for`. See [Client IP and rate limiting](#client-ip-and-rate-limiting). |

@@ -1,10 +1,14 @@
 from typing import cast
 
+import pytest
 from fastapi.testclient import TestClient
 from membership_helpers import enroll
 
 from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, get_pagination
 from app.db.base import Base
+
+# These tests register accounts through the legacy endpoint, which is off by default.
+pytestmark = pytest.mark.usefixtures("public_registration")
 
 
 def create_agent(client: TestClient, name: str) -> dict[str, object]:

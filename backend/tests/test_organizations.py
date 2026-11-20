@@ -16,6 +16,9 @@ from app.models.organization import Organization, OrganizationMembership
 from app.models.user import User, UserRole
 from app.repositories import organizations as organization_repository
 
+# These tests register accounts through the legacy endpoint, which is off by default.
+pytestmark = pytest.mark.usefixtures("public_registration")
+
 
 @pytest.fixture()
 def client(fresh_install_client: TestClient) -> TestClient:
