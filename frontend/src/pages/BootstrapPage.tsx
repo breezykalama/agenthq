@@ -9,10 +9,6 @@ import { AuthError, AuthPageFrame } from "./LoginPage";
 
 const ORGANIZATION_EXISTS_MESSAGE =
   "An organization already exists. Please log in or ask your administrator for access.";
-// One message for any refused setup authorization: it never says whether a bootstrap secret was
-// missing or wrong, and never repeats what was entered.
-const SETUP_AUTHORIZATION_FAILED_MESSAGE =
-  "Initial setup authorization failed. Check your setup credentials or contact the installation administrator.";
 
 export function BootstrapPage() {
   const { user, bootstrap } = useAuth();
@@ -21,9 +17,6 @@ export function BootstrapPage() {
   const [adminFullName, setAdminFullName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
-  // Held only in this form's state (gone when the page unmounts) and sent only as the
-  // X-Bootstrap-Secret header by authApi.bootstrap; never in the URL, storage or a message.
-  const [bootstrapSecret, setBootstrapSecret] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -39,20 +32,14 @@ export function BootstrapPage() {
         organization_name: organizationName,
         admin_full_name: adminFullName,
         admin_email: adminEmail,
-        admin_password: adminPassword,
-        bootstrap_secret: bootstrapSecret || undefined
+        admin_password: adminPassword
       });
-      setBootstrapSecret("");
-      setAdminPassword("");
       setSuccess(true);
     } catch (requestError) {
-      const status = axios.isAxiosError(requestError) ? requestError.response?.status : undefined;
       setError(
-        status === 409
+        axios.isAxiosError(requestError) && requestError.response?.status === 409
           ? ORGANIZATION_EXISTS_MESSAGE
-          : status === 403
-            ? SETUP_AUTHORIZATION_FAILED_MESSAGE
-            : getErrorMessage(requestError)
+          : getErrorMessage(requestError)
       );
     } finally {
       setIsSubmitting(false);
@@ -61,13 +48,11 @@ export function BootstrapPage() {
 
   return (
     <AuthPageFrame
-      title="Initial AgentHQ setup"
-      subtitle="Available only before the first organization is created."
+      title="Create your AgentHQ organization workspace"
+      subtitle="Set up the first governed workspace for this deployment."
     >
       <p className="mb-5 text-sm text-slate-600">
-        Use this once, when installing AgentHQ, to create the first organization and become its
-        administrator. It is not customer signup: to join an existing organization, ask its
-        administrator for an invitation.
+        You will become the first administrator for this organization.
       </p>
       {success ? (
         <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
@@ -123,19 +108,9 @@ export function BootstrapPage() {
             required
           />
         </Field>
-        <Field label="Bootstrap secret (if required)">
-          <input
-            className={inputClass}
-            type="password"
-            autoComplete="off"
-            placeholder="Required when your deployment configures one"
-            value={bootstrapSecret}
-            onChange={(event) => setBootstrapSecret(event.target.value)}
-          />
-        </Field>
         {error ? <AuthError message={error} /> : null}
         <PrimaryButton disabled={isSubmitting}>
-          {isSubmitting ? "Completing setup..." : "Complete initial setup"}
+          {isSubmitting ? "Creating workspace..." : "Create organization workspace"}
         </PrimaryButton>
       </form>
       )}

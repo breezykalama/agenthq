@@ -9,7 +9,9 @@ import { captureIdentityToken, clearIdentityToken } from "../utils/identityToken
 
 type AuthMode =
   | "login"
+  | "bootstrap"
   | "invite"
+  | "register"
   | "verify-email"
   | "forgot-password"
   | "reset-password"
@@ -17,7 +19,9 @@ type AuthMode =
 
 const authModes = new Set<AuthMode>([
   "login",
+  "bootstrap",
   "invite",
+  "register",
   "verify-email",
   "forgot-password",
   "reset-password",
@@ -42,7 +46,7 @@ const capabilities = [
 ];
 
 const workflow = [
-  "Organization onboarding",
+  "Create organization",
   "Invite users",
   "Register MCP servers",
   "Sync tools",
@@ -67,18 +71,26 @@ const fieldClass =
   "mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100";
 
 function LandingPage() {
-  const { user, login, acceptInvite, refreshUser } = useAuth();
+  const { user, login, register, bootstrap, acceptInvite, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+  const [bootstrapForm, setBootstrapForm] = useState({
+    organization_name: "",
+    admin_full_name: "",
+    admin_email: "",
+    admin_password: "",
+    bootstrap_secret: "",
+  });
   const [inviteForm, setInviteForm] = useState({
     token: "",
     full_name: "",
     password: "",
   });
+  const [registerForm, setRegisterForm] = useState({ full_name: "", email: "", password: "" });
   const [forgotEmail, setForgotEmail] = useState("");
   const [identityToken, setIdentityToken] = useState("");
   const [resendEmail, setResendEmail] = useState("");
@@ -87,13 +99,6 @@ function LandingPage() {
 
   const authParam = searchParams.get("auth");
   const mode = authParam && authModes.has(authParam as AuthMode) ? (authParam as AuthMode) : null;
-
-  // Old dialog links that now have their own pages: "?auth=register" lands on the page that
-  // explains how to get access, and "?auth=bootstrap" on the canonical initial-setup page.
-  useEffect(() => {
-    if (authParam === "register") navigate("/register", { replace: true });
-    if (authParam === "bootstrap") navigate("/bootstrap", { replace: true });
-  }, [authParam, navigate]);
 
   // Capture any emailed token and strip it from the address bar immediately.
   useEffect(() => {
@@ -155,9 +160,18 @@ function LandingPage() {
     try {
       if (mode === "login") {
         await login(loginForm);
+      } else if (mode === "bootstrap") {
+        await bootstrap({
+          ...bootstrapForm,
+          bootstrap_secret: bootstrapForm.bootstrap_secret || undefined,
+        });
+        setSuccess("Organization created. Check your email to verify your account.");
+        return;
       } else if (mode === "invite") {
         await acceptInvite(inviteForm);
         clearIdentityToken("invite");
+      } else if (mode === "register") {
+        await register(registerForm);
       } else if (mode === "verify-email") {
         await authApi.verifyEmail(identityToken);
         clearIdentityToken("verify-email");
@@ -206,8 +220,11 @@ function LandingPage() {
               </button>
             ) : (
               <>
-                <button className="landing-button landing-button-light" onClick={() => openAuth("login")} type="button">
+                <button className="landing-link hidden sm:inline-flex" onClick={() => openAuth("login")} type="button">
                   Sign in
+                </button>
+                <button className="landing-button landing-button-light" onClick={() => openAuth("bootstrap")} type="button">
+                  Create organization
                 </button>
               </>
             )}
@@ -242,8 +259,14 @@ function LandingPage() {
                     <button className="landing-button landing-button-primary" onClick={() => openAuth("login")} type="button">
                       Sign in
                     </button>
+                    <button className="landing-button landing-button-outline" onClick={() => openAuth("bootstrap")} type="button">
+                      Create organization
+                    </button>
                     <button className="landing-button landing-button-outline" onClick={() => openAuth("invite")} type="button">
                       Accept invite
+                    </button>
+                    <button className="landing-link px-2" onClick={() => openAuth("register")} type="button">
+                      Legacy/demo register
                     </button>
                   </>
                 )}
@@ -380,7 +403,7 @@ function LandingPage() {
           <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 px-4 sm:px-6 lg:flex-row lg:items-center lg:px-8">
             <div>
               <h2 className="text-2xl font-semibold">Build accountable agent operations from day one.</h2>
-              <p className="mt-2 text-slate-600">Sign in to continue governing your agents. New team members join through an invitation from their organization's administrator.</p>
+              <p className="mt-2 text-slate-600">Create an organization workspace or sign in to continue governing your agents.</p>
             </div>
             <div className="flex flex-wrap gap-3">
               {user ? (
@@ -389,7 +412,10 @@ function LandingPage() {
                 </button>
               ) : (
                 <>
-                  <button className="landing-button landing-button-dark" onClick={() => openAuth("login")} type="button">
+                  <button className="landing-button landing-button-dark" onClick={() => openAuth("bootstrap")} type="button">
+                    Create organization
+                  </button>
+                  <button className="landing-button landing-button-white" onClick={() => openAuth("login")} type="button">
                     Sign in
                   </button>
                 </>
@@ -477,11 +503,29 @@ function LandingPage() {
                 </>
               ) : null}
 
+              {mode === "bootstrap" ? (
+                <>
+                  <TextField label="Organization name" onChange={(value) => setBootstrapForm((current) => ({ ...current, organization_name: value }))} placeholder="Equity Bank" value={bootstrapForm.organization_name} />
+                  <TextField autoComplete="name" label="Admin full name" onChange={(value) => setBootstrapForm((current) => ({ ...current, admin_full_name: value }))} placeholder="Amina Njoroge" value={bootstrapForm.admin_full_name} />
+                  <TextField autoComplete="email" label="Admin email" onChange={(value) => setBootstrapForm((current) => ({ ...current, admin_email: value }))} placeholder="admin@company.com" type="email" value={bootstrapForm.admin_email} />
+                  <TextField autoComplete="new-password" label="Admin password" minLength={12} onChange={(value) => setBootstrapForm((current) => ({ ...current, admin_password: value }))} placeholder="At least 12 characters" type="password" value={bootstrapForm.admin_password} />
+                  <TextField label="Bootstrap secret (optional)" onChange={(value) => setBootstrapForm((current) => ({ ...current, bootstrap_secret: value }))} placeholder="Required when configured by your deployment" type="password" value={bootstrapForm.bootstrap_secret} />
+                </>
+              ) : null}
+
               {mode === "invite" ? (
                 <>
                   <TextField label="Invite token" onChange={(value) => setInviteForm((current) => ({ ...current, token: value }))} placeholder="Paste your invitation token" value={inviteForm.token} />
                   <TextField autoComplete="name" label="Full name" onChange={(value) => setInviteForm((current) => ({ ...current, full_name: value }))} placeholder="Required if not provided by your administrator" required={false} value={inviteForm.full_name} />
                   <TextField autoComplete="new-password" label="Password" minLength={12} onChange={(value) => setInviteForm((current) => ({ ...current, password: value }))} placeholder="At least 12 characters" type="password" value={inviteForm.password} />
+                </>
+              ) : null}
+
+              {mode === "register" ? (
+                <>
+                  <TextField autoComplete="name" label="Full name" onChange={(value) => setRegisterForm((current) => ({ ...current, full_name: value }))} placeholder="Your full name" value={registerForm.full_name} />
+                  <TextField autoComplete="email" label="Email" onChange={(value) => setRegisterForm((current) => ({ ...current, email: value }))} placeholder="you@company.com" type="email" value={registerForm.email} />
+                  <TextField autoComplete="new-password" label="Password" minLength={12} onChange={(value) => setRegisterForm((current) => ({ ...current, password: value }))} placeholder="At least 12 characters" type="password" value={registerForm.password} />
                 </>
               ) : null}
 
@@ -561,6 +605,7 @@ function LandingPage() {
               {mode !== "login" ? <AuthSwitch label="Sign in instead" onClick={() => openAuth("login")} /> : null}
               {mode === "login" ? <AuthSwitch label="Forgot password?" onClick={() => openAuth("forgot-password")} /> : null}
               {mode === "verify-email" ? <AuthSwitch label="Link expired? Send a new one" onClick={() => openAuth("resend-verification")} /> : null}
+              {mode !== "bootstrap" ? <AuthSwitch label="Create organization" onClick={() => openAuth("bootstrap")} /> : null}
               {mode !== "invite" ? <AuthSwitch label="Accept invite" onClick={() => openAuth("invite")} /> : null}
             </div>
           </div>
@@ -598,7 +643,7 @@ function TextField({
         minLength={minLength}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        required={required}
+        required={label === "Bootstrap secret (optional)" ? false : required}
         type={type}
         value={value}
       />
@@ -609,7 +654,9 @@ function TextField({
 function authTitle(mode: AuthMode): string {
   const titles: Record<AuthMode, string> = {
     login: "Sign in",
+    bootstrap: "Create your organization",
     invite: "Accept organization invite",
+    register: "Legacy/demo registration",
     "verify-email": "Verify your email",
     "forgot-password": "Reset your password",
     "reset-password": "Choose a new password",
@@ -621,7 +668,9 @@ function authTitle(mode: AuthMode): string {
 function authDescription(mode: AuthMode): string {
   const descriptions: Record<AuthMode, string> = {
     login: "Continue to your organization governance workspace.",
+    bootstrap: "Create the first organization workspace and administrator account for this deployment.",
     invite: "Join an AgentHQ organization using the invitation shared by its administrator.",
+    register: "Direct registration is retained for legacy and demo access. Organization access normally happens through an invite.",
     "verify-email": "Confirm the email address associated with your AgentHQ administrator account.",
     "forgot-password": "Enter your email. If an active account exists, AgentHQ will send a secure reset link.",
     "reset-password": "Set a new password using the secure link sent to your email.",
@@ -633,7 +682,9 @@ function authDescription(mode: AuthMode): string {
 function authSubmitLabel(mode: AuthMode): string {
   const labels: Record<AuthMode, string> = {
     login: "Sign in",
+    bootstrap: "Create organization",
     invite: "Accept invite",
+    register: "Create demo account",
     "verify-email": "Verify email",
     "forgot-password": "Send reset link",
     "reset-password": "Reset password",

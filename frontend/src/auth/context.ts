@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-import type { BootstrapPayload, LoginPayload } from "../api/auth";
+import type { BootstrapPayload, LoginPayload, RegisterPayload } from "../api/auth";
 import type { AcceptOrganizationInvitePayload } from "../api/organizationInvites";
 import type { OrganizationMembership, User } from "../types/api";
 
@@ -25,6 +25,7 @@ export interface AuthContextValue {
   /** Identifies the current user + organization context; tenant caches are keyed by it. */
   organizationContextKey: string;
   login: (payload: LoginPayload) => Promise<void>;
+  register: (payload: RegisterPayload) => Promise<void>;
   bootstrap: (payload: BootstrapPayload) => Promise<void>;
   acceptInvite: (payload: AcceptOrganizationInvitePayload) => Promise<void>;
   selectOrganization: (organizationId: string) => Promise<void>;

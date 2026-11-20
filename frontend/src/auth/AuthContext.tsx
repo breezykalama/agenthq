@@ -161,6 +161,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStoredToken(token.access_token);
         await loadIdentity(null);
       },
+      register: async (payload) => {
+        await authApi.register(payload);
+        const token = await authApi.login({ email: payload.email, password: payload.password });
+        setStoredToken(token.access_token);
+        await loadIdentity(null);
+      },
       bootstrap: async (payload) => {
         const result = await authApi.bootstrap(payload);
         setStoredToken(result.access_token);
