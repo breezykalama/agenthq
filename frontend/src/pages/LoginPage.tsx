@@ -67,12 +67,6 @@ export function LoginPage() {
         </Link>
       </p>
       <p className="mt-6 text-sm text-slate-500">
-        Need legacy or demo access?{" "}
-        <Link className="font-medium text-slate-950 underline" to="/register">
-          Create a legacy account
-        </Link>
-      </p>
-      <p className="mt-3 text-sm text-slate-500">
         Setting up a new organization?{" "}
         <Link className="font-medium text-slate-950 underline" to="/bootstrap">
           Create organization

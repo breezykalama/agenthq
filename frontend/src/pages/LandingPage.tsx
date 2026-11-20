@@ -11,7 +11,6 @@ type AuthMode =
   | "login"
   | "bootstrap"
   | "invite"
-  | "register"
   | "verify-email"
   | "forgot-password"
   | "reset-password"
@@ -21,7 +20,6 @@ const authModes = new Set<AuthMode>([
   "login",
   "bootstrap",
   "invite",
-  "register",
   "verify-email",
   "forgot-password",
   "reset-password",
@@ -71,7 +69,7 @@ const fieldClass =
   "mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100";
 
 function LandingPage() {
-  const { user, login, register, bootstrap, acceptInvite, refreshUser } = useAuth();
+  const { user, login, bootstrap, acceptInvite, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -90,7 +88,6 @@ function LandingPage() {
     full_name: "",
     password: "",
   });
-  const [registerForm, setRegisterForm] = useState({ full_name: "", email: "", password: "" });
   const [forgotEmail, setForgotEmail] = useState("");
   const [identityToken, setIdentityToken] = useState("");
   const [resendEmail, setResendEmail] = useState("");
@@ -99,6 +96,12 @@ function LandingPage() {
 
   const authParam = searchParams.get("auth");
   const mode = authParam && authModes.has(authParam as AuthMode) ? (authParam as AuthMode) : null;
+
+  // Legacy registration is retired from the interface; old "?auth=register" links land on the
+  // page that explains how to get access instead of opening a registration form.
+  useEffect(() => {
+    if (authParam === "register") navigate("/register", { replace: true });
+  }, [authParam, navigate]);
 
   // Capture any emailed token and strip it from the address bar immediately.
   useEffect(() => {
@@ -170,8 +173,6 @@ function LandingPage() {
       } else if (mode === "invite") {
         await acceptInvite(inviteForm);
         clearIdentityToken("invite");
-      } else if (mode === "register") {
-        await register(registerForm);
       } else if (mode === "verify-email") {
         await authApi.verifyEmail(identityToken);
         clearIdentityToken("verify-email");
@@ -264,9 +265,6 @@ function LandingPage() {
                     </button>
                     <button className="landing-button landing-button-outline" onClick={() => openAuth("invite")} type="button">
                       Accept invite
-                    </button>
-                    <button className="landing-link px-2" onClick={() => openAuth("register")} type="button">
-                      Legacy/demo register
                     </button>
                   </>
                 )}
@@ -521,14 +519,6 @@ function LandingPage() {
                 </>
               ) : null}
 
-              {mode === "register" ? (
-                <>
-                  <TextField autoComplete="name" label="Full name" onChange={(value) => setRegisterForm((current) => ({ ...current, full_name: value }))} placeholder="Your full name" value={registerForm.full_name} />
-                  <TextField autoComplete="email" label="Email" onChange={(value) => setRegisterForm((current) => ({ ...current, email: value }))} placeholder="you@company.com" type="email" value={registerForm.email} />
-                  <TextField autoComplete="new-password" label="Password" minLength={12} onChange={(value) => setRegisterForm((current) => ({ ...current, password: value }))} placeholder="At least 12 characters" type="password" value={registerForm.password} />
-                </>
-              ) : null}
-
               {mode === "verify-email" ? (
                 <TextField
                   label="Verification token"
@@ -656,7 +646,6 @@ function authTitle(mode: AuthMode): string {
     login: "Sign in",
     bootstrap: "Create your organization",
     invite: "Accept organization invite",
-    register: "Legacy/demo registration",
     "verify-email": "Verify your email",
     "forgot-password": "Reset your password",
     "reset-password": "Choose a new password",
@@ -670,7 +659,6 @@ function authDescription(mode: AuthMode): string {
     login: "Continue to your organization governance workspace.",
     bootstrap: "Create the first organization workspace and administrator account for this deployment.",
     invite: "Join an AgentHQ organization using the invitation shared by its administrator.",
-    register: "Direct registration is retained for legacy and demo access. Organization access normally happens through an invite.",
     "verify-email": "Confirm the email address associated with your AgentHQ administrator account.",
     "forgot-password": "Enter your email. If an active account exists, AgentHQ will send a secure reset link.",
     "reset-password": "Set a new password using the secure link sent to your email.",
@@ -684,7 +672,6 @@ function authSubmitLabel(mode: AuthMode): string {
     login: "Sign in",
     bootstrap: "Create organization",
     invite: "Accept invite",
-    register: "Create demo account",
     "verify-email": "Verify email",
     "forgot-password": "Send reset link",
     "reset-password": "Reset password",
