@@ -48,11 +48,13 @@ export function BootstrapPage() {
 
   return (
     <AuthPageFrame
-      title="Create your AgentHQ organization workspace"
-      subtitle="Set up the first governed workspace for this deployment."
+      title="Initial AgentHQ setup"
+      subtitle="Available only before the first organization is created."
     >
       <p className="mb-5 text-sm text-slate-600">
-        You will become the first administrator for this organization.
+        Use this once, when installing AgentHQ, to create the first organization and become its
+        administrator. It is not customer signup: to join an existing organization, ask its
+        administrator for an invitation.
       </p>
       {success ? (
         <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
@@ -110,7 +112,7 @@ export function BootstrapPage() {
         </Field>
         {error ? <AuthError message={error} /> : null}
         <PrimaryButton disabled={isSubmitting}>
-          {isSubmitting ? "Creating workspace..." : "Create organization workspace"}
+          {isSubmitting ? "Completing setup..." : "Complete initial setup"}
         </PrimaryButton>
       </form>
       )}

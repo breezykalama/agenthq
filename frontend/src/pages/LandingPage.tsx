@@ -44,7 +44,7 @@ const capabilities = [
 ];
 
 const workflow = [
-  "Create organization",
+  "Organization onboarding",
   "Invite users",
   "Register MCP servers",
   "Sync tools",
@@ -221,11 +221,8 @@ function LandingPage() {
               </button>
             ) : (
               <>
-                <button className="landing-link hidden sm:inline-flex" onClick={() => openAuth("login")} type="button">
+                <button className="landing-button landing-button-light" onClick={() => openAuth("login")} type="button">
                   Sign in
-                </button>
-                <button className="landing-button landing-button-light" onClick={() => openAuth("bootstrap")} type="button">
-                  Create organization
                 </button>
               </>
             )}
@@ -259,9 +256,6 @@ function LandingPage() {
                   <>
                     <button className="landing-button landing-button-primary" onClick={() => openAuth("login")} type="button">
                       Sign in
-                    </button>
-                    <button className="landing-button landing-button-outline" onClick={() => openAuth("bootstrap")} type="button">
-                      Create organization
                     </button>
                     <button className="landing-button landing-button-outline" onClick={() => openAuth("invite")} type="button">
                       Accept invite
@@ -401,7 +395,7 @@ function LandingPage() {
           <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 px-4 sm:px-6 lg:flex-row lg:items-center lg:px-8">
             <div>
               <h2 className="text-2xl font-semibold">Build accountable agent operations from day one.</h2>
-              <p className="mt-2 text-slate-600">Create an organization workspace or sign in to continue governing your agents.</p>
+              <p className="mt-2 text-slate-600">Sign in to continue governing your agents. New team members join through an invitation from their organization's administrator.</p>
             </div>
             <div className="flex flex-wrap gap-3">
               {user ? (
@@ -410,10 +404,7 @@ function LandingPage() {
                 </button>
               ) : (
                 <>
-                  <button className="landing-button landing-button-dark" onClick={() => openAuth("bootstrap")} type="button">
-                    Create organization
-                  </button>
-                  <button className="landing-button landing-button-white" onClick={() => openAuth("login")} type="button">
+                  <button className="landing-button landing-button-dark" onClick={() => openAuth("login")} type="button">
                     Sign in
                   </button>
                 </>
@@ -595,7 +586,6 @@ function LandingPage() {
               {mode !== "login" ? <AuthSwitch label="Sign in instead" onClick={() => openAuth("login")} /> : null}
               {mode === "login" ? <AuthSwitch label="Forgot password?" onClick={() => openAuth("forgot-password")} /> : null}
               {mode === "verify-email" ? <AuthSwitch label="Link expired? Send a new one" onClick={() => openAuth("resend-verification")} /> : null}
-              {mode !== "bootstrap" ? <AuthSwitch label="Create organization" onClick={() => openAuth("bootstrap")} /> : null}
               {mode !== "invite" ? <AuthSwitch label="Accept invite" onClick={() => openAuth("invite")} /> : null}
             </div>
           </div>
@@ -644,7 +634,7 @@ function TextField({
 function authTitle(mode: AuthMode): string {
   const titles: Record<AuthMode, string> = {
     login: "Sign in",
-    bootstrap: "Create your organization",
+    bootstrap: "Initial AgentHQ setup",
     invite: "Accept organization invite",
     "verify-email": "Verify your email",
     "forgot-password": "Reset your password",
@@ -657,7 +647,7 @@ function authTitle(mode: AuthMode): string {
 function authDescription(mode: AuthMode): string {
   const descriptions: Record<AuthMode, string> = {
     login: "Continue to your organization governance workspace.",
-    bootstrap: "Create the first organization workspace and administrator account for this deployment.",
+    bootstrap: "Available only before the first organization is created. Creates that organization and its first administrator; it is not customer signup.",
     invite: "Join an AgentHQ organization using the invitation shared by its administrator.",
     "verify-email": "Confirm the email address associated with your AgentHQ administrator account.",
     "forgot-password": "Enter your email. If an active account exists, AgentHQ will send a secure reset link.",
@@ -670,7 +660,7 @@ function authDescription(mode: AuthMode): string {
 function authSubmitLabel(mode: AuthMode): string {
   const labels: Record<AuthMode, string> = {
     login: "Sign in",
-    bootstrap: "Create organization",
+    bootstrap: "Complete initial setup",
     invite: "Accept invite",
     "verify-email": "Verify email",
     "forgot-password": "Send reset link",
