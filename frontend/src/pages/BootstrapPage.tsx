@@ -9,6 +9,10 @@ import { AuthError, AuthPageFrame } from "./LoginPage";
 
 const ORGANIZATION_EXISTS_MESSAGE =
   "An organization already exists. Please log in or ask your administrator for access.";
+// One message for any refused setup authorization: it never says whether a bootstrap secret was
+// missing or wrong, and never repeats what was entered.
+const SETUP_AUTHORIZATION_FAILED_MESSAGE =
+  "Initial setup authorization failed. Check your setup credentials or contact the installation administrator.";
 
 export function BootstrapPage() {
   const { user, bootstrap } = useAuth();
@@ -17,6 +21,9 @@ export function BootstrapPage() {
   const [adminFullName, setAdminFullName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
+  // Held only in this form's state (gone when the page unmounts) and sent only as the
+  // X-Bootstrap-Secret header by authApi.bootstrap; never in the URL, storage or a message.
+  const [bootstrapSecret, setBootstrapSecret] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,14 +39,20 @@ export function BootstrapPage() {
         organization_name: organizationName,
         admin_full_name: adminFullName,
         admin_email: adminEmail,
-        admin_password: adminPassword
+        admin_password: adminPassword,
+        bootstrap_secret: bootstrapSecret || undefined
       });
+      setBootstrapSecret("");
+      setAdminPassword("");
       setSuccess(true);
     } catch (requestError) {
+      const status = axios.isAxiosError(requestError) ? requestError.response?.status : undefined;
       setError(
-        axios.isAxiosError(requestError) && requestError.response?.status === 409
+        status === 409
           ? ORGANIZATION_EXISTS_MESSAGE
-          : getErrorMessage(requestError)
+          : status === 403
+            ? SETUP_AUTHORIZATION_FAILED_MESSAGE
+            : getErrorMessage(requestError)
       );
     } finally {
       setIsSubmitting(false);
@@ -108,6 +121,16 @@ export function BootstrapPage() {
             value={adminPassword}
             onChange={(event) => setAdminPassword(event.target.value)}
             required
+          />
+        </Field>
+        <Field label="Bootstrap secret (if required)">
+          <input
+            className={inputClass}
+            type="password"
+            autoComplete="off"
+            placeholder="Required when your deployment configures one"
+            value={bootstrapSecret}
+            onChange={(event) => setBootstrapSecret(event.target.value)}
           />
         </Field>
         {error ? <AuthError message={error} /> : null}

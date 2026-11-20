@@ -153,13 +153,12 @@ describe("first-install bootstrap stays reachable", () => {
     expect(router.state.location.pathname).toBe("/bootstrap");
   });
 
-  it("the older /?auth=bootstrap form still works for production installs (bootstrap secret)", async () => {
-    renderRoutes("/?auth=bootstrap");
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("heading", { name: "Initial AgentHQ setup" })).toBeTruthy();
-    expect(within(dialog).getByText(/it is not customer signup/i)).toBeTruthy();
-    expect(within(dialog).getByLabelText("Bootstrap secret (optional)")).toBeTruthy();
-    expect(within(dialog).getByRole("button", { name: "Complete initial setup" })).toBeTruthy();
+  it("old /?auth=bootstrap links open the canonical page, not a second form", async () => {
+    const router = renderRoutes("/?auth=bootstrap");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/bootstrap"));
+    expect(await screen.findByRole("heading", { name: "Initial AgentHQ setup" })).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByLabelText("Bootstrap secret (if required)")).toBeTruthy();
   });
 });
 
