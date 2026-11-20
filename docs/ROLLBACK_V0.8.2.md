@@ -1,30 +1,69 @@
-# AgentHQ v0.8.2 Rollback Runbook (multi-membership compatible)
+# AgentHQ v0.8.2 Rollback Runbook (security-compatible)
 
-Operational procedure for rolling back the v0.8.2 organization-selection release without locking
-out users who belong to more than one organization. Automated evidence:
-`backend/tests/test_rollback_multi_membership_postgres.py` (PostgreSQL, opt-in).
+Operational procedure for recovering from a faulty v0.8.2 release without weakening the identity,
+tenancy and gateway protections it introduced, and without locking out users who belong to more
+than one organization.
 
-No secrets or environment values belong in this document. Use the deployment platform's secret
-store for every value referenced below.
+Automated evidence: `backend/tests/test_rollback_multi_membership_postgres.py`,
+`backend/tests/test_gateway_organization_state.py`, `backend/tests/test_no_implicit_membership.py`
+and `backend/tests/test_registration_defaults.py` (PostgreSQL tests are opt-in). A local
+release → rollback → roll-forward rehearsal is recorded in section 16.
 
-## 1. Supported commits
+This runbook does not authorize any deployment. Every rollback, roll-forward or configuration
+change still needs the normal release approval. No secrets or environment values belong in this
+document; use the deployment platform's secret store for every value referenced below.
 
-| Role | Branch | Commit | Contents |
+## 1. Commits
+
+| Role | Branch | Commit | Use |
 |---|---|---|---|
-| Feature release candidate | `feature/v0.8.2-membership-safety` | `fc240e692707f6a4e9b4b7c8d2fd8ba5f3e638ef` | Organization-selection backend, selection frontend, invitation recovery |
-| **Rollback target** | `rollback/v0.8.2-compat` | `c763f56dbcd9db357915e77884c09fa25d2c957c` | Same backend; selection frontend without invitation recovery |
+| Secured release | `feature/v0.8.2-membership-safety` | `e53f81ed83f28e4636882b4e975a11c0f4ca09b1` | The release being recovered from or rolled forward to |
+| **Primary rollback** | `rollback/v0.8.2-security-compat` | `c7ed2e8a347238e8ba428f74244c2e56a1cd6913` | Frontend recovery (section 2) |
+| Conditional, exceptional | `rollback/v0.8.2-compat` | `c763f56dbcd9db357915e77884c09fa25d2c957c` | Older backend, only after every section 12 precheck passes |
+| Never after multiple memberships exist | `release/v0.8.1-identity-hardening`, `rollback/v0.8.1-compat` | `c5d0bd3`, `fa29850` | See section 3 |
 
-* The backend application, migrations, `uv.lock` and `pyproject.toml` are **identical** in both
-  commits (`git diff c763f56 fc240e6 -- backend/app backend/alembic backend/uv.lock
-  backend/pyproject.toml` is empty). The only differences are frontend files and tests.
-* Both run on Alembic head `202611170001`.
-* Later commits on the feature branch that only add tests or documentation (such as the one that
-  adds this runbook) do not change the deployable backend or frontend.
+The primary rollback `c7ed2e8` is the secured release with only `frontend/` restored from `c763f56`:
 
-## 2. Unsafe fallback targets once multiple memberships exist
+* `backend/` (application, migrations, `pyproject.toml`, `uv.lock`), `docs/`, the Dockerfiles,
+  `render.yaml`, `docker-compose.yml` and every frontend build file (`package.json`,
+  `package-lock.json`, `vite.config.ts`, `vercel.json`) are **byte-identical** to `e53f81e`. It
+  therefore keeps every backend protection of the release (section 10).
+* `frontend/` is byte-identical to `c763f56`, the frontend rehearsed in the first rollback
+  rehearsal and again in section 16.
+* Verify before use (both commands print nothing when the trees match):
+  `git diff e53f81e c7ed2e8 -- . ':(exclude)frontend'` and `git diff c763f56 c7ed2e8 -- frontend`.
 
-Do **not** roll back to either of these while any user has two or more active memberships
-(query in section 10):
+**It is a frontend recovery artifact.** Its backend is the release backend, so it cannot repair any
+defect in backend code shared with the release (organization selection, membership authorization,
+gateway authentication, invitations, bootstrap). Those require a fix-forward (section 15).
+
+`c763f56` contains the same organization-selection backend (`dd8dd99`) but lacks three later
+backend protections: refusing gateway credentials of deleted organizations, the removal of the
+implicit (legacy) membership fallback, and registration being disabled by default. It is
+acceptable only under the conditions in section 12.
+
+## 2. Recovery decision matrix
+
+| # | Situation | Action | Primary rollback `c7ed2e8`? | Older backend `c763f56`? |
+|---|---|---|---|---|
+| 1 | Frontend regression | Keep the release backend; deploy the `c7ed2e8` frontend (or redeploy a recorded earlier frontend deployment of `c763f56`) | **Yes** (frontend only) | Not needed |
+| 2 | Backend fails to start | Check configuration first (section 4: `REDIS_URL`, secrets, `DATABASE_URL`). A code fault cannot be cured by `c7ed2e8` (same backend) | No (identical backend) | Exceptional only, if section 12 passes; otherwise fix-forward |
+| 3 | Organization-selection defect | Fix-forward (section 15). The selection code is shared by every candidate | No | No |
+| 4 | Membership-authorization defect | Fix-forward. If the defect is confined to the post-`c763f56` change (implicit-membership removal), `c763f56` behaves the same for real members | No | Exceptional only, if section 12 passes |
+| 5 | Gateway-authentication defect (for example active organizations refused) | Fix-forward; or contain by revoking the affected tokens | No | Exceptional only if the deleted-organization token check (section 12.4) is 0 |
+| 6 | Invitation acceptance failing | Backend: fix-forward. Frontend presentation only: frontend rollback | Frontend issues only | Exceptional only, if section 12 passes |
+| 7 | Bootstrap failing | Backend bootstrap code is unchanged since `c763f56` apart from defaults. Frontend: the `c7ed2e8` frontend offers the older `/?auth=bootstrap` dialog, which sends the bootstrap secret | Frontend issues only | Rarely needed |
+| 8 | Redis unavailable | Restore Redis. Every build fails closed (HTTP 503) on rate-limited endpoints without it; a rollback does not help. Disabling rate limits is a separate, explicitly approved operator decision | No | No |
+| 9 | Database migration incompatibility | Not possible for this release: every listed commit runs on `202611170001`. A future migration-bearing release needs its own compatibility artifact (section 17). Never downgrade | n/a | n/a |
+| 10 | Mismatched frontend and backend | Safe: older frontend with the release backend (the backend enforces everything; section 18 lists the UI differences). Unsafe: any frontend with a pre-release backend unless section 12 passes | Yes | Only with section 12 |
+
+Abort any recovery that meets a section 14 condition. Where the security effect of a recovery is
+uncertain, do not roll back the backend: contain and fix forward.
+
+## 3. Never roll back to these once multiple memberships exist
+
+Do **not** use either of these while any user has two or more active memberships (section 11
+query):
 
 | Commit | Why |
 |---|---|
@@ -33,8 +72,9 @@ Do **not** roll back to either of these while any user has two or more active me
 
 Both fail closed (no cross-tenant data is exposed) but lock affected users out of all their
 organizations; an organization whose only administrator is such a user loses administration.
+Neither contains the protections listed in section 10.
 
-## 3. Required environment
+## 4. Required environment
 
 Keep the existing release configuration unchanged. Names only:
 
@@ -43,33 +83,36 @@ Keep the existing release configuration unchanged. Names only:
   `BACKEND_CORS_ORIGINS`, `FRONTEND_BASE_URL`, `REDIS_URL` (**required**: production rate limiting
   fails closed with HTTP 503 without it), the email settings (`EMAIL_BACKEND`, `EMAIL_FROM`,
   `RESEND_API_KEY` or `SMTP_*`), and `TRUSTED_CLIENT_IP_HEADER` if already configured.
+* `ALLOW_PUBLIC_REGISTRATION`: the release disables registration unless this is explicitly `true`.
+  Keep it unset or `false`. It **must be explicitly `false`** before any exceptional older-backend
+  rollback (section 12.3).
 * `MULTI_ORGANIZATION_MEMBERSHIPS_ENABLED`: unset or `false`. Never enable it as part of a rollback.
 * Frontend: `VITE_API_BASE_URL` (embedded at build time; the rollback build must use the same API URL).
 
-No new variable is required, and no variable needs to change.
+The primary rollback needs no new variable and no variable change.
 
-## 4. Database and migration compatibility
+## 5. Database and migration compatibility
 
 1. Read the revision: `SELECT version_num FROM alembic_version;` — expect `202611170001`.
 2. Confirm the rollback ships the same head:
-   `git -C <rollback checkout> ls-tree -r --name-only c763f56 -- backend/alembic/versions`
-   lists `202611170001_harden_identity_flows.py` as the newest revision.
+   `git ls-tree -r --name-only c7ed2e8 -- backend/alembic/versions` lists
+   `202611170001_harden_identity_flows.py` as the newest revision (the same holds for `c763f56`).
 3. The start command (`alembic upgrade head && uvicorn ...`) is a no-op on this database. Never run
-   `alembic downgrade`. If the revision is anything other than `202611170001`, **stop** (section 12).
+   `alembic downgrade`. If the revision is anything other than `202611170001`, **stop** (section 14).
 
-## 5. Identifying the exact artifacts
+## 6. Identifying the exact artifacts
 
-* Backend: the platform deployment must show commit `c763f56dbcd9db357915e77884c09fa25d2c957c`
-  and the Docker image digest built from the root `Dockerfile`. `/health` does not report a
-  version, so record the commit and digest from the platform's deployment details.
-* Frontend: the deployment for the same commit, built with the production `VITE_API_BASE_URL`.
+* Primary rollback: the frontend deployment must show commit
+  `c7ed2e8a347238e8ba428f74244c2e56a1cd6913` (or a recorded earlier deployment of `c763f56`),
+  built with the production `VITE_API_BASE_URL`. The backend stays on the release (`e53f81e`).
+* If the backend is redeployed for artifact parity, its deployment must show `c7ed2e8` and the
+  Docker image digest built from the root `Dockerfile`; the code is identical to the release.
+* `/health` does not report a version: record commits and image digests from the platform's
+  deployment details.
 * Record before starting: the **current** backend and frontend deployment IDs, commits and image
-  digest (the restoration targets, section 11).
+  digest (the restoration targets, section 13).
 
-Because the backend code is identical, a frontend-only rollback is sufficient when the problem is
-in the frontend. Redeploy the backend only if the operator wants artifact parity.
-
-## 6. Single-membership account
+## 7. Single-membership account
 
 Using a dedicated test account with one membership (never a customer account):
 
@@ -80,7 +123,7 @@ Using a dedicated test account with one membership (never a customer account):
    without a header. No `409` appears anywhere in the session.
 4. In the browser: no organization picker; the header shows `<Organization> · <Role>`.
 
-## 7. Multi-membership account
+## 8. Multi-membership account
 
 Using a test account that is Admin in organization A and Auditor in organization B:
 
@@ -91,7 +134,7 @@ Using a test account that is Admin in organization A and Auditor in organization
 5. In the browser: the picker lists exactly the active memberships. Choosing A shows
    `A · Admin`; switching to B shows `B · Auditor` and none of A's data on any page.
 
-## 8. Organization-specific authorization
+## 9. Organization-specific authorization
 
 With the multi-membership test account:
 
@@ -104,18 +147,37 @@ With the multi-membership test account:
 * A malformed, duplicated or comma-joined header returns `400 {"detail": "Invalid organization header."}`.
 * An agent ID from organization B requested under header A returns `404` (read, update and delete).
 
-## 9. Gateway and JWT verification
+## 10. Security invariants (gateway, identity, onboarding)
 
-* A gateway token issued in organization A lists tools for A's MCP server
+Each must hold on the release and on the primary rollback (they share the backend):
+
+* **Gateway scope:** a gateway token issued in organization A lists tools for A's MCP server
   (`GET /api/v1/mcp-gateway/<server-A>/tools` returns `200`) and gets `401` for B's server, with or
-  without `X-AgentHQ-Organization: <B>`. Gateway tokens are scoped by their own organization; the
-  user header never widens them.
-* A session token issued before a password reset returns `401` (the `av` claim no longer matches
-  `users.auth_version`); a fresh sign-in returns `200`.
-* Existing sessions keep working across the rollback: tokens carry no organization claim, and the
-  signing key is unchanged.
+  without `X-AgentHQ-Organization: <B>`. The user header never widens a gateway token.
+* **Deleted organizations:** a token whose organization is soft-deleted gets `401` with the same
+  body as an unknown token (`{"detail": "Invalid gateway token."}`); it is never marked used.
+* **Revoked and expired credentials:** a revoked gateway token and an expired one each get `401`.
+* **JWT revocation:** a session token issued before a password reset gets `401` (its `av` claim no
+  longer matches `users.auth_version`); a fresh sign-in gets `200`. Existing sessions keep working
+  across the rollback: tokens carry no organization claim, and the signing key is unchanged.
+* **Single-use invitations:** replaying an accepted invitation gets
+  `400 {"detail": "Invite is invalid or expired."}`, identical with the correct or a wrong password.
+* **Registration disabled:** `POST /api/v1/auth/register` gets `403` with the same body for a new
+  and for an existing email address. (Do not run this probe if registration might be enabled: it
+  would create an account. Read the setting instead, section 12.3.)
+* **No implicit membership:** an account without an active membership gets
+  `403 {"detail": "Organization membership required."}` on organization routes, and no membership
+  row appears (section 11 fingerprint). Its global `users.role` grants nothing.
+* **Tenant roles and isolation:** sections 8 and 9.
+* **Bootstrap:** on an initialized installation `POST /api/v1/organizations/bootstrap` gets
+  `409 {"detail": "An active organization already exists."}` whatever the bootstrap secret (the
+  check precedes secret validation). On a fresh installation a missing or wrong secret gets
+  `403 {"detail": "Bootstrap authorization failed."}` and creates no user or membership.
+* **Flags:** `MULTI_ORGANIZATION_MEMBERSHIPS_ENABLED` is unset or `false`; a second-membership
+  invitation acceptance gets `409 {"detail": "Multiple organizations are not yet supported."}` and
+  the invitation stays pending.
 
-## 10. Data-integrity checks
+## 11. Data-integrity checks
 
 Run read-only, before and after the rollback, and compare:
 
@@ -138,57 +200,211 @@ SELECT md5(coalesce(string_agg(t::text, chr(10) ORDER BY t::text), '')) FROM use
 
 Expected to change during verification, and not a failure: `audit_logs` (sign-ins and denials),
 `mcp_gateway_tokens.last_used_at`/`updated_at` (gateway use), and `risk_snapshots` (one daily row
-per organization when a dashboard is opened). `users` can change if a test account signs up or
-resets its password; use pre-existing test accounts for the checks.
+per organization when a dashboard is opened). `users`, `organization_memberships` and
+`organization_invites` change only through a deliberate, recorded action (for example accepting a
+test invitation); any other change is unexplained and blocks the recovery. Use pre-existing test
+accounts for the checks.
 
-## 11. Restoring the previous artifact
+## 12. Exceptional rollback to the older backend (`c763f56`)
 
-Redeploy the deployment IDs recorded in section 5 (by commit and image digest, not by branch
+Use only when the release backend itself must be replaced and a fix-forward is not possible in
+time. **Every check below must pass, with recorded evidence, a documented recovery reason and
+explicit authorization by an accountable operator.** If any result is uncertain, abort and fix
+forward.
+
+### 12.1 Multi-membership compatibility
+
+Run the section 11 multi-membership query and record the count. `c763f56` resolves these users
+(it has the same organization-selection backend as the release), so a non-zero count does not by
+itself block `c763f56`; it does block every older build (section 3). Repeat sections 7–9 after
+the rollback.
+
+### 12.2 Legacy implicit-membership fallback
+
+In `c763f56`, outside production only, an organization request by an account without an active
+membership **creates a membership with the account's global role** when all of these hold: at
+most one organization is active; either the active organization is `default-organization`, or
+no organization is active and the `default-organization` placeholder was never retired (the
+backend then creates it); and the account has no membership row (active or not) in that
+organization. In production the fallback never runs.
+
+```sql
+SELECT
+  count(*) FILTER (WHERE deleted_at IS NULL)                                   AS active_organizations,
+  count(*) FILTER (WHERE deleted_at IS NULL AND slug = 'default-organization') AS active_default_organization,
+  count(*) FILTER (WHERE deleted_at IS NOT NULL AND slug = 'default-organization') AS retired_placeholder
+FROM organizations;
+```
+
+* `ENVIRONMENT=production`, confirmed through an authorized read of the platform's service settings
+  and recorded (who, when): the fallback code path is disabled. This is the only state in which
+  12.2 passes on its own.
+* Any other environment value, or an unconfirmed one: **treat the environment as unsafe.** The
+  fallback is enabled in that code, and the query above only shows whether its organization
+  preconditions hold at the moment it runs. It is not proof that any user is safe: if the
+  organization state changes during the rollback (for example an organization is soft-deleted, or
+  the placeholder state changes), the fallback can start creating admin-role memberships.
+  Proceed only with an explicit, independently verified mitigation that keeps the preconditions
+  false for the whole rollback window (for example a recorded freeze on organization changes,
+  verified by a second operator), and re-run the query before and after the rollback.
+* The rollback is **blocked** whenever the query shows the preconditions true:
+  `active_organizations <= 1` and either `active_default_organization = 1`, or
+  `active_organizations = 0 AND retired_placeholder = 0`. (An active `default-organization`
+  alongside one or more other active organizations does not enable the fallback; that is a
+  precondition detail, not a mitigation.)
+
+### 12.3 Public registration
+
+`c763f56` enables registration by default outside production, and attaches registrants to a sole
+`default-organization`. Require `ALLOW_PUBLIC_REGISTRATION=false` **set explicitly** on the backend
+service before the rollback, in every environment; do not rely on environment defaults. Confirm the
+value through an authorized read of the platform's service settings and record who checked it and
+when. Do not probe by registering an account.
+
+### 12.4 Gateway credentials of deleted organizations
+
+`c763f56` authenticates a gateway token without checking its organization. Block the rollback if
+any active, unexpired token belongs to a soft-deleted organization:
+
+```sql
+SELECT count(*)
+FROM mcp_gateway_tokens t
+JOIN organizations o ON o.id = t.organization_id
+WHERE o.deleted_at IS NOT NULL
+  AND t.status = 'active'
+  AND (t.expires_at IS NULL OR t.expires_at > now());
+```
+
+The count must be `0`. Status, revocation and expiry are separate: a token with
+`status = 'revoked'` is refused by every build; a token past `expires_at` is refused by every
+build; only an `active`, unexpired token of a deleted organization is accepted by `c763f56`. Do
+not revoke tokens solely to pass this check without an approved containment decision.
+
+### 12.5 Evidence and authorization
+
+Record, before deploying `c763f56`: the results of 12.1–12.4 with timestamps, the verified
+`ENVIRONMENT` and `ALLOW_PUBLIC_REGISTRATION` values (who checked, when, how), any 12.2
+mitigation and its verifier, the reason the release backend cannot stay, why a fix-forward is not
+possible in time, and the authorizing operator. **Missing, incomplete or uncertain evidence aborts
+the procedure.** After the rollback, run sections 7–11 and repeat 12.2–12.4; any change aborts the
+rollback (section 14).
+
+## 13. Restoring the previous artifact
+
+Redeploy the deployment IDs recorded in section 6 (by commit and image digest, not by branch
 name). The schema is shared, so no database step is needed in either direction. Repeat sections
-6–10 afterwards.
+7–11 afterwards.
 
-## 12. Abort immediately if
+## 14. Abort immediately if
 
 * `alembic_version` is not `202611170001`, or startup attempts any migration.
-* Any membership, organization or invitation fingerprint changes.
+* Any membership, organization or invitation fingerprint changes without a recorded deliberate
+  action.
 * Any cross-tenant read or write succeeds, or any response under one organization shows another
   organization's data.
 * A multi-membership account gets `403 Organization membership required.` (old-backend lockout)
   or a single-membership account gets `409` (selection wrongly required).
-* A revoked session token is accepted, or a gateway token reaches another organization.
+* A revoked session token is accepted, a gateway token reaches another organization, a revoked or
+  expired gateway token is accepted, or a deleted organization's token is accepted.
+* Registration is accepted, or an account without membership gains access or a membership.
 * Authentication endpoints return `503` (rate-limit backend missing).
+* An older backend is selected without the recorded section 12 evidence, or any section 12 check
+  fails.
 
-Abort means: restore the recorded artifacts (section 11) and escalate; do not retry with an older
+Abort means: restore the recorded artifacts (section 13) and escalate; do not retry with an older
 build.
 
-## 13. Fix-forward when the tenancy resolver itself is defective
+## 15. Fix-forward when shared backend code is defective
 
-The rollback cannot help with a defect in organization selection: its backend is the same code.
+No rollback helps with a defect in backend code shared by the release and the rollback
+candidates: organization selection, membership authorization, gateway authentication, invitations
+or bootstrap.
 
 1. Contain: disable the affected operations (for example remove access at the edge or revoke the
    affected gateway tokens) instead of rolling back to `c5d0bd3` or `fa29850`.
-2. Keep `MULTI_ORGANIZATION_MEMBERSHIPS_ENABLED` disabled.
+2. Keep `MULTI_ORGANIZATION_MEMBERSHIPS_ENABLED` disabled and `ALLOW_PUBLIC_REGISTRATION` unset or
+   `false`.
 3. Do not deactivate or delete memberships to work around the defect.
-4. Reproduce with `test_organization_context.py` and
-   `test_rollback_multi_membership_postgres.py`; fix on a new branch from the feature release;
-   release it through the normal review, with the sections above as the acceptance checks.
-5. An older backend is acceptable only if the multi-membership count (section 10) is `0`.
+4. Reproduce with the tests listed at the top; fix on a new branch from the secured release;
+   release it through the normal review, with sections 7–11 as the acceptance checks.
+5. `c763f56` is acceptable only under section 12; older builds only if the multi-membership count
+   is `0` and their missing protections are acceptable for the situation.
+
+## 16. Rehearsal evidence (local only)
+
+A local rehearsal ran release `e53f81e` → primary rollback `c7ed2e8` → roll-forward to `e53f81e`
+on one disposable PostgreSQL 18 database with a disposable Redis, in production mode with
+`MULTI_ORGANIZATION_MEMBERSHIPS_ENABLED=false` (it was enabled only while seeding existing dual
+memberships). A negative control ran `c763f56` against a **separate** disposable database. This is
+not a hosted-deployment or production validation.
+
+| Phase | Result |
+|---|---|
+| Setup through the real APIs (bootstrap, invitations, gateway tokens, password reset) | 16/16 |
+| Release backend `e53f81e` | 21/21 |
+| Fresh-install bootstrap (wrong or missing secret → identical `403`, nothing created) | 4/4 |
+| Primary rollback backend `c7ed2e8` | 21/21 |
+| Roll-forward backend `e53f81e` | 21/21 |
+| Negative control `c763f56` (development, separate database) | 9/9 |
+| Core browser scenarios (picker, switching, roles, cache isolation, organization header) | 16/16 on the release, the rollback and the roll-forward; on the release the first run was 15/16 because of the harness race in section 19, and the two reruns were 16/16 |
+| Additional rollback browser workflows | passed: session survives the transition; legacy registration form receives `403`; older bootstrap dialog sends the secret only in `X-Bootstrap-Secret` and receives `409`; invitation acceptance on the older frontend |
+
+* Alembic stayed at `202611170001`; every startup was a no-op.
+* Data: 16 of 22 tables unchanged end to end. The only business-data change was one deliberate
+  invitation acceptance in the browser test (one user, one membership, one invitation
+  pending → accepted). Other changes were audit rows, gateway `last_used_at`/`updated_at` and two
+  risk snapshots. No unexplained change.
+* The negative control showed `c763f56` accepting a deleted organization's token, registration
+  open with the setting unset, the fallback creating an admin membership for an account without
+  one, and a registrant attached to `default-organization`; the section 12 checks flagged it.
+* All containers, worktrees and generated credentials were removed afterwards.
+
+## 17. Future migrations
+
+* The current schema head is `202611170001`; this rollback needs no migration.
+* The planned email-first signup work adds migrations. The first migration-bearing release is a
+  new rollback-compatibility boundary: earlier builds cannot start against a newer revision
+  (`alembic upgrade head` fails on an unknown revision), so that release needs its own newly built
+  and rehearsed compatible recovery artifact before it ships.
+* Production Alembic downgrades remain prohibited.
+
+## 18. User-interface differences of the primary rollback
+
+The `c7ed2e8` frontend is the older `c763f56` frontend. Expected differences, none of which
+weakens the backend:
+
+* Legacy registration links and form are visible again; the backend still refuses registration
+  (`403`), which this frontend shows as the generic "You do not have permission to access this
+  resource."
+* The older "Create organization" entry points and the `/?auth=bootstrap` landing dialog return;
+  `/bootstrap` has no secret field there, so production first-install setup uses the dialog. The
+  backend still allows bootstrap only before the first organization and only with the secret.
+* There is no recovery screen for an invitation whose response was lost; the user signs in
+  normally or retries.
+
+## 19. Open issues
+
+* **Browser rehearsal B12 (test harness):** the check that no request carries the previous
+  organization after switching back counts requests issued before the switch. In one release run
+  it counted seven header-B requests, all issued before the switch and none after. The assertion
+  must be changed to compare request issuance against a confirmed organization-switch boundary;
+  this is not yet done.
+* The bootstrap page's success message is not shown (the organization change remounts the page
+  and the user lands on the dashboard).
+* Not covered by the committed test suite: real-browser behavior (exercised only by local
+  rehearsals), the hosting platforms' build and deploy steps, and rate limiting against a live
+  Redis (only the fail-closed path without Redis is tested in the suite). The committed PostgreSQL
+  rollback tests run in development mode with in-memory rate limiting and provision additional
+  organizations directly because no API creates a second organization.
 
 ## Recovery limitations
 
-* The rollback candidate **shares the organization-selection backend** with the feature release
-  (`dd8dd99`). It is a rollback for the frontend and for later changes, not for the tenancy
-  backend.
+* The primary rollback shares the release backend: it recovers frontend regressions, not backend
+  defects.
 * `MULTI_ORGANIZATION_MEMBERSHIPS_ENABLED=false` only stops **new** second memberships at
-  invitation acceptance (`409 Multiple organizations are not yet supported.`, invitation stays
-  pending). It does not revoke, deactivate or hide existing memberships, and organization
-  selection keeps working for them.
-* Older rollback builds (`c5d0bd3`, `fa29850`) lock out users who already have multiple
-  memberships.
+  invitation acceptance. It does not revoke, deactivate or hide existing memberships, and
+  organization selection keeps working for them.
+* `c763f56` lacks three backend protections and is usable only under section 12; `c5d0bd3` and
+  `fa29850` lock out multi-membership users and lack all of them.
 * A tenant-isolation defect may require disabling affected operations and a controlled
-  fix-forward release (section 13).
-* Not covered by the committed test suite: real-browser behavior (exercised only by the local
-  rollback rehearsal's browser script), the hosting platforms' build and deploy steps, and rate
-  limiting against a live Redis (only the fail-closed path without Redis is tested). The rollback
-  tests run in development mode with in-memory rate limiting, and provision organizations B–D
-  directly because no API creates a second organization.
+  fix-forward release (section 15).
