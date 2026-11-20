@@ -21,6 +21,14 @@ from app.models.user import User
 from app.services.email import EmailDeliveryError, OutboundEmail
 from app.services.organization_invites import token_digest
 
+
+@pytest.fixture()
+def client(fresh_install_client: TestClient) -> TestClient:
+    """These tests create the first organization themselves (bootstrap), so they start from a
+    fresh install with no organization and no membership."""
+    return fresh_install_client
+
+
 JsonResponse = dict[str, Any]
 
 

@@ -10,6 +10,14 @@ from app.core.config import get_settings
 from app.core.rate_limit import rate_limiter
 from app.services.email import ConsoleEmailBackend, get_email_backend
 
+
+@pytest.fixture()
+def client(fresh_install_client: TestClient) -> TestClient:
+    """These tests create the first organization themselves (bootstrap), so they start from a
+    fresh install with no organization and no membership."""
+    return fresh_install_client
+
+
 STRONG_JWT_SECRET = "A-strong-production-secret-with-32-characters!"
 BOOTSTRAP_SECRET = "A-separate-bootstrap-secret-for-production!"
 

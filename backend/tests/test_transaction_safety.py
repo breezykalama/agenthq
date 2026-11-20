@@ -2,6 +2,7 @@ from typing import Any, cast
 
 import pytest
 from fastapi.testclient import TestClient
+from membership_helpers import enroll
 
 from app.models.audit_log import AuditAction
 from app.schemas.audit_log import AuditLogCreate
@@ -101,6 +102,7 @@ def test_user_deactivation_audit_failure_rolls_back_user_state(
     )
     assert registration.status_code == 201
     user = registration.json()
+    enroll(client, user["id"])  # registration grants no membership
     fail_specific_audit(monkeypatch, AuditAction.USER_DEACTIVATED)
 
     response = client.post(f"/api/v1/users/{user['id']}/deactivate")

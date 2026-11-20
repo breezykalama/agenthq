@@ -4,11 +4,6 @@ from sqlalchemy.orm import Session
 
 from app.core.audit_context import set_actor_audit_context
 from app.core.security import hash_password
-from app.core.tenancy import (
-    get_current_organization_id,
-    lock_organization_bootstrap,
-    set_current_organization_id,
-)
 from app.models.audit_log import AuditAction, JsonObject
 from app.models.organization import Organization, OrganizationMembership
 from app.models.user import User, UserRole
@@ -84,30 +79,8 @@ def register_user(db: Session, registration: UserRegister) -> User:
             role=role,
         ),
     )
-    # Legacy attach-to-default-organization decision: serialize it with organization bootstrap
-    # so a registration can never land in a placeholder that a concurrent bootstrap retires.
-    lock_organization_bootstrap(db)
-    active_organization_count = organization_repository.count_active_organizations(db)
-    if active_organization_count == 0:
-        organization_id = get_current_organization_id(db)
-    elif active_organization_count == 1:
-        organization_id = get_current_organization_id(db)
-        organization = organization_repository.get_organization_by_id(db, organization_id)
-        if organization is None or organization.slug != "default-organization":
-            organization_id = None
-    else:
-        organization_id = None
-    if organization_id is not None:
-        organization_repository.create_membership_pending(
-            db,
-            OrganizationMembership(
-                organization_id=organization_id,
-                user_id=user.id,
-                role=role,
-            ),
-        )
-        db.commit()
-        set_current_organization_id(db, organization_id)
+    # Registration creates an account only. Organization access comes solely from bootstrap
+    # or an accepted invitation, never from attaching to an existing organization.
     set_actor_audit_context(db, user_id=user.id, role=role)
     audit_log_service.create_audit_log(
         db,

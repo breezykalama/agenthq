@@ -37,6 +37,14 @@ from app.services import identity as identity_service
 from app.services import organizations as organization_service
 from app.services.email import ConsoleEmailBackend
 
+
+@pytest.fixture()
+def client(fresh_install_client: TestClient) -> TestClient:
+    """These tests create the first organization themselves (bootstrap), so they start from a
+    fresh install with no organization and no membership."""
+    return fresh_install_client
+
+
 JsonResponse = dict[str, Any]
 PAYLOAD = {
     "organization_name": "Fresh Install Bank",

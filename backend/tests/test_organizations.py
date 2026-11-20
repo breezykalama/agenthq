@@ -16,6 +16,14 @@ from app.models.organization import Organization, OrganizationMembership
 from app.models.user import User, UserRole
 from app.repositories import organizations as organization_repository
 
+
+@pytest.fixture()
+def client(fresh_install_client: TestClient) -> TestClient:
+    """These tests create the first organization themselves (bootstrap), so they start from a
+    fresh install with no organization and no membership."""
+    return fresh_install_client
+
+
 JsonResponse = dict[str, Any]
 
 
@@ -94,9 +102,11 @@ def test_bootstrap_rejected_when_active_organization_exists(
     assert response.status_code == 409
 
 
-def test_legacy_registration_is_attached_to_default_organization(
+def test_legacy_registration_never_attaches_an_organization(
     unauthenticated_client: TestClient,
 ) -> None:
+    # Legacy registration creates an account only. It used to join default-organization
+    # implicitly; organization access now requires bootstrap or an accepted invitation.
     registration = unauthenticated_client.post(
         "/api/v1/auth/register",
         json={
@@ -112,18 +122,16 @@ def test_legacy_registration_is_attached_to_default_organization(
             "password": "StrongPassword123!",
         },
     )
-    response = unauthenticated_client.get(
-        "/api/v1/auth/me",
-        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
-    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    response = unauthenticated_client.get("/api/v1/auth/me", headers=headers)
+    agents = unauthenticated_client.get("/api/v1/agents", headers=headers)
 
     assert registration.status_code == 201
     assert response.status_code == 200
-    assert response.json()["role"] == "agent_owner"
-    assert (
-        response.json()["organization_membership"]["organization"]["slug"]
-        == "default-organization"
-    )
+    assert response.json()["organization_membership"] is None
+    assert response.json()["organization_memberships"] == []
+    assert agents.status_code == 403
+    assert agents.json() == {"detail": "Organization membership required."}
 
 
 def test_organization_slug_and_membership_uniqueness() -> None:

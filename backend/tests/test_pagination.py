@@ -1,6 +1,7 @@
 from typing import cast
 
 from fastapi.testclient import TestClient
+from membership_helpers import enroll
 
 from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, get_pagination
 from app.db.base import Base
@@ -53,6 +54,7 @@ def test_list_endpoints_accept_pagination(client: TestClient) -> None:
         },
     )
     assert registered_user.status_code == 201
+    enroll(client, registered_user.json()["id"])  # registration grants no membership
     endpoints = [
         "/api/v1/agents",
         f"/api/v1/agents/{agent['id']}/tools",

@@ -91,9 +91,12 @@ approval, execution, incident, policy, and MCP-server references.
 
 ## Compatibility Boundary
 
-Production always requires an explicit active membership. For local development and tests only, a
-legacy global user with no membership may be attached to the single `default-organization`. This
-compatibility behavior is disabled in production, refuses inactive memberships, and emits a
-security warning when used.
+Every environment requires an explicit active membership. Memberships are created only by
+organization bootstrap, an accepted invitation, or an administrator's change to an existing
+membership. The global `users.role`, the existence of `default-organization`, registering, and
+calling a protected endpoint never create or grant one: a user without an active membership gets
+`403 Organization membership required.` on organization routes, while `/api/v1/auth/me` and
+`/api/v1/organizations` stay available.
 
-Users with multiple active memberships are denied until organization switching is implemented.
+Users with multiple active memberships choose one per request with `X-AgentHQ-Organization`;
+without it they get `409 Organization selection required.`

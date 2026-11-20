@@ -21,8 +21,6 @@ from app.core.audit_context import (
 )
 from app.core.config import get_settings
 from app.core.tenancy import (
-    get_current_organization_id,
-    lock_organization_bootstrap,
     set_current_organization_id,
 )
 from app.db.session import get_db
@@ -395,47 +393,9 @@ def require_org_member(
         set_current_organization_id(db, context.current_organization.id)
         return context
 
-    if not get_settings().is_production:
-        # Non-production legacy fallback that attaches users to the default organization;
-        # serialized with bootstrap so it cannot attach to a placeholder being retired.
-        lock_organization_bootstrap(db)
-        active_organization_count = organization_repository.count_active_organizations(db)
-        if active_organization_count <= 1:
-            organization_id = get_current_organization_id(db)
-            organization = organization_repository.get_organization_by_id(db, organization_id)
-            existing_membership = organization_repository.get_membership(
-                db,
-                organization_id,
-                context.current_user.id,
-            )
-            if (
-                organization is not None
-                and organization.slug == "default-organization"
-                and existing_membership is None
-            ):
-                membership = organization_repository.create_membership_pending(
-                    db,
-                    OrganizationMembership(
-                        organization_id=organization.id,
-                        user_id=context.current_user.id,
-                        role=context.current_user.role,
-                    ),
-                )
-                db.commit()
-                set_current_organization_id(db, organization.id)
-                security_logger.warning(
-                    "security_legacy_default_membership_created actor_user_id=%s "
-                    "organization_id=%s",
-                    context.current_user.id,
-                    organization.id,
-                )
-                return CurrentOrganizationContext(
-                    current_user=context.current_user,
-                    current_organization=organization,
-                    current_membership=membership,
-                    current_role=membership.role,
-                )
-
+    # No implicit membership: access requires an explicit, active membership (bootstrap,
+    # an accepted invitation, or an administrator's change). Global users.role, the existence
+    # of default-organization and the environment never grant one.
     _log_access_denied(request, context, attempted_action="require_org_member")
     memberships = organization_repository.list_memberships_for_user(db, context.current_user.id)
     if len(memberships) == 1:

@@ -28,6 +28,14 @@ from app.services import identity as identity_service
 from app.services.email import EmailDeliveryError, OutboundEmail, get_email_backend
 from app.services.identity import token_digest
 
+
+@pytest.fixture()
+def client(fresh_install_client: TestClient) -> TestClient:
+    """These tests create the first organization themselves (bootstrap), so they start from a
+    fresh install with no organization and no membership."""
+    return fresh_install_client
+
+
 JsonResponse = dict[str, Any]
 ADMIN_EMAIL = "verification-admin@example.com"
 ADMIN_PASSWORD = "VerificationPassword123!"
@@ -328,14 +336,15 @@ def test_unverified_password_recovery_stays_available(unauthenticated_client: Te
     assert "reset-password" in backend.messages[0].text_body
 
 
-def test_legacy_unverified_users_are_grandfathered(client: TestClient) -> None:
-    with database_session(client) as db:
+def test_legacy_unverified_users_are_grandfathered(member_client: TestClient) -> None:
+    # An existing (pre-v0.8.1) unverified account with an explicit membership keeps access.
+    with database_session(member_client) as db:
         admin = db.scalar(select(User).where(User.email == "admin@agenthq.local"))
         assert admin is not None
         assert admin.email_verified is False
         assert admin.email_verification_required is False
 
-    assert client.get("/api/v1/agents").status_code == 200
+    assert member_client.get("/api/v1/agents").status_code == 200
 
 
 # --- Resend verification ----------------------------------------------------------------------

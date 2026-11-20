@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from membership_helpers import enroll
 from sqlalchemy import StaticPool, create_engine, select
 from sqlalchemy.orm import Session
 
@@ -253,6 +254,7 @@ def test_denied_permission_creates_security_event(
         "/api/v1/auth/login",
         json={"email": "denied-owner@example.com", "password": "StrongPassword123!"},
     ).json()["access_token"]
+    enroll(client, registration.json()["id"])  # an agent_owner member of the organization
 
     denied = unauthenticated_client.get(
         "/api/v1/mcp-servers",
@@ -284,6 +286,7 @@ def test_failed_login_creates_redacted_failed_event(
             "password": "StrongPassword123!",
         },
     )
+    enroll(client, registration.json()["id"])  # failed logins are audited in the member's org
     failed = unauthenticated_client.post(
         "/api/v1/auth/login",
         json={"email": "failed-login@example.com", "password": "NeverStoreThisPassword!"},

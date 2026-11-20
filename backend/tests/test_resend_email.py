@@ -29,6 +29,14 @@ from app.services.email import (
     reset_email_backend,
 )
 
+
+@pytest.fixture()
+def client(fresh_install_client: TestClient) -> TestClient:
+    """These tests create the first organization themselves (bootstrap), so they start from a
+    fresh install with no organization and no membership."""
+    return fresh_install_client
+
+
 API_KEY = "re_TestOnlyKey_a1b2c3d4e5f6g7h8"
 SENDER = "AgentHQ Staging <no-reply@staging.example.com>"
 ADMIN_EMAIL = "resend-admin@example.com"
