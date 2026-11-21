@@ -1,7 +1,7 @@
 """Opt-in, local-only browser regression harness for organization selection and switching.
 
-Runs the 16-check browser suite (B1-B16) and the B12 organization-switch scenarios in headless
-Chrome against a real backend and frontend, using disposable local PostgreSQL and Redis
+Runs the 16-check browser suite (B1-B16) and the B5/B9 and B12 organization-switch scenarios in
+headless Chrome against a real backend and frontend, using disposable local PostgreSQL and Redis
 containers. Nothing here runs automatically, and every connection target is checked by guard()
 before use. See README.md in this directory.
 
@@ -9,7 +9,8 @@ before use. See README.md in this directory.
     python harness.py prepare-tree --ref REF     clean detached worktree of REF to test
     python harness.py seed --tree PATH           isolated test data (multi-membership flag off)
     python harness.py run --tree PATH SCENARIO...  core, b12-normal, b12-inflight, b12-race,
-                                                 b12-negative
+                                                 b12-negative, b5b9-normal, b5b9-inflight,
+                                                 b5b9-race, b5-negative, b9-negative
     python harness.py validate --tree PATH       every scenario above
     python harness.py guard-selftest             prove the safety guards reject unsafe targets
     python harness.py cleanup-selftest           prove cleanup refuses resources it does not own
@@ -58,7 +59,9 @@ TREE_ENV_FILES = (
     "frontend/.env.production",
     "frontend/.env.production.local",
 )
-SCENARIOS = ("core", "b12-normal", "b12-inflight", "b12-race", "b12-negative")
+B12_SCENARIOS = ("b12-normal", "b12-inflight", "b12-race", "b12-negative")
+B5B9_SCENARIOS = ("b5b9-normal", "b5b9-inflight", "b5b9-race", "b5-negative", "b9-negative")
+SCENARIOS = ("core", *B12_SCENARIOS, *B5B9_SCENARIOS)
 RESULTS: list[tuple[str, bool]] = []
 
 
@@ -912,7 +915,13 @@ def browser_phase(args: argparse.Namespace, scenarios: list[str]) -> int:
         }
         for scenario in scenarios:
             print(f"--- scenario: {scenario}", flush=True)
-            script = "browser_core.mjs" if scenario == "core" else "b12.mjs"
+            script = (
+                "browser_core.mjs"
+                if scenario == "core"
+                else "b12.mjs"
+                if scenario in B12_SCENARIOS
+                else "b5b9.mjs"
+            )
             result = subprocess.run(
                 ["node", str(HERE / script)], env={**env, "MODE": scenario}, timeout=900
             )
@@ -944,7 +953,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
     sys.exit(
         browser_phase(
             args,
-            ["b12-normal", "b12-inflight", "b12-race", "b12-negative"] + ["core"] * args.core_runs,
+            [*B12_SCENARIOS, *B5B9_SCENARIOS] + ["core"] * args.core_runs,
         )
     )
 
@@ -1438,7 +1447,9 @@ def main() -> None:
         p.add_argument("--tree", required=True)
         p.add_argument("--label")
         p.add_argument("--chrome")
-        p.add_argument("--iterations", type=int, default=10, help="switches per B12 scenario")
+        p.add_argument(
+            "--iterations", type=int, default=10, help="iterations per B12 / B5-B9 scenario"
+        )
         if name == "run":
             p.add_argument("scenarios", nargs="+")
         else:

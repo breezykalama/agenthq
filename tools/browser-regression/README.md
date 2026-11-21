@@ -18,7 +18,23 @@ rollback decision.
   - single-membership sign-in;
   - the absence of page exceptions.
 
-  B12 is the corrected switch-back check described below.
+  B5, B9 and B12 are the corrected request-header checks described below.
+- **B5 and B9: choosing Org A, then switching from A to B.**
+  - **B5:** every organization-scoped request issued while Org A is the chosen organization, from
+    the picker choice up to the switch to B, carries Org A's header.
+  - **B9:** after the frontend has confirmed Org B, no newly issued request carries Org A's (or
+    any other) header, and none does while the switch is being confirmed.
+
+  Each iteration of these scenarios is the suite's own sequence in a fresh sign-in: picker,
+  choose A, Agents page, switch to B, dashboard, Audit Logs.
+
+  | Scenario | What it does |
+  |---|---|
+  | `b5b9-normal` | The suite's sequence. |
+  | `b5b9-inflight` | Reloads A's dashboard and holds its header-A data requests at the network layer (CDP `Fetch`) across the switch, releasing them only after B is confirmed. |
+  | `b5b9-race` | Forces the historical B9 false positive: one page evaluation opens A's Audit Logs page, waits until its header-A requests are issued, then switches. The run passes only if the old (pre-Step-111) B9 fails on the same run while the corrected B5 and B9 pass, and B5's window contains those last header-A requests. |
+  | `b5-negative` | Negative control: one request in A's session is sent with Org B's header. Passes only if B5 fails on its header assertion and names exactly that request. |
+  | `b9-negative` | Negative control: one request after B is confirmed is sent with Org A's header. Passes only if B9 fails on its post-confirmation assertion and names exactly that request. |
 - **B12: switching from Org B to Org A.** After the frontend has confirmed Org A, no newly issued
   request may carry Org B's `X-AgentHQ-Organization` header. B12 runs in four scenarios:
 
@@ -56,6 +72,41 @@ rollback decision.
   - Phases are monotonic.
   - The probe and Chrome's independent `Network` events agree on every request's method, path and
     header (multiset equality), so the test cannot pass by missing requests.
+
+### How B5 and B9 decide (see `b5b9_lib.mjs`)
+
+Before Step 111, both used `mark = requests.length`, an index into Chrome's
+`Network.requestWillBeSent` stream. Chrome reports requests late, so that index records when a
+request was *reported*, not when it was *issued*:
+
+- **B9 (the defect).** Header-A requests issued in A's session before the switch, but reported
+  after the mark, counted as post-switch: a false "header A after the switch" failure. This is
+  the B12 race in the other direction, and `b5b9-race` reproduces it on every run.
+- **B5 (an omission, not a false failure).** Everything issued before the picker choice is
+  header-less, which B2 checks, so a late report there could not fail B5. But B5 was evaluated
+  whenever the check ran, so requests issued in A but not yet reported were left out. Once B9
+  classifies by issuance, those requests would be "pre-switch" for B9 as well, and a wrong
+  header issued late in A would escape both checks.
+
+Both now use the B12 probe (`b12_lib.mjs`, unchanged):
+
+- **Boundaries.** Each boundary is a probe arm placed in the same page evaluation as the user's
+  action: the picker choice for B5, the switcher change for B9. Requests are ordered by the
+  probe's issuance record (document, then sequence number), never by Chrome's delivery order.
+- **B5.** The window is every request issued after the picker-choice arm, up to and including the
+  arm of the switch to B, however late Chrome reports it. It asserts:
+  - at least one organization-scoped request;
+  - every organization-scoped request carries header A (header-less requests are ignored, as
+    before);
+  - the window includes the candidate `/auth/me` and `GET /api/v1/agents` with header A;
+  - the probe and Chrome agree on every request (multiset equality);
+  - every recorded request can be ordered (its document was announced); otherwise B5 fails
+    rather than leaving the request out.
+- **B9.** The B12 classification and assertions (`analyze`) with destination B, plus a
+  requirement that `GET /api/v1/audit-logs`, the page B8 checks, was issued after confirmation
+  with header B. Requests that were issued in A and still in flight at the switch are `pre` and
+  listed separately; they are not violations.
+- **Settling.** Both checks run only after the probe and Chrome agree on the request count.
 
 ## Tested environment
 
@@ -95,8 +146,8 @@ TREE=$($H prepare-tree --ref HEAD --node-modules-from frontend/node_modules | ta
                                       # 3. clean detached worktree to test; its path is the last
                                       #    line printed (omit --node-modules-from to `npm ci` in it)
 $H seed --tree "$TREE"                # 4. isolated test data
-$H validate --tree "$TREE"            # 5. all four B12 scenarios (10 switches each) + core x3
-$H run --tree "$TREE" b12-negative    #    or any subset: core b12-normal b12-inflight b12-race b12-negative
+$H validate --tree "$TREE"            # 5. every B12 and B5/B9 scenario (10 iterations each) + core x3
+$H run --tree "$TREE" b12-negative    #    or any subset of the scenarios listed under "What it checks"
 $H down                               # 6. stop containers, remove worktrees, delete every credential
 ```
 
@@ -105,7 +156,7 @@ $H down                               # 6. stop containers, remove worktrees, de
 - **Testing another build** (for example a rollback candidate): run `prepare-tree --ref <sha>`,
   then `validate --tree <its path>`, against the same seeded database.
 - **Options.**
-  - `--iterations N`: switches per B12 scenario; the default is 10.
+  - `--iterations N`: iterations per B12 or B5/B9 scenario; the default is 10.
   - `--core-runs N`: runs of the 16-check suite in `validate`; the default is 3.
   - `--state-dir DIR`: the state directory; give it before the sub-command.
 
@@ -118,6 +169,11 @@ $H down                               # 6. stop containers, remove worktrees, de
 | `b12-inflight` | `10/10`. About 7 header-B requests are held across the switch; the page has already cancelled all of them by release time. No Org B data is visible. |
 | `b12-race` | `10/10`, each with `race reproduced: Step 105 B12 on the same run FAILS (false positive)`. |
 | `b12-negative` | `10/10`, each with `NEGATIVE CONTROL: corrected B12 FAILED as required; responsible request identified: #… GET /api/v1/… hdr=B phase=post INJECTED …` |
+| `b5b9-normal` | `10/10`. Typical: a B5 window of 15 requests (14 with header A, 1 identity discovery); B9 with about 17 `pre` requests (a few to 9 header-A requests in flight at the switch, all aborted by the frontend), 2 `confirming` (`/auth/me` with no header, then with header B), 9 `post`, all with header B. |
+| `b5b9-inflight` | `10/10`. Header-A requests are held across the switch; the page has cancelled most of them by release time. No Org A data is visible. |
+| `b5b9-race` | `10/10`, each with `race reproduced: pre-Step-111 B9 on the same run FAILS (false positive)` and `B5 window covers header-A requests issued just before the switch`. |
+| `b5-negative` | `10/10`, each with `B5 NEGATIVE CONTROL: corrected B5 FAILED as required; responsible request: #… GET /api/v1/agents hdr=B phase=post INJECTED status=403` |
+| `b9-negative` | `10/10`, each with `B9 NEGATIVE CONTROL: corrected B9 FAILED as required; responsible request: #… GET /api/v1/dashboard/summary hdr=A phase=post INJECTED status=200` |
 
 - **Database side effects.** A browser phase normally changes only the `audit_logs` table. On a
   fresh database, the first dashboard views may also populate `compliance_controls` and
@@ -126,8 +182,21 @@ $H down                               # 6. stop containers, remove worktrees, de
 
 ## Interpreting a failure
 
-Each B12 iteration prints its boundary, the request counts per phase, the `asserts` object and, on
-failure, the offending requests, as `#seq@doc METHOD path hdr=<A|B|none> phase=<…> status=<…>`.
+Each B12, B5 and B9 evaluation prints its boundary, the request counts, the `asserts` object
+and, on failure, the offending requests, as `#seq@doc METHOD path hdr=<A|B|none> phase=<…>
+status=<…>`. In B9 the destination is B and the origin is A; read the B12 notes below with the
+letters swapped.
+
+- **B5 `header: false`.** A request issued while A was chosen carried another organization's
+  header. Treat it as a real defect; the named request is responsible.
+- **B5 `coverage: false` or `scoped: false`.** The A session did not issue the expected
+  requests (the picker confirmation or the Agents list), so B5 proved nothing. Look for a
+  routing or markup change.
+- **B5 `ordered: false`.** A recorded request came from a document the probe never announced,
+  so it could not be placed in or out of the window. Do not trust the run.
+- **B9 `coverage: false`.** The Audit Logs page in B was never requested with header B.
+- **`b5-negative` or `b9-negative` fails.** That check can no longer detect a wrong header. Do not
+  trust its other results.
 
 - **`post: false` in `b12-normal` or `b12-inflight`.** A request issued after confirmation carried
   another organization's header, or carried no header on an endpoint other than `/auth/me`. Treat
@@ -173,6 +242,7 @@ failure, the offending requests, as `#seq@doc METHOD path hdr=<A|B|none> phase=<
   - The seed step's e-mail log, which holds verification links, is deleted as soon as seeding
     ends.
   - There are no real credentials or customer data, and no deployment credentials are used.
+
 ## Cleanup and resource ownership
 
 `down` deletes only what this run provably created. `cleanup-selftest` demonstrates each rule
@@ -208,15 +278,28 @@ passed`.
 
 1. **The visible-data check is not yet proven by a negative control.** The injected request in
    `b12-negative` goes to an endpoint Org B's auditor cannot read (403), so no Org B data can
-   render. The "no Org B data visible" text check has never been seen to fail.
+   render. In `b9-negative`, the test harness deliberately rewrites one request's header to
+   Org A while Org B is selected. The test user is authorized in both organizations (Admin in A,
+   Auditor in B), so the backend correctly answers 200 with A's dashboard summary. This is the
+   simulated frontend defect working as designed, not an authorization vulnerability. The
+   request-level B9 assertion detects it on every run. The visible-data text check, which looks
+   only for "Agent A" and "Gateway A", does not examine numeric dashboard content, so it neither
+   detects nor rules anything out. These runs give no evidence either way about whether that
+   response was rendered or cached under Org B. Full response and display isolation has **not**
+   been browser-validated. Proving it needs a separate, controlled rendering test with a
+   distinguishable per-organization payload (for example, uniquely named or uniquely counted
+   records in each organization), checking both the rendered page and the query cache. The
+   visible-data checks have never been seen to fail.
 2. **Browser delivery of stale responses is not covered.** In every run, the frontend cancelled
    all of B's in-flight requests before their responses could be delivered, so the late-response
    discard path is never reached in the browser. Forcing it would require changing application
    code. Frontend unit tests cover it, for example
    `frontend/src/auth/organizationSelection.test.tsx`: "never shows a late response from the
    previous organization".
-3. **B5 and B9 still use the old request-count boundary** (`mark = requests.length`). They are
-   exposed to the same CDP delivery-lag false positive and need the same timing-boundary review.
+3. **B2 and B15 still use a request-count boundary** (`mark = requests.length`). Neither is
+   exposed to the delivery-lag false positive: B2's mark comes before the first sign-in of the
+   run, and B15 accepts header A or no header, which is all the previous (dual-user) session in A
+   can have sent. Neither has a negative control.
 4. **Browser coverage is limited to the tested Chromium environment.** That is headless Google
    Chrome 157 on Windows, with Node 24, against local services. Other browsers, other operating
    systems, hosting platforms and live infrastructure are not covered.
@@ -226,5 +309,5 @@ Other limitations:
 - **Markup coupling.** The confirmation and switching logic depend on the switcher markup: a
   `<select>` whose options contain "Rehearsal Org". The race scenario also depends on the
   `/audit-logs` navigation link.
-- **One user, one direction.** The tested path is a single dual-membership user switching from
-  B to A.
+- **One user, two directions.** The tested paths are a single dual-membership user choosing A
+  and switching A to B (B5, B9) and B back to A (B12).

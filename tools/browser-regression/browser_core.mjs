@@ -2,10 +2,12 @@
 // DevTools Protocol (Node's built-in WebSocket; nothing installed). Credentials arrive through
 // environment variables and are never printed.
 import { analyze, armAndSwitchJs, createLog, installProbe, quiesce, waitForConfirm } from "./b12_lib.mjs";
+import { analyzeSession, analyzeSwitch, armAfter, armAndPickJs } from "./b5b9_lib.mjs";
 
 const APP = process.env.APP_ORIGIN;
 const HEADER = "x-agenthq-organization";
 const { DUAL_EMAIL, DUAL_PW, SINGLE_EMAIL, SINGLE_PW, ORG_A, ORG_B, ORG_C, ORG_D, CDP_PORT } = process.env;
+const LABELS = { [ORG_A]: "A", [ORG_B]: "B", [ORG_C]: "C", [ORG_D]: "D" };
 
 const results = [];
 const check = (name, ok, detail = "") => {
@@ -97,11 +99,6 @@ async function login(email, password) {
     [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'Sign in').click();
     return true; })()`);
 }
-async function switchTo(orgId) {
-  await evaluate(`(() => { const s = [...document.querySelectorAll('select')].find(x => x.innerText.includes('Rehearsal Org'));
-    const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
-    set.call(s, ${JSON.stringify(orgId)}); s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
-}
 const orgRequestsSince = (index) => requests.slice(index).filter((r) => !r.url.endsWith("/auth/login"));
 
 await send("Page.enable");
@@ -128,8 +125,10 @@ try {
     beforePick.every((r) => r.url.endsWith("/auth/me") && r.org === null), beforePick.map((r) => `${r.url}:${r.org ? "hdr" : "none"}`).join(","));
 
   // --- Choose A -----------------------------------------------------------------------------
-  mark = requests.length;
-  await clickText("ul[aria-label=\"Your organizations\"] button", "Rehearsal Org A");
+  // Step 111: the picker choice arms the probe boundary in the same evaluation as the click; B5's
+  // window then runs, by issuance, to the arm of the switch to B (see b5b9_lib.mjs).
+  const b5From = b12log.events.length;
+  if (!(await evaluate(armAndPickJs(ORG_A, "Rehearsal Org A")))) throw new Error("could not arm the picker choice");
   await waitFor("location.pathname === '/dashboard' && [...document.querySelectorAll('select')].some(s => s.innerText.includes('Rehearsal Org'))", "dashboard in A");
   let links = await navLinks();
   check("B3. after choosing A: switcher shows Org A · Admin, admin navigation present",
@@ -139,14 +138,18 @@ try {
   await waitFor("document.body.innerText.includes('Agent A')", "Agent A listed");
   let text = await bodyText();
   check("B4. Org A agents page shows A's agents only", text.includes("Agent A") && !text.includes("Agent B"));
-  const inA = orgRequestsSince(mark).filter((r) => r.org !== null);
-  check("B5. every organization-scoped request in A carries header A",
-    inA.length > 0 && inA.every((r) => r.org === ORG_A), `${inA.length} requests`);
 
   // --- Switch to B --------------------------------------------------------------------------
-  mark = requests.length;
-  await switchTo(ORG_B);
+  const b9From = b12log.events.length;
+  const b9LegacyMark = requests.length;
+  if (!(await evaluate(armAndSwitchJs(ORG_B, "Rehearsal Org B")))) throw new Error("could not arm the switch to B");
+  await waitForConfirm(b12log, b9From);
   await waitFor("location.pathname === '/dashboard' && [...document.querySelectorAll('select')].some(s => s.options[s.selectedIndex]?.text.includes('Rehearsal Org B'))", "dashboard in B");
+  await quiesce(b12log, requests);
+  const b5 = analyzeSession(b12log, { start: armAfter(b12log, b5From), end: armAfter(b12log, b9From), org: ORG_A, labels: LABELS, cdpRequests: requests });
+  for (const line of b5.lines) console.log(`      B5 ${line}`);
+  check("B5. every organization-scoped request issued in A (picker choice to the switch) carries header A",
+    b5.ok, `${b5.counts?.scoped ?? 0} requests`);
   await sleep(1500); // let every query of the new workspace settle
   links = await navLinks();
   text = await bodyText();
@@ -160,9 +163,12 @@ try {
   await sleep(1500);
   text = await bodyText();
   check("B8. Org B audit page renders without Org A names", !text.includes("Agent A") && !text.includes("Gateway A"));
-  const afterSwitch = orgRequestsSince(mark).filter((r) => r.org !== null);
-  check("B9. every organization-scoped request after the switch carries header B, none A",
-    afterSwitch.length > 0 && afterSwitch.every((r) => r.org === ORG_B), `${afterSwitch.length} requests`);
+  await quiesce(b12log, requests);
+  const b9 = analyzeSwitch(b12log, b9From, { target: ORG_B, other: ORG_A, labels: LABELS, cdpRequests: requests, legacyMark: b9LegacyMark });
+  for (const line of b9.lines) console.log(`      B9 ${line}`);
+  check("B9. after the confirmed switch to B, every newly issued request carries header B, none A (none while confirming)",
+    b9.ok, `${b9.counts?.post ?? 0} post-confirmation, ${b9.counts?.confirming ?? 0} confirming, ${b9.counts?.inflightAtArm ?? 0} in flight at the switch`);
+  await evaluate("window.__b12 ? window.__b12.reset() : true");
   // Direct navigation to an admin-only page while auditor.
   await navigate(`${APP}/agents`);
   await sleep(1500);
