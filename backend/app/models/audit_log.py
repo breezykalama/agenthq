@@ -17,6 +17,7 @@ class AuditAction(StrEnum):
     APPROVAL_APPROVED = "approval.approved"
     APPROVAL_REJECTED = "approval.rejected"
     APPROVAL_CANCELLED = "approval.cancelled"
+    APPROVAL_CONSUMED = "approval.consumed"
     EXECUTION_CREATED = "execution.created"
     EXECUTION_UPDATED = "execution.updated"
     EXECUTION_STARTED = "execution.started"
