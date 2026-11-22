@@ -1,9 +1,11 @@
+import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, Protocol, cast
+from uuid import UUID
 
 import anyio
 import httpx
@@ -12,8 +14,11 @@ from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamable_http_client
 
 from app.core.config import get_settings
+from app.core.mcp_credentials import secret_ref_belongs_to_organization
 from app.core.mcp_urls import validate_mcp_server_url
 from app.models.mcp_server import MCPAuthType, MCPTransportType
+
+security_logger = logging.getLogger("agenthq.security")
 
 
 @dataclass(frozen=True)
@@ -32,6 +37,9 @@ class MCPDiscoveryTarget:
     auth_secret_ref: str | None = None
     request_timeout_seconds: int = 30
     connect_timeout_seconds: int = 10
+    # The MCP server's owning organization. Credentials resolve only for references in this
+    # organization's namespace; without it, no credential is ever attached.
+    organization_id: UUID | None = None
 
 
 class MCPDiscoveryError(Exception):
@@ -106,6 +114,17 @@ def build_auth_headers(target: MCPDiscoveryTarget) -> dict[str, str]:
     if target.auth_type == MCPAuthType.NONE:
         return {}
     if target.auth_secret_ref is None:
+        raise MCPDiscoveryError("MCP authentication is not configured.")
+    # Re-check the organization binding on every use: a persisted reference is never trusted
+    # merely because it passed validation when it was saved. Neither the reference nor any
+    # credential value is logged or included in the error.
+    if target.organization_id is None or not secret_ref_belongs_to_organization(
+        target.auth_secret_ref, target.organization_id
+    ):
+        security_logger.warning(
+            "security_mcp_credential_ref_rejected stage=resolution organization_id=%s",
+            target.organization_id,
+        )
         raise MCPDiscoveryError("MCP authentication is not configured.")
     secret = os.environ.get(target.auth_secret_ref)
     if not secret:

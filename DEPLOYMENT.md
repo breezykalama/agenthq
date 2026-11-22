@@ -57,7 +57,7 @@ Backend:
 | `TRUSTED_CLIENT_IP_HEADER` | unset | Single header holding the real client IP for IP-based rate limits. **Production enablement is BLOCKED until the ingress-spoofing test below passes.** Never `x-forwarded-for`. See [Client IP and rate limiting](#client-ip-and-rate-limiting). |
 | `MCP_DISCOVERY_MODE` | `mock` or `real` | Selects deterministic demo discovery or real MCP protocol discovery. |
 | `ALLOW_PRIVATE_MCP_URLS` | `false` | Keep false in production unless private MCP connectivity is explicitly approved. |
-| `MCP_AUTH_*` | Secret value | Optional backend-only bearer token or API key referenced by an MCP server's `auth_secret_ref`. |
+| `MCP_AUTH_<ORGANIZATION_ID>_<NAME>` | Secret value | Optional backend-only bearer token or API key referenced by an MCP server's `auth_secret_ref`. Must be in the owning organization's namespace; see [Real MCP Discovery](#real-mcp-discovery). |
 | `GATEWAY_LIST_RATE_LIMIT_ATTEMPTS` | `60` | Per-token/server governed tool-list requests per rate-limit window. |
 | `GATEWAY_CALL_RATE_LIMIT_ATTEMPTS` | `30` | Per-token/tool governed calls per rate-limit window. |
 | `GATEWAY_TOKEN_RATE_LIMIT_ATTEMPTS` | `10` | Gateway token management actions per rate-limit window. |
@@ -321,12 +321,23 @@ uses `tools/list`. Real tool calls occur only when a client explicitly uses the 
 
 Configure authentication without putting credentials in URLs:
 
-1. Add a backend-only service variable such as `MCP_AUTH_CUSTOMER_OPERATIONS`.
-2. Register the MCP server with `auth_type` set to `bearer` or `api_key`.
+1. Add a backend-only service variable named in the owning organization's namespace:
+   `MCP_AUTH_<ORGANIZATION_ID>_<NAME>`, for example
+   `MCP_AUTH_3F2504E04F8941D39A0C0305E82C3301_CUSTOMER_OPERATIONS`.
+2. Register the MCP server in that organization with `auth_type` set to `bearer` or `api_key`.
 3. Set `auth_secret_ref` to the environment variable name, not its value.
 
+`<ORGANIZATION_ID>` is the organization's UUID as 32 upper-case hexadecimal digits without
+hyphens; `<NAME>` uses `A-Z`, `0-9` and `_`. Service variables are shared by every organization,
+so AgentHQ accepts a reference only inside the server's own organization's namespace. It checks
+this when a server is created or updated, and again before every discovery or gateway call. A
+reference outside the namespace (another organization's, or a legacy unscoped name such as
+`MCP_AUTH_CUSTOMER_OPERATIONS`) is rejected, no credential is sent, and the backend logs
+`security_mcp_credential_ref_rejected` with the organization ID only. Rename any such variable
+into the owning organization's namespace and update the server's `auth_secret_ref`.
+
 AgentHQ sends bearer credentials in `Authorization: Bearer ...` and API keys in `X-API-Key`.
-Credential references must begin with `MCP_AUTH_`. HTTP redirects are disabled for discovery.
+HTTP redirects are disabled for discovery.
 Production rejects localhost and literal private, loopback, or link-local IP URLs unless
 `ALLOW_PRIVATE_MCP_URLS=true`.
 

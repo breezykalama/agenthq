@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any
+from uuid import UUID
 
 import anyio
 import pytest
@@ -18,6 +19,7 @@ from app.adapters.mcp_discovery import (
     list_all_tools,
 )
 from app.core.config import Settings, get_settings
+from app.core.mcp_credentials import organization_secret_ref_prefix
 from app.models.mcp_server import MCPAuthType, MCPTransportType
 
 
@@ -173,13 +175,21 @@ def test_real_adapter_timeout_is_sanitized(monkeypatch: pytest.MonkeyPatch) -> N
         )
 
 
+ORGANIZATION_ID = UUID("0c0c0c0c-3333-4333-8333-0c0c0c0c0c0c")
+
+
 def test_real_adapter_uses_environment_referenced_auth(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("MCP_AUTH_CUSTOMER", "top-secret-value")
+    secret_ref = f"{organization_secret_ref_prefix(ORGANIZATION_ID)}CUSTOMER"
+    monkeypatch.setenv(secret_ref, "top-secret-value")
 
     headers = build_auth_headers(
-        target(auth_type=MCPAuthType.BEARER, auth_secret_ref="MCP_AUTH_CUSTOMER")
+        target(
+            auth_type=MCPAuthType.BEARER,
+            auth_secret_ref=secret_ref,
+            organization_id=ORGANIZATION_ID,
+        )
     )
 
     assert headers == {"Authorization": "Bearer top-secret-value"}
@@ -188,7 +198,11 @@ def test_real_adapter_uses_environment_referenced_auth(
 def test_real_adapter_rejects_missing_referenced_auth() -> None:
     with pytest.raises(MCPDiscoveryError, match="authentication is not configured"):
         build_auth_headers(
-            target(auth_type=MCPAuthType.API_KEY, auth_secret_ref="MCP_AUTH_MISSING")
+            target(
+                auth_type=MCPAuthType.API_KEY,
+                auth_secret_ref=f"{organization_secret_ref_prefix(ORGANIZATION_ID)}MISSING",
+                organization_id=ORGANIZATION_ID,
+            )
         )
 
 

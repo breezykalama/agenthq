@@ -1,12 +1,17 @@
 from typing import Any, cast
+from uuid import UUID
 
 import pytest
+from email_helpers import database_session
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy import select
 
 from app.adapters.mcp_discovery import get_mcp_discovery_adapter
 from app.core.config import get_settings
+from app.core.mcp_credentials import organization_secret_ref_prefix
+from app.models.organization import Organization
 from app.schemas.mcp_server import MCPServerCreate
 
 JsonResponse = dict[str, Any]
@@ -48,13 +53,24 @@ def test_create_mcp_server(client: TestClient) -> None:
     assert mcp_server["deleted_at"] is None
 
 
+def organization_secret_ref(client: TestClient, name: str) -> str:
+    """An MCP credential reference in the test organization's own namespace."""
+    with database_session(client) as db:
+        organization_id = db.scalar(
+            select(Organization.id).where(Organization.deleted_at.is_(None))
+        )
+    assert isinstance(organization_id, UUID)
+    return f"{organization_secret_ref_prefix(organization_id)}{name}"
+
+
 def test_create_mcp_server_with_real_discovery_configuration(client: TestClient) -> None:
+    secret_ref = organization_secret_ref(client, "CUSTOMER_OPERATIONS")
     payload = mcp_server_payload()
     payload.update(
         {
             "transport_type": "sse",
             "auth_type": "bearer",
-            "auth_secret_ref": "MCP_AUTH_CUSTOMER_OPERATIONS",
+            "auth_secret_ref": secret_ref,
             "request_timeout_seconds": 45,
             "connect_timeout_seconds": 8,
         }
@@ -65,7 +81,7 @@ def test_create_mcp_server_with_real_discovery_configuration(client: TestClient)
     assert response.status_code == 201
     assert response.json()["transport_type"] == "sse"
     assert response.json()["auth_type"] == "bearer"
-    assert response.json()["auth_secret_ref"] == "MCP_AUTH_CUSTOMER_OPERATIONS"
+    assert response.json()["auth_secret_ref"] == secret_ref
     assert response.json()["request_timeout_seconds"] == 45
     assert response.json()["connect_timeout_seconds"] == 8
 
@@ -266,12 +282,13 @@ def test_mcp_auth_secret_value_is_not_stored_in_audit_logs(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("MCP_AUTH_CUSTOMER_OPERATIONS", "super-sensitive-token")
+    secret_ref = organization_secret_ref(client, "CUSTOMER_OPERATIONS")
+    monkeypatch.setenv(secret_ref, "super-sensitive-token")
     payload = mcp_server_payload()
     payload.update(
         {
             "auth_type": "bearer",
-            "auth_secret_ref": "MCP_AUTH_CUSTOMER_OPERATIONS",
+            "auth_secret_ref": secret_ref,
         }
     )
 
@@ -280,7 +297,7 @@ def test_mcp_auth_secret_value_is_not_stored_in_audit_logs(
 
     assert response.status_code == 201
     assert "super-sensitive-token" not in str(logs)
-    assert logs[0]["after"]["auth_secret_ref"] == "MCP_AUTH_CUSTOMER_OPERATIONS"
+    assert logs[0]["after"]["auth_secret_ref"] == secret_ref
 
 
 def test_audit_log_created_after_mcp_server_update(client: TestClient) -> None:

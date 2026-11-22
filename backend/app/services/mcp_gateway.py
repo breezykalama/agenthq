@@ -640,6 +640,7 @@ def target_for_server(server: MCPServer) -> MCPDiscoveryTarget:
         auth_secret_ref=server.auth_secret_ref,
         request_timeout_seconds=server.request_timeout_seconds,
         connect_timeout_seconds=server.connect_timeout_seconds,
+        organization_id=server.organization_id,
     )
 
 

@@ -1,12 +1,15 @@
 import hashlib
 import json
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.adapters.mcp_discovery import MCPDiscoveryAdapter, MCPDiscoveryTarget
+from app.core.mcp_credentials import secret_ref_belongs_to_organization
 from app.core.security import assert_resource_in_org, log_resource_access_denied
+from app.core.tenancy import get_current_organization_id
 from app.models.agent import AgentRiskLevel, AgentStatus
 from app.models.agent_tool import AgentToolPermission
 from app.models.audit_log import AuditAction, AuditOutcome, JsonObject
@@ -30,6 +33,8 @@ from app.services import agents as agent_service
 from app.services import audit_logs as audit_log_service
 from app.services import governance_alerts as alert_service
 from app.services import tool_governance as tool_governance_service
+
+security_logger = logging.getLogger("agenthq.security")
 
 
 class MCPServerNotFoundError(Exception):
@@ -96,6 +101,11 @@ def audit_tool_change(
 
 
 def create_mcp_server(db: Session, mcp_server_create: MCPServerCreate) -> MCPServer:
+    validate_secret_ref_owner(
+        get_current_organization_id(db),
+        mcp_server_create.auth_type,
+        mcp_server_create.auth_secret_ref,
+    )
     validate_linked_agent(db, mcp_server_create.agent_id)
     validate_unique_name(db, mcp_server_create.name)
     mcp_server = mcp_server_repository.create_mcp_server(db, mcp_server_create)
@@ -153,6 +163,9 @@ def update_mcp_server(
         validate_auth_configuration(updated_auth_type, updated_secret_ref)
     except ValueError as exc:
         raise InvalidMCPServerConfigurationError from exc
+    # The effective reference (new or kept) must belong to the server's own organization, so a
+    # legacy unscoped or foreign reference cannot survive an edit.
+    validate_secret_ref_owner(mcp_server.organization_id, updated_auth_type, updated_secret_ref)
 
     updated_server = mcp_server_repository.update_mcp_server(db, mcp_server, update_values)
     audit_log_service.create_audit_log(
@@ -201,6 +214,7 @@ def sync_mcp_server(
                 auth_secret_ref=mcp_server.auth_secret_ref,
                 request_timeout_seconds=mcp_server.request_timeout_seconds,
                 connect_timeout_seconds=mcp_server.connect_timeout_seconds,
+                organization_id=mcp_server.organization_id,
             )
         )
     except Exception as exc:
@@ -506,6 +520,22 @@ def ensure_linked_agent(db: Session, mcp_server: MCPServer) -> UUID:
         ),
     )
     return created_agent.id
+
+
+def validate_secret_ref_owner(
+    organization_id: UUID,
+    auth_type: MCPAuthType,
+    secret_ref: str | None,
+) -> None:
+    """Reject a credential reference outside the organization's MCP_AUTH_<ID>_ namespace."""
+    if auth_type == MCPAuthType.NONE or secret_ref is None:
+        return
+    if not secret_ref_belongs_to_organization(secret_ref, organization_id):
+        security_logger.warning(
+            "security_mcp_credential_ref_rejected stage=configuration organization_id=%s",
+            organization_id,
+        )
+        raise InvalidMCPServerConfigurationError
 
 
 def validate_unique_name(db: Session, name: str) -> None:

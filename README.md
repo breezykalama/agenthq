@@ -692,10 +692,13 @@ MCP_DISCOVERY_MODE=real
 ALLOW_PRIVATE_MCP_URLS=true
 ```
 
-For an authenticated server, store the credential in a backend-only environment variable:
+For an authenticated server, store the credential in a backend-only environment variable in your
+organization's namespace, `MCP_AUTH_<ORGANIZATION_ID>_<NAME>`. `<ORGANIZATION_ID>` is the
+organization's UUID as 32 upper-case hex digits without hyphens (see
+[DEPLOYMENT.md](DEPLOYMENT.md#real-mcp-discovery)):
 
 ```env
-MCP_AUTH_LOCAL_DEMO=replace-with-the-local-server-token
+MCP_AUTH_<ORGANIZATION_ID>_LOCAL_DEMO=replace-with-the-local-server-token
 ```
 
 Register the server through the MCP Servers page or API:
@@ -706,7 +709,7 @@ Register the server through the MCP Servers page or API:
   "server_url": "http://127.0.0.1:9000/mcp",
   "transport_type": "streamable_http",
   "auth_type": "bearer",
-  "auth_secret_ref": "MCP_AUTH_LOCAL_DEMO",
+  "auth_secret_ref": "MCP_AUTH_<ORGANIZATION_ID>_LOCAL_DEMO",
   "request_timeout_seconds": 30,
   "connect_timeout_seconds": 10
 }

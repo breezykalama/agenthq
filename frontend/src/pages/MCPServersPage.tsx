@@ -249,7 +249,8 @@ export function MCPServersPage() {
                   <input
                     name="auth_secret_ref"
                     className={inputClass}
-                    placeholder="MCP_AUTH_CUSTOMER_OPERATIONS"
+                    placeholder="MCP_AUTH_<ORGANIZATION_ID>_CUSTOMER_OPERATIONS"
+                    title="Name of a backend environment variable in your organization's namespace: MCP_AUTH_ followed by the organization ID (32 upper-case hex digits, no hyphens), an underscore, and a name using A-Z, 0-9 and _."
                     pattern="MCP_AUTH_[A-Z0-9_]+"
                     required
                   />
