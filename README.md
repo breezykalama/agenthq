@@ -4,17 +4,20 @@ AgentHQ is a multi-tenant AI Agent Governance Platform that helps organizations 
 
 Organizations can create dedicated governance workspaces, invite users, assign roles, onboard MCP servers, and maintain visibility into AI agent activity across their environment.
 
-## Live Demo
+## Production
 
-Frontend:
+Application:
 [https://agenthq-seven.vercel.app/](https://agenthq-seven.vercel.app/)
 
 Backend API:
-[https://agenthq.onrender.com/docs](https://agenthq.onrender.com/docs)
+[https://agenthq-api-staging-production.up.railway.app/docs](https://agenthq-api-staging-production.up.railway.app/docs)
+
+The frontend runs on Vercel. The FastAPI backend, PostgreSQL and Redis run on Railway. See
+[DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Current Version
 
-AgentHQ v0.8.1
+AgentHQ v0.8.2
 
 ## Project Status
 
@@ -201,6 +204,28 @@ Production deployments should use `EMAIL_BACKEND=smtp` with a transactional prov
 Resend, SendGrid, Postmark, Amazon SES, or another SMTP-compatible service, or
 `EMAIL_BACKEND=resend` (Resend HTTPS API) where outbound SMTP is blocked. Raw verification,
 reset, and invitation tokens are never stored in the database or included in audit metadata.
+
+## AgentHQ v0.8.2
+
+AgentHQ v0.8.2 hardens organization membership, tenant context and gateway credentials.
+
+* Select the active organization explicitly with the `X-AgentHQ-Organization` header. An account
+  with several active memberships must choose one (`409` otherwise); a single-membership account
+  needs no header.
+* Switch organizations in the frontend. Each organization gets its own query cache, and in-flight
+  responses for the previous organization are discarded.
+* Grant organization access only through an explicit, active membership. The legacy implicit
+  default-organization membership is removed.
+* Keep legacy public registration disabled unless explicitly enabled. Registration never grants
+  organization access.
+* Reject gateway credentials whose organization has been deleted.
+* Recover invitation acceptance when the response is lost.
+* Update backend dependencies to patched versions (`pyjwt`, `certifi`, `anyio`, `cryptography`,
+  `urllib3`, `mcp`, `starlette` and others).
+
+Creating a second organization membership for a user is still disabled
+(`MULTI_ORGANIZATION_MEMBERSHIPS_ENABLED=false`): an invitation that would add one is refused.
+Organization selection applies to accounts that already have several memberships.
 
 ## AgentHQ v0.2.0
 
@@ -446,22 +471,21 @@ tool calls upstream.
 
 ### Infrastructure
 
-* Docker Compose
-* Supabase PostgreSQL
-* Render
-* Vercel
-* Render Key Value / Redis
+* Railway (FastAPI backend, Dockerfile build)
+* Railway PostgreSQL 18
+* Railway Redis (rate limiting)
+* Vercel (frontend)
+* Docker Compose (local development)
 
 ## Quality
 
-* 408 automated tests passing
+* 664 backend tests passing, including PostgreSQL-backed migration, rollback and concurrency tests
+* 93 frontend unit tests passing
 * Ruff clean
-* MyPy clean
-* PostgreSQL migrations verified
-* Dockerized deployment
-* Render backend
-* Vercel frontend
-* Supabase PostgreSQL
+* MyPy strict clean
+* Backend dependency audit (pip-audit) clean
+* Local browser regression harness for organization switching and cross-tenant dashboard isolation
+  ([tools/browser-regression](tools/browser-regression/README.md))
 * Query-count regression tests
 * Atomic transaction safety
 * Tenant isolation tests
@@ -550,24 +574,31 @@ docker compose down -v
 
 ## Production Deployment
 
-AgentHQ is prepared for a Supabase PostgreSQL, Render backend, and Vercel frontend deployment.
+AgentHQ runs in production with a Railway FastAPI backend, Railway PostgreSQL and Railway Redis
+on the same project's private network, and a Vercel frontend.
 
 Production configuration is environment-driven:
 
 ```text
-Backend:  DATABASE_URL, BACKEND_CORS_ORIGINS, JWT_SECRET_KEY, BOOTSTRAP_SECRET, REDIS_URL,
-          ALLOW_PUBLIC_REGISTRATION, RATE_LIMITS_ENABLED, MCP_DISCOVERY_MODE
+Backend:  ENVIRONMENT, DATABASE_URL, REDIS_URL, JWT_SECRET_KEY, BOOTSTRAP_SECRET,
+          BACKEND_CORS_ORIGINS, FRONTEND_BASE_URL, EMAIL_BACKEND, EMAIL_FROM, RESEND_API_KEY,
+          ALLOW_PUBLIC_REGISTRATION, MULTI_ORGANIZATION_MEMBERSHIPS_ENABLED,
+          RATE_LIMITS_ENABLED, MCP_DISCOVERY_MODE
 Frontend: VITE_API_BASE_URL
 ```
 
-Use exact HTTPS origins in `BACKEND_CORS_ORIGINS`, keep backend credentials in secret storage,
-configure Render's internal Redis URL as `REDIS_URL`, apply migrations before serving a new
-version, and never seed production automatically. Protected operations fail closed when production
-rate limiting is unavailable. FastAPI interactive docs remain enabled for the current release and
-can be restricted at the edge when needed.
+Deploy the backend first from a specific commit, then the frontend from the same commit. The API
+container applies migrations before starting. Use exact HTTPS origins in `BACKEND_CORS_ORIGINS`,
+keep backend credentials in service variables, and never seed production automatically.
+Protected operations fail closed when Redis is unavailable. FastAPI interactive docs remain
+enabled and can be restricted at the edge when needed.
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) and [RATE_LIMITING.md](RATE_LIMITING.md) for the complete
-deployment and abuse-protection guidance.
+Production email currently uses Resend's `resend.dev` test domain, which delivers only to the
+Resend account owner. Verification, password-reset and invitation email reaches other users only
+after a sending domain is verified.
+
+See [DEPLOYMENT.md](DEPLOYMENT.md), [RATE_LIMITING.md](RATE_LIMITING.md) and the
+[v0.8.2 rollback runbook](docs/ROLLBACK_V0.8.2.md).
 
 ## Documentation
 
@@ -577,8 +608,9 @@ deployment and abuse-protection guidance.
 * [Organization Authorization](AUTHORIZATION.md)
 * [Audit Logging](AUDIT_LOGGING.md)
 * [Rate Limiting](RATE_LIMITING.md)
-* [Supabase RLS Audit](RLS_AUDIT.md)
+* [Row-Level Security Audit](RLS_AUDIT.md) (written for the earlier Supabase deployment)
 * [Security Audit](SECURITY_AUDIT.md)
+* [v0.8.2 Rollback Runbook](docs/ROLLBACK_V0.8.2.md)
 
 ## Frontend
 
@@ -758,8 +790,10 @@ Screenshots can be added here once the visual demo flow stabilizes:
 * Audit Redaction
 * MCP URL and Error Hardening
 * Centralized Rate Limiting
-* Supabase RLS Lockdown
+* Row-Level Security Lockdown
 * Real MCP Protocol Integration
+* Explicit Organization Selection and Switching (for existing memberships)
+* Removal of Implicit Organization Membership
 
 ### Upcoming
 
@@ -767,7 +801,8 @@ Screenshots can be added here once the visual demo flow stabilizes:
 * Copilot Studio Agent Registration
 * Cost Tracking
 * Notifications
-* Organization Switching
+* Multi-Organization Membership Creation
+* Verified Production Email Domain
 * SSO
 
 ## Health Check

@@ -31,6 +31,18 @@ The release `cd43d1f` has the same application as `e53f81e`: the two differ only
 and in `tools/browser-regression/`, which are not part of either build. Verify (prints nothing):
 `git diff e53f81e cd43d1f -- backend frontend Dockerfile render.yaml docker-compose.yml`.
 
+**Deployed production commit: `e7f1359744f0d3d145200b9976bee18d9564d540`** (Railway API and Vercel
+`agenthq`). It is `cd43d1f` plus this runbook's corrections (`06c1552`) and a lock-only update of
+backend dependencies to patched versions (`backend/uv.lock`). Verify that only the lock differs
+in the build: `git diff cd43d1f e7f1359 -- . ':(exclude)docs'` lists only `backend/uv.lock`.
+Restore targets recorded at deployment: Railway deployment `ed101066-fc5a-48b3-88b5-2e6587d40881`
+(`c5d0bd3`, used for the earlier staging role) and Vercel `agenthq` deployment
+`dpl_G3JZmLjmiGzicUQ9QAL5ris6fjru` (`ca1bd62`, which calls the former Render API).
+
+The primary rollback `c7ed2e8` keeps the **pre-patch** `backend/uv.lock`. Use only its frontend.
+Do not redeploy its backend, because that would reinstate the dependency advisories fixed in
+`e7f1359`.
+
 The primary rollback `c7ed2e8` is the secured release with only `frontend/` restored from `c763f56`:
 
 * `backend/` (application, migrations, `pyproject.toml`, `uv.lock`), `docs/`, the Dockerfiles,

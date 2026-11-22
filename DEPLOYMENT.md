@@ -1,6 +1,29 @@
 # AgentHQ Deployment
 
-This guide deploys AgentHQ with Supabase PostgreSQL, a Render backend, and a Vercel frontend.
+AgentHQ runs as a FastAPI backend on Railway, with Railway PostgreSQL and Railway Redis on the
+same project's private network, and a React frontend on Vercel.
+
+## Current Production
+
+| Component | Where it runs |
+| --- | --- |
+| Frontend | Vercel project `agenthq`, root directory `frontend`, at `https://agenthq-seven.vercel.app` |
+| Backend API | Railway project `agenthq-staging`, environment `production`, service `agenthq-api-staging`, at `https://agenthq-api-staging-production.up.railway.app` |
+| Database | Railway PostgreSQL 18 service `Postgres` in the same project, private network only (no public TCP proxy) |
+| Rate limiting | Railway Redis service `Redis` in the same project, private network only |
+
+Despite its name, the Railway project `agenthq-staging` is the production environment. The
+deployed release and the recovery procedure are recorded in
+[docs/ROLLBACK_V0.8.2.md](docs/ROLLBACK_V0.8.2.md).
+
+The earlier v0.8.0 deployment (Render backend, Supabase PostgreSQL) is no longer the
+production system. [render.yaml](render.yaml) remains in the repository for reference only.
+
+**Email status.** Production currently sends from Resend's `resend.dev` test domain, which
+delivers only to the Resend account owner's address. Verification, password-reset and invitation
+email does not reach other recipients until a sending domain is verified in Resend and
+`EMAIL_FROM` and `RESEND_API_KEY` are updated (see
+[Resend HTTPS Email on Railway](#resend-https-email-on-railway)).
 
 ## Required Environment Variables
 
@@ -8,7 +31,7 @@ Backend:
 
 | Variable | Example | Notes |
 | --- | --- | --- |
-| `DATABASE_URL` | `postgresql://postgres.project-ref:password@aws-0-region.pooler.supabase.com:5432/postgres?sslmode=require` | Supabase PostgreSQL connection string. AgentHQ automatically selects the psycopg 3 SQLAlchemy driver. |
+| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` | Railway PostgreSQL private connection string (host `postgres.railway.internal`), set as a reference to the Postgres service. AgentHQ automatically selects the psycopg 3 SQLAlchemy driver. |
 | `BACKEND_CORS_ORIGINS` | `https://agenthq.example.com,https://agenthq-git-main-team.vercel.app` | Comma-separated exact frontend origins. Do not use `*` in production. |
 | `JWT_SECRET_KEY` | Strong random value of at least 32 characters | Signs access tokens. Never reuse another service secret. |
 | `BOOTSTRAP_SECRET` | Separate strong random value | Protects first-organization bootstrap in production. |
@@ -17,8 +40,8 @@ Backend:
 | `EMAIL_FROM` | `AgentHQ <no-reply@example.com>` | Verified transactional sender identity. With `resend`, a sender on a domain verified in Resend. |
 | `SMTP_HOST` | Provider SMTP hostname | Required when `EMAIL_BACKEND=smtp`. |
 | `SMTP_PORT` | `587` | SMTP submission port. |
-| `SMTP_USERNAME` | Provider credential | Store only in Render secrets. |
-| `SMTP_PASSWORD` | Provider credential | Store only in Render secrets; never expose to the frontend. |
+| `SMTP_USERNAME` | Provider credential | Store only in backend service variables. |
+| `SMTP_PASSWORD` | Provider credential | Store only in backend service variables; never expose to the frontend. Railway blocks outbound SMTP on Free, Trial and Hobby plans; use `resend` there. |
 | `SMTP_USE_TLS` | `true` | Enables STARTTLS before authentication and delivery (ports 587/2587). |
 | `SMTP_USE_SSL` | `false` | Implicit TLS for port 465. Mutually exclusive with `SMTP_USE_TLS`. |
 | `SMTP_TIMEOUT_SECONDS` | `10` | Per-connection SMTP timeout used by the outbox worker. |
@@ -29,9 +52,9 @@ Backend:
 | `EMAIL_OUTBOX_MAX_ATTEMPTS` | `6` | Delivery attempts before a message is marked failed (backoff 30s to 1h). |
 | `IDENTITY_MIN_RESPONSE_MS` | `400` | Constant response floor for forgot-password and resend-verification. |
 | `ALLOW_PUBLIC_REGISTRATION` | `false` | Legacy/demo registration. Disabled unless explicitly `true`, in every environment. Registered accounts get no organization access. |
-| `REDIS_URL` | `redis://...` | Render Key Value internal URL used for production rate limiting. Protected endpoints fail closed when Redis is unavailable. |
+| `REDIS_URL` | `${{Redis.REDIS_URL}}` | Railway Redis private URL (host `redis.railway.internal`) used for production rate limiting. Protected endpoints fail closed when Redis is unavailable. |
 | `RATE_LIMITS_ENABLED` | `true` | Enables centralized abuse protection. |
-| `TRUSTED_CLIENT_IP_HEADER` | unset (Render: `cf-connecting-ip`) | Single header holding the real client IP for IP-based rate limits. **Production enablement is BLOCKED until the ingress-spoofing test below passes.** Never `x-forwarded-for`. See [Client IP and rate limiting](#client-ip-and-rate-limiting). |
+| `TRUSTED_CLIENT_IP_HEADER` | unset | Single header holding the real client IP for IP-based rate limits. **Production enablement is BLOCKED until the ingress-spoofing test below passes.** Never `x-forwarded-for`. See [Client IP and rate limiting](#client-ip-and-rate-limiting). |
 | `MCP_DISCOVERY_MODE` | `mock` or `real` | Selects deterministic demo discovery or real MCP protocol discovery. |
 | `ALLOW_PRIVATE_MCP_URLS` | `false` | Keep false in production unless private MCP connectivity is explicitly approved. |
 | `MCP_AUTH_*` | Secret value | Optional backend-only bearer token or API key referenced by an MCP server's `auth_secret_ref`. |
@@ -43,50 +66,63 @@ Frontend:
 
 | Variable | Example | Notes |
 | --- | --- | --- |
-| `VITE_API_BASE_URL` | `https://agenthq-api.onrender.com` | Public Render API URL without a trailing slash. Vite embeds this value at build time. |
+| `VITE_API_BASE_URL` | `https://agenthq-api-staging-production.up.railway.app` | Public Railway API URL without a trailing slash. Vite embeds this value at build time. |
 
-## Supabase Setup
+One more backend setting controls the v0.8.2 tenancy safeguards:
 
-1. Create a Supabase project and set a strong database password.
-2. In the Supabase dashboard, select **Connect** and copy a connection string.
-3. Prefer the Session pooler connection string for Render when the direct database endpoint is not reachable over IPv4.
-4. Add `sslmode=require` to the connection string if it is not already present.
-5. Store the full connection string as Render's `DATABASE_URL` secret. Never expose it to Vercel or client-side code.
+| Variable | Production value | Notes |
+| --- | --- | --- |
+| `MULTI_ORGANIZATION_MEMBERSHIPS_ENABLED` | unset (`false`) | Blocks accepting an invitation that would give a user a second organization (`409`). Existing memberships are unaffected. |
 
-AgentHQ uses SQLAlchemy and Alembic directly against PostgreSQL. It does not use the Supabase Data API.
+## Railway Setup
 
-## Render Backend Setup
+The production [Dockerfile](Dockerfile) is at the repository root (build context: repository
+root; it copies `backend/`). `backend/Dockerfile` is used only by `docker-compose.yml` for local
+development.
 
-The repository includes [render.yaml](render.yaml) and the production [Dockerfile](Dockerfile) at
-the repository root (build context: repository root; it copies `backend/`). `backend/Dockerfile`
-is used only by `docker-compose.yml` for local development.
+1. In one Railway project and environment, add a **PostgreSQL** service and a **Redis** service.
+   Keep both on the private network; no public TCP proxy is needed.
+2. Add the API service from the GitHub repository:
+   * Builder: Dockerfile, path `/Dockerfile`; leave the Root Directory empty.
+   * Health check path: `/health`.
+   * Keep automatic deployments off (no deployment trigger branch), so pushes never deploy by
+     themselves.
+3. Set the API service variables (see the tables above), at minimum:
+   * `ENVIRONMENT=production`
+   * `DATABASE_URL` and `REDIS_URL` as references to the Postgres and Redis services
+   * `JWT_SECRET_KEY` and `BOOTSTRAP_SECRET`: separate strong random values (64 characters)
+   * `BACKEND_CORS_ORIGINS` and `FRONTEND_BASE_URL`: the exact Vercel production origin
+   * `EMAIL_BACKEND=resend`, `RESEND_API_KEY`, `EMAIL_FROM`
+   * `ALLOW_PUBLIC_REGISTRATION=false`, `RATE_LIMITS_ENABLED=true`, `ALLOW_PRIVATE_MCP_URLS=false`
+   * `MCP_DISCOVERY_MODE` and any `MCP_AUTH_*` credentials
+4. Deploy a specific, reviewed commit (see [Deploying a Release](#deploying-a-release)).
+5. Confirm `https://<service>.up.railway.app/health` returns `{"status":"ok"}`.
 
-1. Push the repository to GitHub, GitLab, or Bitbucket.
-2. Create a Render Key Value service in the same region as the API. Use `noeviction` so security
-   counters are not silently discarded.
-3. Copy the Key Value service's internal Redis URL. Do not use `localhost` or expose the internal
-   URL to the frontend.
-4. In Render, create a Blueprint from the repository.
-5. Set the secret environment variables:
-   * `DATABASE_URL`: Supabase connection string
-   * `BACKEND_CORS_ORIGINS`: exact Vercel production URL and any approved preview/custom domains
-   * `JWT_SECRET_KEY`: strong random signing secret
-   * `BOOTSTRAP_SECRET`: separate strong bootstrap secret
-   * `FRONTEND_BASE_URL`: canonical Vercel production URL
-   * `EMAIL_BACKEND`: `smtp` (or `resend`, see [Railway Staging](#railway-staging-resend-https-email))
-   * `EMAIL_FROM`: verified sender address
-   * `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS` (SMTP only)
-   * `RESEND_API_KEY` (Resend only)
-   * `ALLOW_PUBLIC_REGISTRATION`: `false`
-   * `REDIS_URL`: Render Key Value internal Redis connection string
-   * `RATE_LIMITS_ENABLED`: `true`
-   * `MCP_DISCOVERY_MODE`: `real` to enable real MCP discovery
-   * `ALLOW_PRIVATE_MCP_URLS`: `false` unless private MCP endpoints are explicitly approved
-   * Any required `MCP_AUTH_*` credential variables
-6. Deploy the `agenthq-api` web service.
-7. Confirm `https://<service>.onrender.com/health` returns a successful response.
+The container runs `alembic upgrade head` before starting Uvicorn and binds to Railway's injected
+`PORT`.
 
-The container runs `alembic upgrade head` before starting Uvicorn and binds to Render's injected `PORT`.
+Changing `JWT_SECRET_KEY` invalidates every existing session and every unsent email link. Change
+it only deliberately.
+
+## Deploying a Release
+
+Deploy the backend first, then the frontend.
+
+1. **Backend.** Deploy the release commit to the API service from its source. Use the Railway
+   dashboard, or the API mutation `serviceInstanceDeployV2(serviceId, environmentId, commitSha)`.
+   Do not use `railway up`: it uploads the local working tree, including any local `.env` file.
+2. **Check the startup log.** A release without new migrations shows Alembic's
+   `Context impl PostgresqlImpl` with no `Running upgrade` line. Then confirm `/health` returns
+   `200` and authentication endpoints do not return `503`.
+3. **Frontend.** Build the same commit for the Vercel production target. The production project
+   skips Git-triggered builds (its Ignored Build Step is `exit 0`), so deploy from a clean checkout
+   of the release commit: `vercel link --project agenthq` at the repository root, then
+   `vercel deploy --prod`. Confirm the deployment reaches **READY**, not Canceled. Delete the
+   `.env.local` file that `vercel link` creates.
+4. **Smoke checks.** Follow [docs/ROLLBACK_V0.8.2.md](docs/ROLLBACK_V0.8.2.md) sections 7–11.
+
+Recovery targets and the rules for returning to an older build are in the same runbook. Never run
+`alembic downgrade` in production.
 
 ### Transactional Email
 
@@ -143,7 +179,7 @@ public request path.
 * A row's request body must stay identical across attempts for its key. If it changes (for example
   an organization is renamed between attempts of an invite email), Resend answers 409
   `invalid_idempotent_request` and the row is marked failed without a second send.
-* Rows left pending while the Render instance sleeps or restarts are delivered on the next start.
+* Rows left pending while the API service restarts are delivered on the next start.
   Multiple instances are safe: rows are claimed with `SELECT ... FOR UPDATE SKIP LOCKED`.
 
 Invite creation now returns `email_delivery: "queued" | "disabled"` instead of `email_sent`, because
@@ -184,7 +220,7 @@ the address bar on load and keeps it in tab-scoped `sessionStorage` so a refresh
 frontend (`vercel.json`, `index.html`) and the API set `Referrer-Policy: no-referrer`. Legacy
 `?token=` links and the `/accept-invite`, `/verify-email`, and `/reset-password` routes still work.
 
-### Railway Staging (Resend HTTPS Email)
+### Resend HTTPS Email on Railway
 
 Railway disables outbound SMTP on its Free, Trial, and Hobby plans and recommends HTTPS email APIs
 instead. Use the native Resend backend there; it needs no SMTP settings.
@@ -194,9 +230,12 @@ Set these on the Railway API service only:
 ```
 EMAIL_BACKEND=resend
 RESEND_API_KEY=<secret: Resend API key with sending access only>
-EMAIL_FROM=<sender on a domain verified in Resend, e.g. "AgentHQ Staging <no-reply@staging.example.com>">
-FRONTEND_BASE_URL=<staging frontend HTTPS URL>
+EMAIL_FROM=<sender on a domain verified in Resend, e.g. "AgentHQ <no-reply@mail.example.com>">
+FRONTEND_BASE_URL=<production frontend HTTPS URL>
 ```
+
+Resend's `resend.dev` test domain passes startup validation but delivers only to the Resend
+account owner. Use it only while email workflows are not yet open to other users.
 
 * Store `RESEND_API_KEY` as a secret service variable. It belongs to the backend only: never put it
   in any `VITE_` variable, the Vercel project, the repository, or a shared Railway variable that a
@@ -214,6 +253,11 @@ FRONTEND_BASE_URL=<staging frontend HTTPS URL>
 
 Unauthenticated endpoints (login, register, bootstrap, forgot/reset password, verify and resend
 verification, invite acceptance) are limited per client IP in addition to per email or token.
+
+On Railway (current production) the variable is unset. Railway's ingress has not yet been
+checked with the spoofing test below, so keep it unset there until that test passes against the
+Railway URL. The Render and Cloudflare details below describe the former Render deployment.
+
 On Render the TCP peer is the platform proxy, so **with no configuration every user shares one
 IP bucket**. A single client making `AUTH_RATE_LIMIT_ATTEMPTS` failed attempts then blocks
 everyone else for the window. Per-email, per-token, per-organization, per-user and gateway
@@ -277,7 +321,7 @@ uses `tools/list`. Real tool calls occur only when a client explicitly uses the 
 
 Configure authentication without putting credentials in URLs:
 
-1. Add a backend-only Render secret such as `MCP_AUTH_CUSTOMER_OPERATIONS`.
+1. Add a backend-only service variable such as `MCP_AUTH_CUSTOMER_OPERATIONS`.
 2. Register the MCP server with `auth_type` set to `bearer` or `api_key`.
 3. Set `auth_secret_ref` to the environment variable name, not its value.
 
@@ -337,7 +381,9 @@ can bypass AgentHQ.
 
 ### Migration Command
 
-Run migrations from a Render shell or a trusted local environment:
+The API service applies migrations at startup. To run them manually, use a shell on the API
+service (`railway ssh --service <api-service>`) or a trusted environment that can reach the
+database:
 
 ```bash
 cd backend
@@ -364,17 +410,20 @@ Do not automatically seed a production database.
 3. Use the detected Vite settings:
    * Build command: `npm run build`
    * Output directory: `dist`
-4. Set `VITE_API_BASE_URL` to the public Render API URL.
-5. Deploy, then add the Vercel production origin to Render's `BACKEND_CORS_ORIGINS`.
+4. Set `VITE_API_BASE_URL` (Production target) to the public Railway API URL.
+5. Add the Vercel production origin to the Railway API's `BACKEND_CORS_ORIGINS` and
+   `FRONTEND_BASE_URL`, then deploy the frontend (see [Deploying a Release](#deploying-a-release)).
+6. Optionally set the Ignored Build Step to `exit 0` so Git pushes never build preview or
+   production deployments, and deploy deliberately from the CLI.
 
 `frontend/vercel.json` provides the SPA rewrite needed for React Router deep links.
 
 ## Production Safety
 
-* Keep `DATABASE_URL` only in Render's secret environment variables.
-* Keep `JWT_SECRET_KEY`, `BOOTSTRAP_SECRET`, and `REDIS_URL` only in secret environment variables.
-* Keep `SMTP_PASSWORD`, `RESEND_API_KEY`, and provider credentials only in backend secret
-  environment variables (Render or Railway). Never expose them through `VITE_` variables.
+* Keep `DATABASE_URL` only in the Railway API service's variables.
+* Keep `JWT_SECRET_KEY`, `BOOTSTRAP_SECRET`, and `REDIS_URL` only in backend service variables.
+* Keep `SMTP_PASSWORD`, `RESEND_API_KEY`, and provider credentials only in backend service
+  variables. Never expose them through `VITE_` variables.
 * Keep all `MCP_AUTH_*` values only in backend secret environment variables.
 * Store raw gateway tokens only in the calling client's secret store; AgentHQ shows them once.
 * Restrict direct upstream MCP access when using AgentHQ as an enforcement boundary.
@@ -383,21 +432,25 @@ Do not automatically seed a production database.
 * Apply migrations before serving a new application version.
 * Do not seed production automatically.
 * The FastAPI `/docs` and `/redoc` routes remain enabled for this MVP. Restrict them at the edge if the API should not expose interactive documentation publicly.
-* Review Supabase network restrictions and database access controls before handling sensitive data.
+* Keep PostgreSQL and Redis on Railway's private network. Do not enable a public TCP proxy for the
+  database unless a time-boxed, approved maintenance task needs it.
+* Enable a backup schedule on the PostgreSQL volume before relying on the data.
 
 ## Common Deployment Issues
 
-### Render cannot connect to Supabase
+### The API cannot reach PostgreSQL or Redis
 
-Use Supabase's Session pooler connection string when the direct endpoint is unavailable from an IPv4-only network. Confirm the password is URL-encoded and SSL is enabled.
+Confirm `DATABASE_URL` and `REDIS_URL` reference the services in the same Railway project and
+environment (`*.railway.internal` hosts). Private hostnames are not reachable from a local
+machine.
 
-### Render reports no open port
+### Railway reports no open port
 
-Confirm the service uses the included Dockerfile. It binds Uvicorn to `0.0.0.0` and Render's `PORT`.
+Confirm the service uses the root Dockerfile. It binds Uvicorn to `0.0.0.0` and Railway's `PORT`.
 
 ### Alembic fails during startup
 
-Check `DATABASE_URL`, database reachability, and whether another instance is running the same migration concurrently. Run `uv run alembic current` from a Render shell to inspect the database revision.
+Check `DATABASE_URL`, database reachability, and whether another instance is running the same migration concurrently. Run `uv run alembic current` from a shell on the API service to inspect the database revision.
 
 ### Browser requests fail with CORS errors
 
@@ -414,5 +467,5 @@ Confirm `frontend/vercel.json` is included in the Vercel deployment and the Verc
 ### Protected API requests return 503
 
 AgentHQ fails closed when production abuse protection is unavailable. Confirm `REDIS_URL` is the
-Render Key Value internal URL, both services are in the same region, and the Key Value service is
-healthy. A Render internal hostname is not reachable from a local development machine.
+Railway Redis private URL and the Redis service is healthy. A Railway private hostname is not
+reachable from a local development machine.
