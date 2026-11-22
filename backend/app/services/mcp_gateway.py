@@ -1,4 +1,6 @@
 import hashlib
+import json
+import logging
 import secrets
 from datetime import UTC, datetime
 from time import monotonic
@@ -17,7 +19,12 @@ from app.models.agent_tool import AgentTool, AgentToolPermission
 from app.models.approval import ApprovalStatus
 from app.models.audit_log import AuditAction, AuditOutcome
 from app.models.execution import Execution, ExecutionStatus
-from app.models.mcp_gateway import MCPGatewayCallRecord, MCPGatewayToken, MCPGatewayTokenStatus
+from app.models.mcp_gateway import (
+    MCPGatewayCallRecord,
+    MCPGatewayCallState,
+    MCPGatewayToken,
+    MCPGatewayTokenStatus,
+)
 from app.models.mcp_server import MCPServer
 from app.models.policy_rule import PolicyRuleEffect
 from app.repositories import agent_tools as agent_tool_repository
@@ -49,6 +56,7 @@ from app.services import executions as execution_service
 from app.services import tool_governance as governance_service
 
 SAFE_UPSTREAM_ERROR = "Upstream MCP tool call failed."
+security_logger = logging.getLogger("agenthq.security")
 
 
 class MCPGatewayNotFoundError(Exception):
@@ -61,6 +69,10 @@ class MCPGatewayTokenInvalidError(Exception):
 
 class MCPGatewayToolUnavailableError(Exception):
     pass
+
+
+class MCPGatewayIdempotencyConflictError(Exception):
+    """The idempotency key is held by an unfinished request or was used for another request."""
 
 
 class MCPGatewayApprovalInvalidError(Exception):
@@ -337,7 +349,9 @@ def call_gateway_tool(
         require_allowed_server(db, token, server_id) if server_id else require_server(db, token)
     )
     assert server.agent_id is not None
+    request_hash: str | None = None
     if call.idempotency_key is not None:
+        request_hash = request_fingerprint(server.id, tool_id, call)
         previous = gateway_repository.get_call_record(
             db,
             gateway_token_id=token.id,
@@ -345,23 +359,7 @@ def call_gateway_tool(
             idempotency_key=call.idempotency_key,
         )
         if previous is not None:
-            response = MCPGatewayToolCallResponse.model_validate(
-                {**previous.response_payload, "idempotent_replay": True}
-            )
-            audit_gateway_event(
-                db,
-                action=AuditAction.MCP_GATEWAY_CALL_REQUESTED,
-                token=token,
-                resource_id=tool_id,
-                metadata={
-                    "execution_id": str(previous.execution_id),
-                    "idempotent_replay": True,
-                    "protocol": protocol,
-                },
-            )
-            gateway_repository.mark_token_used_pending(db, token)
-            db.commit()
-            return response
+            return replay_call_record(db, token, tool_id, previous, request_hash, protocol)
     tool = require_gateway_tool(db, server.id, server.agent_id, tool_id)
     approval_id = validate_gateway_approval(db, tool, call.approval_id)
     decision = execution_service.evaluate_policy_decision(
@@ -398,12 +396,37 @@ def call_gateway_tool(
         status = ExecutionStatus.REQUIRES_APPROVAL
         action = AuditAction.MCP_GATEWAY_CALL_REQUIRES_APPROVAL
         outcome = AuditOutcome.DENIED
-    else:
+    dispatch = status == ExecutionStatus.PENDING
+    if call.idempotency_key is not None:
+        # Reserve the key before anything is dispatched or any approval is claimed. Exactly one
+        # request can hold a key; every other request is replayed or refused without dispatch.
+        assert request_hash is not None
+        reserved = gateway_repository.reserve_call_record_pending(
+            db,
+            gateway_token_id=token.id,
+            tool_id=tool.id,
+            idempotency_key=call.idempotency_key,
+            request_hash=request_hash,
+        )
+        if not reserved:
+            db.rollback()
+            existing = gateway_repository.get_call_record(
+                db,
+                gateway_token_id=token.id,
+                tool_id=tool.id,
+                idempotency_key=call.idempotency_key,
+            )
+            if existing is None:
+                raise_idempotency_conflict(token, IDEMPOTENCY_IN_PROGRESS)
+            return replay_call_record(db, token, tool.id, existing, request_hash, protocol)
+    if dispatch:
         if approval_id is not None:
-            # The approval authorizes exactly this one upstream attempt. It is consumed and
-            # committed before the call, and never restored, whatever the upstream outcome.
+            # The approval authorizes exactly this one upstream attempt. It is consumed before
+            # the call, and never restored, whatever the upstream outcome.
             execution_id = uuid4()
             claim_gateway_approval(db, token, tool, approval_id, execution_id)
+        # Commit the reservation and the approval claim together, before the upstream call.
+        db.commit()
         started = monotonic()
         try:
             result = adapter.call_tool(
@@ -455,19 +478,87 @@ def call_gateway_tool(
     )
     gateway_repository.mark_token_used_pending(db, token)
     if call.idempotency_key is not None:
-        gateway_repository.create_call_record_pending(
+        completed = gateway_repository.complete_call_record_pending(
             db,
-            MCPGatewayCallRecord(
-                organization_id=token.organization_id,
-                gateway_token_id=token.id,
-                tool_id=tool.id,
-                execution_id=execution.id,
-                idempotency_key=call.idempotency_key,
-                response_payload=response.model_dump(mode="json", exclude={"result"}),
-            ),
+            gateway_token_id=token.id,
+            tool_id=tool.id,
+            idempotency_key=call.idempotency_key,
+            execution_id=execution.id,
+            response_payload=response.model_dump(mode="json", exclude={"result"}),
         )
+        if not completed:
+            # Not expected: the reservation belongs to this request. Keep the execution record;
+            # the key stays unresolved and further requests with it are refused.
+            security_logger.warning(
+                "security_gateway_idempotency_finalize_failed gateway_token_id=%s",
+                token.id,
+            )
     db.commit()
     return response
+
+
+IDEMPOTENCY_IN_PROGRESS = (
+    "A request with this idempotency key is in progress or its outcome is unknown."
+)
+IDEMPOTENCY_MISMATCH = "This idempotency key was already used with a different request."
+
+
+def request_fingerprint(server_id: UUID, tool_id: UUID, call: MCPGatewayToolCall) -> str:
+    """SHA-256 of the canonical execution-relevant request. Only the hash is stored."""
+    canonical = json.dumps(
+        {
+            "server_id": str(server_id),
+            "tool_id": str(tool_id),
+            "input_payload": call.input_payload,
+            "approval_id": str(call.approval_id) if call.approval_id else None,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        default=str,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def replay_call_record(
+    db: Session,
+    token: MCPGatewayToken,
+    tool_id: UUID,
+    record: MCPGatewayCallRecord,
+    request_hash: str,
+    protocol: str,
+) -> MCPGatewayToolCallResponse:
+    """Answer a repeated idempotency key without dispatching or claiming an approval."""
+    if record.request_hash is not None and record.request_hash != request_hash:
+        raise_idempotency_conflict(token, IDEMPOTENCY_MISMATCH)
+    if record.state != MCPGatewayCallState.COMPLETED or record.response_payload is None:
+        raise_idempotency_conflict(token, IDEMPOTENCY_IN_PROGRESS)
+    response = MCPGatewayToolCallResponse.model_validate(
+        {**record.response_payload, "idempotent_replay": True}
+    )
+    audit_gateway_event(
+        db,
+        action=AuditAction.MCP_GATEWAY_CALL_REQUESTED,
+        token=token,
+        resource_id=tool_id,
+        metadata={
+            "execution_id": str(record.execution_id),
+            "idempotent_replay": True,
+            "protocol": protocol,
+        },
+    )
+    gateway_repository.mark_token_used_pending(db, token)
+    db.commit()
+    return response
+
+
+def raise_idempotency_conflict(token: MCPGatewayToken, message: str) -> NoReturn:
+    security_logger.warning(
+        "security_gateway_idempotency_conflict gateway_token_id=%s reason=%s",
+        token.id,
+        "mismatch" if message == IDEMPOTENCY_MISMATCH else "in_progress",
+    )
+    raise MCPGatewayIdempotencyConflictError(message)
 
 
 def call_gateway_tool_by_name(
@@ -582,7 +673,9 @@ def claim_gateway_approval(
         consumed_at=datetime.now(UTC),
     )
     if not claimed:
-        # Lost a concurrent race, or the approval changed after validation.
+        # Lost a concurrent race, or the approval changed after validation. Roll back first so
+        # this request's idempotency reservation is released together with the failed claim.
+        db.rollback()
         deny_gateway_approval(db, approval_id, "Approval has already been used.")
     audit_log_service.create_critical_audit_log(
         db,
@@ -600,7 +693,7 @@ def claim_gateway_approval(
             },
         ),
     )
-    db.commit()
+    # The caller commits the claim together with the idempotency reservation, if any.
 
 
 def deny_gateway_approval(db: Session, approval_id: UUID, reason: str) -> NoReturn:

@@ -15,6 +15,14 @@ class MCPGatewayTokenStatus(StrEnum):
     REVOKED = "revoked"
 
 
+class MCPGatewayCallState(StrEnum):
+    # Reserved and committed before the upstream call. A record that stays in progress (the
+    # process stopped before finalizing) has an unknown outcome and is never re-dispatched.
+    IN_PROGRESS = "in_progress"
+    # Finalized with a stored response (succeeded, failed, blocked or requires approval).
+    COMPLETED = "completed"
+
+
 class MCPGatewayToken(Base):
     __tablename__ = "mcp_gateway_tokens"
 
@@ -59,12 +67,25 @@ class MCPGatewayCallRecord(Base):
         nullable=False,
     )
     tool_id: Mapped[UUID] = mapped_column(ForeignKey("agent_tools.id"), nullable=False)
-    execution_id: Mapped[UUID] = mapped_column(ForeignKey("executions.id"), nullable=False)
-    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
-    response_payload: Mapped[dict[str, object]] = mapped_column(
-        JSON().with_variant(JSONB, "postgresql"),
-        nullable=False,
+    # Unset while the reservation is in progress; set when the call is finalized.
+    execution_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("executions.id"),
+        nullable=True,
     )
+    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    response_payload: Mapped[dict[str, object] | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=True,
+    )
+    state: Mapped[MCPGatewayCallState] = mapped_column(
+        String(16),
+        nullable=False,
+        default=MCPGatewayCallState.COMPLETED,
+        server_default=MCPGatewayCallState.COMPLETED.value,
+    )
+    # SHA-256 of the canonical execution-relevant request. Unset on records created before
+    # fingerprints existed; those keep replaying as before.
+    request_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 

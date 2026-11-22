@@ -75,6 +75,41 @@ For `tools/call`, an approval or idempotency key may be supplied in `params._met
 The compatibility fallback fields `_agenthq_approval_id` and `_agenthq_idempotency_key` may instead
 be placed in `arguments`; AgentHQ removes them before forwarding the tool call.
 
+## Idempotency and Retries
+
+An idempotency key is scoped to the gateway credential and the tool. AgentHQ reserves the key
+before it calls the upstream MCP server, so a key dispatches **at most once**, including when
+several requests with the same key arrive at the same time. Requests without a key have no
+duplicate protection: send a key with every side-effecting call.
+
+The request is identified by a fingerprint of the server, tool, input arguments and approval.
+Only the fingerprint is stored, not the arguments.
+
+| Situation | REST response | MCP `tools/call` response |
+| --- | --- | --- |
+| New key | The call is processed | The call is processed |
+| Key completed, same request | `200` with the original outcome and `"idempotent_replay": true`; nothing is re-sent upstream | The original outcome |
+| Key in progress, or outcome unknown | `409`: "A request with this idempotency key is in progress or its outcome is unknown." | JSON-RPC error `-32009` with the same message |
+| Key already used with a different request | `409`: "This idempotency key was already used with a different request." | JSON-RPC error `-32009` with the same message |
+
+* **Completed outcomes replay.** Succeeded, failed (including upstream errors and timeouts),
+  blocked and approval-required results are stored and returned unchanged for the same key and
+  request. To try a failed call again, use a new key.
+* **In progress or unknown.** A `409` for an in-progress key means another request holds it.
+  If AgentHQ stopped after dispatching the call and before recording its result, the outcome
+  is unknown and the key stays reserved permanently: AgentHQ never re-sends it.
+* **Different request, same key.** Changing the arguments or the approval under a used key
+  returns `409`. Argument order does not matter.
+* **Approved operations need a new key.** A request answered `requires_approval` is completed
+  under its key. Submitting the operation again with its new `approval_id` is a different
+  request: use a new idempotency key. An approval is consumed by the single call it authorizes
+  and is never consumed by a replay or a `409`.
+* **At most once, not exactly once.** AgentHQ guarantees it sends a given key upstream at most
+  once. It cannot guarantee end-to-end exactly-once execution: the upstream system may have
+  performed the operation even when no result was recorded. Before authorizing the operation
+  again under a new key after an unknown outcome, verify in the upstream system whether it
+  already happened.
+
 ## Production Enforcement Boundary
 
 AgentHQ can enforce only traffic routed through AgentHQ Gateway. For strict enforcement:

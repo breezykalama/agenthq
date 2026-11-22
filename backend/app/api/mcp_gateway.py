@@ -244,6 +244,8 @@ def call_gateway_tool(
             status_code=422,
             detail="Approval is invalid for this gateway tool call.",
         ) from exc
+    except gateway_service.MCPGatewayIdempotencyConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 agent_credential_router.add_api_route(
@@ -345,6 +347,8 @@ def call_rest_gateway_tool(
             status_code=422,
             detail="Approval is invalid for this gateway tool call.",
         ) from exc
+    except gateway_service.MCPGatewayIdempotencyConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 def mcp_error(request_id: object, code: int, message: str) -> JSONResponse:
@@ -457,6 +461,8 @@ def mcp_streamable_http(
             )
     except gateway_service.MCPGatewayApprovalInvalidError:
         return mcp_error(request_id, -32003, "Approval is invalid for this tool call.")
+    except gateway_service.MCPGatewayIdempotencyConflictError as exc:
+        return mcp_error(request_id, -32009, str(exc))
     except (
         gateway_service.MCPGatewayNotFoundError,
         gateway_service.MCPGatewayToolUnavailableError,

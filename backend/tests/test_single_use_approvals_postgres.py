@@ -213,7 +213,7 @@ def test_migration_fails_closed_for_existing_approved_records(database: str) -> 
                 {"id": execution_id, "org": organization_id, "agent": agent_id, "approval": used},
             )
 
-        migrate(database, "head")
+        migrate(database, "202611220001")  # this test covers that revision specifically
 
         with engine.connect() as connection:
             rows = {
