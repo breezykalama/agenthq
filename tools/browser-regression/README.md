@@ -45,6 +45,60 @@ rollback decision.
   | `b12-race` | Forces the historical false positive: header-B requests issued *before* the switch but reported by CDP *after* a request-count mark. The run passes only if the old (Step 105) algorithm fails on the same run while the corrected B12 passes. |
   | `b12-negative` | Negative control: inside the page, one post-confirmation request's organization header is rewritten to Org B. The run passes only if B12 fails on its post-confirmation assertion and names exactly that request. |
 
+- **Dashboard rendering and tenant-cache isolation (`dashboard_isolation.mjs`).** The seed gives
+  the two organizations deliberately different dashboard data: Org A has 17 agents (1 low, 16
+  medium risk), Org B has 3 (1 low, 2 high). The checked fields are:
+  - the **Total Agents** card, from `GET /api/v1/dashboard/summary` (`total_agents`: the
+    organization's non-deleted agents);
+  - the **Agents by Risk** list, from `GET /api/v1/dashboard/agents-by-risk`.
+
+  Expected values are fetched from the backend with an explicit organization header at the
+  start of each run, and the run stops if they are not the designed 17/3 split.
+
+  | Scenario | What it does |
+  |---|---|
+  | `dash-normal` | Chooses A, switches to B, back to A, to B again, then reloads in B. Checks rendered values, every transient frame and the live query cache at each step. |
+  | `dash-stale` | Holds the response to Org A's dashboard-summary request, issued *before* the switch, and delivers it after B is confirmed. The switch's first cancellation is suppressed inside the page so that the response really reaches the page's `XMLHttpRequest`. The run passes only if that delivery happened and A's values never appear under B, on screen or in B's cache. |
+  | `dash-wrong-header` | After the switch to B, one request is sent with Org A's header (a simulated frontend defect). The run passes only if both the request-header check and the visible-data check detect it. |
+  | `dash-negative` | Negative control for the visible-data check: Org B's own dashboard-summary response is replaced at the network layer with Org A's genuine one, while every request header stays correct. The run passes only if the visible-data check fails and names the organization, field, expected value and observed value, while the request-header check still passes. |
+
+### What each kind of check proves
+
+| Layer | Question | Proven by | Not proven |
+|---|---|---|---|
+| **Request isolation** | Does every request carry the selected organization's header, and only that? | B5, B9, B12 and their negative controls; B13 (never C or D) | — |
+| **Stale-response protection** | Is a response to a request issued under the previous organization kept out of the new one? | `b12-inflight`, `b5b9-inflight` (the frontend cancels it before delivery); `dash-stale` (forced delivery to the page, then neither rendered nor cached) | Other endpoints and timings (limitation 2) |
+| **Query-cache isolation** | Does the live cache hold only the selected organization's keys and values, with the previous one emptied? | `dash-normal`, `dash-stale`; detects contamination in `dash-negative` | Cache contents of pages other than the dashboard |
+| **Rendering isolation** | Does any rendered frame show the other organization's values? | `dash-normal` (every frame, every switch, reload), with `dash-negative` and `dash-wrong-header` proving detection; older name-based text checks B4, B7, B8 | Fields other than Total Agents and Agents by Risk (limitation 1) |
+| **Backend response correctness** | Does the server answer each header with that organization's data only? | Not by this harness: the backend test suite. Here it is only assumed when expected values are fetched with an explicit header | Everything here; a substituted response is rendered as-is (limitation 3) |
+
+### How dashboard isolation is checked
+
+- **Every frame.** A sampler injected into every document records each committed DOM state:
+  the switcher's selected organization, the Total Agents value and the Agents by Risk list. It
+  samples on every DOM mutation and on a 20 ms poll, so it also sees frames that are never
+  painted.
+- **Visible-data assertion.** A frame whose switcher shows one organization must never show the
+  other organization's value for either field. While switching away from an organization, a
+  frame that shows no organization must not show the old organization's values either. After
+  each transition, the final frame must show exactly the selected organization's expected
+  values; the run waits for that frame and fails on a timeout, so an unfinished page cannot
+  pass. A failure prints `selected organization=…; field=…; expected=…; observed=…; seen in N
+  recorded frame(s)`. A violation seen in several recorded DOM frames is counted once.
+- **Cache assertion.** The live TanStack Query client is read, read-only, through React's fiber
+  tree. Every cached query must be keyed to the selected organization's context, and the cached
+  summary and risk data must equal that organization's API values. After a switch, the previous
+  organization's client (kept by reference) must be empty and must have been replaced.
+- **The application's isolation mechanisms being tested** (none is modified):
+  - every request is stamped synchronously with the current context generation, abort signal
+    and organization header (`frontend/src/api/client.ts`);
+  - a response for a generation that is no longer current is rejected before it reaches any
+    cache;
+  - each user and organization context gets its own `QueryClient`, with hashes prefixed by the
+    context key. The previous client's queries are cancelled and its cache cleared, and the
+    tree below it remounts (`frontend/src/auth/TenantQueryBoundary.tsx`,
+    `tenantQueryClient.ts`).
+
 ### How B12 decides (see `b12_lib.mjs`)
 
 - **Recording.** A passive probe is injected into every document of the tab. It numbers each
@@ -146,7 +200,7 @@ TREE=$($H prepare-tree --ref HEAD --node-modules-from frontend/node_modules | ta
                                       # 3. clean detached worktree to test; its path is the last
                                       #    line printed (omit --node-modules-from to `npm ci` in it)
 $H seed --tree "$TREE"                # 4. isolated test data
-$H validate --tree "$TREE"            # 5. every B12 and B5/B9 scenario (10 iterations each) + core x3
+$H validate --tree "$TREE"            # 5. every B12, B5/B9 and dashboard scenario (10 iterations each) + core x3
 $H run --tree "$TREE" b12-negative    #    or any subset of the scenarios listed under "What it checks"
 $H down                               # 6. stop containers, remove worktrees, delete every credential
 ```
@@ -156,7 +210,7 @@ $H down                               # 6. stop containers, remove worktrees, de
 - **Testing another build** (for example a rollback candidate): run `prepare-tree --ref <sha>`,
   then `validate --tree <its path>`, against the same seeded database.
 - **Options.**
-  - `--iterations N`: iterations per B12 or B5/B9 scenario; the default is 10.
+  - `--iterations N`: iterations per B12, B5/B9 or dashboard scenario; the default is 10.
   - `--core-runs N`: runs of the 16-check suite in `validate`; the default is 3.
   - `--state-dir DIR`: the state directory; give it before the sub-command.
 
@@ -174,6 +228,10 @@ $H down                               # 6. stop containers, remove worktrees, de
 | `b5b9-race` | `10/10`, each with `race reproduced: pre-Step-111 B9 on the same run FAILS (false positive)` and `B5 window covers header-A requests issued just before the switch`. |
 | `b5-negative` | `10/10`, each with `B5 NEGATIVE CONTROL: corrected B5 FAILED as required; responsible request: #… GET /api/v1/agents hdr=B phase=post INJECTED status=403` |
 | `b9-negative` | `10/10`, each with `B9 NEGATIVE CONTROL: corrected B9 FAILED as required; responsible request: #… GET /api/v1/dashboard/summary hdr=A phase=post INJECTED status=200` |
+| `dash-normal` | `10/10`. Org A shows Total Agents 17, Org B shows 3, with their own risk lists. Every transition runs `none/- > <new org>/- > <new org>/<its value>`: the old dashboard is removed before the new organization is shown. Every cache is keyed to its organization, and the previous one is emptied. |
+| `dash-stale` | `10/10`, each with `delivered to the page's XMLHttpRequest after Org B was confirmed: 1 (status 200)` and Org B still showing 3. |
+| `dash-wrong-header` | `10/10`. The injected `GET /api/v1/dashboard/summary hdr=A` returns 200, and the page then shows `B/17`. Both checks detect it. |
+| `dash-negative` | `10/10`, each with `VISIBLE-DATA FAIL (expected): selected organization=Rehearsal Org B; field=Total Agents (…); expected=3; observed=17 (…); seen in N recorded frame(s)`, the 17 still visibly on screen after 3 s, the cache check also failing on `total_agents=17`, and the request-header check passing. |
 
 - **Database side effects.** A browser phase normally changes only the `audit_logs` table. On a
   fresh database, the first dashboard views may also populate `compliance_controls` and
@@ -197,6 +255,24 @@ letters swapped.
 - **B9 `coverage: false`.** The Audit Logs page in B was never requested with header B.
 - **`b5-negative` or `b9-negative` fails.** That check can no longer detect a wrong header. Do not
   trust its other results.
+- **`VISIBLE-DATA VIOLATION` in `dash-normal` or `dash-stale`.** One organization's dashboard
+  value was rendered while the switcher showed the other. Treat it as a real isolation defect.
+  The line names the selected organization, the field, the expected value and the observed one.
+- **A `cache (Org …)` line with `PROBLEMS`.** The live query cache holds data or keys of the
+  wrong organization, or the previous organization's cache was not emptied.
+- **A `dash-*` request-header step fails.** The `header analysis:` lines that follow give the
+  B12 `asserts` object and the offending requests; read them as for B12. Every header check
+  waits until the probe and Chrome agree on the request count. A line marked `before probe and
+  Chrome agreed (not a verdict)` is diagnostic only.
+- **`dash-stale` fails on "scenario exercised".** The late response never reached the page
+  (it was still cancelled, or the response was not held). The run proves nothing about
+  late-response handling; it is not a product result.
+- **`dash-negative` fails.** The visible-data check can no longer see a foreign value. Do not
+  trust the other dashboard results.
+- **`seeded data is not the designed, distinguishable data`.** The database was not seeded by
+  this version of the harness. Run `down`, `up` and `seed` again.
+- **`a previous seed attempt did not complete`.** Seeding is not idempotent, so `seed` runs at
+  most once per database, even after a failure. Run `down` and `up` for a fresh one.
 
 - **`post: false` in `b12-normal` or `b12-inflight`.** A request issued after confirmation carried
   another organization's header, or carried no header on an endpoint other than `/auth/me`. Treat
@@ -233,8 +309,9 @@ letters swapped.
   - `MULTI_ORGANIZATION_MEMBERSHIPS_ENABLED=false`;
   - `ALLOW_PUBLIC_REGISTRATION=false`. Seeding verifies that registration returns 403;
   - production mode, with Redis, for every browser phase.
-- **Test data.** Dual's extra memberships are provisioned directly through the application's
-  models on the disposable database. The multi-membership flag is never enabled.
+- **Test data.** Agents (17 in Org A, 3 in Org B) and gateways are created through the real API
+  by each organization's own admin. Dual's extra memberships are provisioned directly
+  through the application's models on the disposable database. The multi-membership flag is never enabled.
 - **Secrets.** Every secret is generated per run. This covers the database password, JWT key,
   bootstrap secret and test-user passwords. They live only in the state directory (by default
   `<system temp>/agenthq-browser-regression`, which must be outside the repository), are passed
@@ -276,38 +353,49 @@ passed`.
 
 ## Limitations (open coverage gaps)
 
-1. **The visible-data check is not yet proven by a negative control.** The injected request in
-   `b12-negative` goes to an endpoint Org B's auditor cannot read (403), so no Org B data can
-   render. In `b9-negative`, the test harness deliberately rewrites one request's header to
-   Org A while Org B is selected. The test user is authorized in both organizations (Admin in A,
-   Auditor in B), so the backend correctly answers 200 with A's dashboard summary. This is the
-   simulated frontend defect working as designed, not an authorization vulnerability. The
-   request-level B9 assertion detects it on every run. The visible-data text check, which looks
-   only for "Agent A" and "Gateway A", does not examine numeric dashboard content, so it neither
-   detects nor rules anything out. These runs give no evidence either way about whether that
-   response was rendered or cached under Org B. Full response and display isolation has **not**
-   been browser-validated. Proving it needs a separate, controlled rendering test with a
-   distinguishable per-organization payload (for example, uniquely named or uniquely counted
-   records in each organization), checking both the rendered page and the query cache. The
-   visible-data checks have never been seen to fail.
-2. **Browser delivery of stale responses is not covered.** In every run, the frontend cancelled
-   all of B's in-flight requests before their responses could be delivered, so the late-response
-   discard path is never reached in the browser. Forcing it would require changing application
-   code. Frontend unit tests cover it, for example
-   `frontend/src/auth/organizationSelection.test.tsx`: "never shows a late response from the
-   previous organization".
-3. **B2 and B15 still use a request-count boundary** (`mark = requests.length`). Neither is
-   exposed to the delivery-lag false positive: B2's mark comes before the first sign-in of the
-   run, and B15 accepts header A or no header, which is all the previous (dual-user) session in A
-   can have sent. Neither has a negative control.
-4. **Browser coverage is limited to the tested Chromium environment.** That is headless Google
-   Chrome 157 on Windows, with Node 24, against local services. Other browsers, other operating
-   systems, hosting platforms and live infrastructure are not covered.
-5. **Non-Windows portability is unproven.** The Linux and macOS code paths have never been run.
+1. **Numeric rendering is verified for two dashboard fields.** The `dash-*` scenarios cover the
+   Total Agents card and the Agents by Risk list on the dashboard, plus the live query cache,
+   with a working negative control (`dash-negative`). Other pages and fields (agents list, audit
+   logs, compliance, risk) are covered only by the older name-based text checks ("Agent A",
+   "Gateway A") in B7, B8 and B12, which have no numeric negative control.
+2. **Stale-response delivery is tested for one endpoint and one timing.** Normally the frontend
+   cancels every in-flight request at the switch, so no late response reaches the page; every
+   other scenario shows that. `dash-stale` suppresses that one cancellation inside the page to
+   force a real late delivery of `GET /api/v1/dashboard/summary`, released after Org B is
+   confirmed and rendered, and shows it is neither rendered nor cached. Other endpoints, other
+   timings (for example, delivery while the new organization is still being confirmed) and
+   multiple concurrent late responses are not covered. The harness also cannot tell which of the
+   two remaining defences discarded the response: the API client's generation check, or the
+   discarded previous `QueryClient`.
+3. **A substituted backend response is not independently rejected by the frontend.** The
+   dashboard payloads carry no organization identifier, so a correct-header request answered
+   with another organization's genuine data is rendered as-is (`dash-negative`). The frontend
+   does not validate tenant ownership of arbitrary backend payloads, and does not claim to: the
+   correctness of what the server returns rests on backend authorization, covered by the backend
+   test suite and, at the request level, by the header checks.
+4. **React-internal cache inspection may need maintenance after frontend upgrades.** The cache
+   assertion finds the `QueryClient` through React's fiber tree (`__reactFiber$…`) and the public
+   TanStack Query API. An upgrade could break that lookup. It then fails explicitly with "no
+   QueryClient found" (or "cache is empty") rather than passing.
+5. **Testing is limited to Chrome on Windows.** That is headless Google Chrome 157 on Windows 11,
+   with Node 24, against local services. Other browsers and operating systems (the Linux and
+   macOS code paths have never been run), hosting platforms and live infrastructure are not
+   covered.
+6. **No application vulnerability has been established by the intentional mismatches.** In
+   `dash-negative` (substituted response), `dash-wrong-header` and `b9-negative` (request
+   deliberately sent with the other organization's header), the harness itself creates the
+   mismatch. The test user is a legitimate member of both organizations, so a 200 for Org A's
+   data is the backend answering correctly for that user. These scenarios prove that the checks
+   detect contamination, not that the application produces it.
 
 Other limitations:
+- **B2 and B15 still use a request-count boundary** (`mark = requests.length`). Neither is
+  exposed to the delivery-lag false positive: B2's mark comes before the first sign-in of the
+  run, and B15 accepts header A or no header, which is all the previous (dual-user) session in A
+  can have sent. Neither has a negative control.
 - **Markup coupling.** The confirmation and switching logic depend on the switcher markup: a
-  `<select>` whose options contain "Rehearsal Org". The race scenario also depends on the
-  `/audit-logs` navigation link.
+  `<select>` whose options contain "Rehearsal Org". The race scenario depends on the
+  `/audit-logs` navigation link. The dashboard sampler depends on the "Total Agents" and
+  "Agents by Risk" labels.
 - **One user, two directions.** The tested paths are a single dual-membership user choosing A
-  and switching A to B (B5, B9) and B back to A (B12).
+  and switching A to B (B5, B9, dashboard) and B back to A (B12, dashboard).

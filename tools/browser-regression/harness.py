@@ -1,16 +1,18 @@
 """Opt-in, local-only browser regression harness for organization selection and switching.
 
-Runs the 16-check browser suite (B1-B16) and the B5/B9 and B12 organization-switch scenarios in
-headless Chrome against a real backend and frontend, using disposable local PostgreSQL and Redis
-containers. Nothing here runs automatically, and every connection target is checked by guard()
-before use. See README.md in this directory.
+Runs the 16-check browser suite (B1-B16), the B5/B9 and B12 organization-switch scenarios and the
+dashboard rendering-isolation scenarios in headless Chrome against a real backend and frontend,
+using disposable local PostgreSQL and Redis containers. Nothing here runs automatically, and
+every connection target is checked by guard() before use. See README.md in this directory.
 
     python harness.py up                         disposable PostgreSQL 18 + Redis, credentials
     python harness.py prepare-tree --ref REF     clean detached worktree of REF to test
     python harness.py seed --tree PATH           isolated test data (multi-membership flag off)
     python harness.py run --tree PATH SCENARIO...  core, b12-normal, b12-inflight, b12-race,
                                                  b12-negative, b5b9-normal, b5b9-inflight,
-                                                 b5b9-race, b5-negative, b9-negative
+                                                 b5b9-race, b5-negative, b9-negative,
+                                                 dash-normal, dash-stale, dash-wrong-header,
+                                                 dash-negative
     python harness.py validate --tree PATH       every scenario above
     python harness.py guard-selftest             prove the safety guards reject unsafe targets
     python harness.py cleanup-selftest           prove cleanup refuses resources it does not own
@@ -61,7 +63,12 @@ TREE_ENV_FILES = (
 )
 B12_SCENARIOS = ("b12-normal", "b12-inflight", "b12-race", "b12-negative")
 B5B9_SCENARIOS = ("b5b9-normal", "b5b9-inflight", "b5b9-race", "b5-negative", "b9-negative")
-SCENARIOS = ("core", *B12_SCENARIOS, *B5B9_SCENARIOS)
+DASH_SCENARIOS = ("dash-normal", "dash-stale", "dash-wrong-header", "dash-negative")
+SCENARIOS = ("core", *B12_SCENARIOS, *B5B9_SCENARIOS, *DASH_SCENARIOS)
+# Deliberately different dashboard data per organization (Step 113): total agents and their risk
+# mix differ, so each organization's rendered dashboard is recognisable. The first agent of each
+# organization keeps its original name and risk ("Agent A" / "Agent B", low).
+SEED_AGENTS = {"a": (17, "medium"), "b": (3, "high")}
 RESULTS: list[tuple[str, bool]] = []
 
 
@@ -707,18 +714,20 @@ print(json.dumps(ids))
         )
         check("[seed] Org C admin deactivates dual's membership (API)", code == 200, str(code))
         for key, token, org in (("a", tok["dual"], st["org"]["a"]), ("b", tok["admin_b"], None)):
-            code, _ = http(
-                "POST",
-                f"{base}/api/v1/agents",
-                {
-                    "name": f"Agent {key.upper()}",
-                    "owner": "owner@rehearsal.example.com",
-                    "department": "governance",
-                    "risk_level": "low",
-                },
-                bearer(token, org),
-            )
-            assert code == 201, code
+            count, extra_risk = SEED_AGENTS[key]
+            for i in range(1, count + 1):
+                code, _ = http(
+                    "POST",
+                    f"{base}/api/v1/agents",
+                    {
+                        "name": f"Agent {key.upper()}" + ("" if i == 1 else f"-{i:02d}"),
+                        "owner": "owner@rehearsal.example.com",
+                        "department": "governance",
+                        "risk_level": "low" if i == 1 else extra_risk,
+                    },
+                    bearer(token, org),
+                )
+                assert code == 201, code
             code, _ = http(
                 "POST",
                 f"{base}/api/v1/mcp-servers",
@@ -729,7 +738,13 @@ print(json.dumps(ids))
                 bearer(token, org),
             )
             assert code == 201, code
-        check("[seed] Agent A + Gateway A in Org A; Agent B + Gateway B in Org B (API)", True)
+        check(
+            "[seed] 17 agents + Gateway A in Org A; 3 agents + Gateway B in Org B (API)",
+            True,
+            ", ".join(
+                f"{k.upper()}: {n} agents, extra risk {r}" for k, (n, r) in SEED_AGENTS.items()
+            ),
+        )
         orm(
             "org = db.scalar(select(Organization).where(Organization.slug == 'rehearsal-org-d'))\n"
             "org.deleted_at = datetime.now(UTC)\ndb.commit()\n"
@@ -767,9 +782,17 @@ def cmd_seed(args: argparse.Namespace) -> None:
     sd, run = load(args)
     if run["seeded"]:
         raise SystemExit("already seeded; 'down' and 'up' again for fresh data")
+    if run.get("seed_started"):
+        # Seeding is not idempotent (bootstrap, agents, memberships): a second attempt on a
+        # partially seeded database would duplicate data, so only a fresh database is accepted.
+        raise SystemExit(
+            "a previous seed attempt did not complete; 'down' and 'up' for a fresh database"
+        )
     tree = Path(args.tree).resolve()
     print(f"tree {tree} at {check_tree(tree)}")
     verify_disposable(run)
+    run["seed_started"] = True
+    save(sd, run)
     st = seed(run, sd, tree)
     (sd / "state.json").write_text(json.dumps(st), encoding="utf-8")
     run["seeded"] = all(ok for _, ok in RESULTS)
@@ -906,6 +929,7 @@ def browser_phase(args: argparse.Namespace, scenarios: list[str]) -> int:
             **os.environ,
             "CDP_PORT": str(ports["cdp"]),
             "APP_ORIGIN": app_origin,
+            "API_BASE": api_base,
             "DUAL_EMAIL": "dual@rehearsal.example.com",
             "DUAL_PW": pw["dual"],
             "SINGLE_EMAIL": "single-a@rehearsal.example.com",
@@ -921,6 +945,8 @@ def browser_phase(args: argparse.Namespace, scenarios: list[str]) -> int:
                 else "b12.mjs"
                 if scenario in B12_SCENARIOS
                 else "b5b9.mjs"
+                if scenario in B5B9_SCENARIOS
+                else "dashboard_isolation.mjs"
             )
             result = subprocess.run(
                 ["node", str(HERE / script)], env={**env, "MODE": scenario}, timeout=900
@@ -953,7 +979,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
     sys.exit(
         browser_phase(
             args,
-            [*B12_SCENARIOS, *B5B9_SCENARIOS] + ["core"] * args.core_runs,
+            [*B12_SCENARIOS, *B5B9_SCENARIOS, *DASH_SCENARIOS] + ["core"] * args.core_runs,
         )
     )
 
@@ -1447,9 +1473,7 @@ def main() -> None:
         p.add_argument("--tree", required=True)
         p.add_argument("--label")
         p.add_argument("--chrome")
-        p.add_argument(
-            "--iterations", type=int, default=10, help="iterations per B12 / B5-B9 scenario"
-        )
+        p.add_argument("--iterations", type=int, default=10, help="iterations per scenario")
         if name == "run":
             p.add_argument("scenarios", nargs="+")
         else:
