@@ -1,6 +1,9 @@
+from collections.abc import Collection
+from datetime import datetime
+from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import CursorResult, func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.tenancy import get_current_organization_id
@@ -77,3 +80,39 @@ def update_approval_pending(db: Session, approval: Approval) -> Approval:
     db.add(approval)
     db.flush()
     return approval
+
+
+def claim_approval_pending(
+    db: Session,
+    approval_id: UUID,
+    *,
+    agent_id: UUID,
+    requested_action: str,
+    allowed_risk_levels: Collection[AgentRiskLevel],
+    execution_id: UUID,
+    consumed_at: datetime,
+) -> bool:
+    """Atomically consume an approved, unused approval for one execution attempt.
+
+    Every condition is re-evaluated inside one conditional UPDATE. Under PostgreSQL row locking a
+    concurrent claim waits for the first and then sees ``consumed_at`` set, so at most one
+    request can succeed. The caller commits.
+    """
+    if not allowed_risk_levels:
+        return False
+    statement = (
+        update(Approval)
+        .where(
+            Approval.id == approval_id,
+            Approval.organization_id == get_current_organization_id(db),
+            Approval.agent_id == agent_id,
+            Approval.requested_action == requested_action,
+            Approval.status == ApprovalStatus.APPROVED,
+            Approval.consumed_at.is_(None),
+            Approval.risk_level.in_(list(allowed_risk_levels)),
+        )
+        .values(consumed_at=consumed_at, consumed_by_execution_id=execution_id)
+        .execution_options(synchronize_session=False)
+    )
+    result = cast(CursorResult[Any], db.execute(statement))
+    return result.rowcount == 1

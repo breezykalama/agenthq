@@ -32,6 +32,8 @@ class ApprovalRead(BaseModel):
     decision_reason: str | None
     requested_at: datetime
     decided_at: datetime | None
+    consumed_at: datetime | None = None
+    consumed_by_execution_id: UUID | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

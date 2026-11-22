@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.approval_risk import approval_risk_covers
 from app.core.security import assert_resource_in_org, log_resource_access_denied
 from app.models.agent import AgentRiskLevel, utc_now
 from app.models.approval import ApprovalStatus
@@ -58,7 +59,12 @@ def create_execution(db: Session, execution_create: ExecutionCreate) -> Executio
             raise ExecutionAgentNotFoundError
 
         if execution_create.approval_id is not None:
-            validate_approval(db, execution_create.agent_id, execution_create.approval_id)
+            validate_approval(
+                db,
+                execution_create.agent_id,
+                execution_create.approval_id,
+                execution_create.risk_level,
+            )
 
         policy_decision = evaluate_policy_decision(db, execution_create)
         values = execution_create.model_dump(exclude_none=True)
@@ -196,7 +202,7 @@ def update_execution(
 
     approval_id = values.get("approval_id")
     if isinstance(approval_id, UUID):
-        validate_approval(db, execution.agent_id, approval_id)
+        validate_approval(db, execution.agent_id, approval_id, execution.risk_level)
 
     status = values.get("status")
     if isinstance(status, ExecutionStatus) and status in TERMINAL_STATUSES:
@@ -260,12 +266,24 @@ def audit_execution_state_event(
     )
 
 
-def validate_approval(db: Session, agent_id: UUID, approval_id: UUID) -> None:
+def validate_approval(
+    db: Session,
+    agent_id: UUID,
+    approval_id: UUID,
+    risk_level: object,
+) -> None:
+    """Recorded executions never call an upstream system, so they do not consume an approval.
+
+    They may still reference only an approval that is unused (the gateway consumes it for its
+    single external execution) and at least as risky as the recorded execution.
+    """
     approval = approval_repository.get_approval_by_id(db, approval_id)
     if (
         approval is None
         or approval.agent_id != agent_id
         or approval.status != ApprovalStatus.APPROVED
+        or approval.consumed_at is not None
+        or not approval_risk_covers(approval.risk_level, risk_level)
     ):
         audit_log_service.record_event(
             db,

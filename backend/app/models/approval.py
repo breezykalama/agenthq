@@ -46,6 +46,15 @@ class Approval(Base):
     decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Single use: an approved request authorizes at most one gateway execution attempt. Set once,
+    # atomically, before the upstream call, and never cleared. The execution ID is reserved
+    # before the claim and is deliberately not a foreign key: the claim is committed before the
+    # execution row exists, and must survive even if that row is never written.
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    consumed_by_execution_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=True,
+    )
 
 
 Index("ix_approvals_agent_id_requested_at", Approval.agent_id, Approval.requested_at)

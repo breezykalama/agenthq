@@ -2,12 +2,14 @@ import hashlib
 import secrets
 from datetime import UTC, datetime
 from time import monotonic
-from uuid import UUID
+from typing import NoReturn
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
 from app.adapters.mcp_discovery import MCPDiscoveryTarget
 from app.adapters.mcp_execution import MCPExecutionAdapter, MCPExecutionError
+from app.core.approval_risk import approval_risk_covers, covering_risk_levels
 from app.core.audit_context import AUDIT_ACTOR_ROLE
 from app.core.tenancy import get_current_organization_id, set_current_organization_id
 from app.models.agent import Agent, AgentStatus
@@ -361,7 +363,7 @@ def call_gateway_tool(
             db.commit()
             return response
     tool = require_gateway_tool(db, server.id, server.agent_id, tool_id)
-    approval_id = validate_gateway_approval(db, tool.agent_id, tool.name, call.approval_id)
+    approval_id = validate_gateway_approval(db, tool, call.approval_id)
     decision = execution_service.evaluate_policy_decision(
         db,
         ExecutionCreate(
@@ -382,6 +384,7 @@ def call_gateway_tool(
         },
     )
     status = ExecutionStatus.PENDING
+    execution_id: UUID | None = None
     action = AuditAction.MCP_GATEWAY_CALL_SUCCEEDED
     outcome = AuditOutcome.SUCCESS
     result: dict[str, object] | None = None
@@ -396,6 +399,11 @@ def call_gateway_tool(
         action = AuditAction.MCP_GATEWAY_CALL_REQUIRES_APPROVAL
         outcome = AuditOutcome.DENIED
     else:
+        if approval_id is not None:
+            # The approval authorizes exactly this one upstream attempt. It is consumed and
+            # committed before the call, and never restored, whatever the upstream outcome.
+            execution_id = uuid4()
+            claim_gateway_approval(db, token, tool, approval_id, execution_id)
         started = monotonic()
         try:
             result = adapter.call_tool(
@@ -420,6 +428,7 @@ def call_gateway_tool(
         result=result,
         error=error,
         input_payload=call.input_payload,
+        execution_id=execution_id,
     )
     response = MCPGatewayToolCallResponse(
         execution_id=execution.id,
@@ -532,31 +541,80 @@ def require_gateway_tool(
 
 def validate_gateway_approval(
     db: Session,
-    agent_id: UUID,
-    tool_name: str,
+    tool: AgentTool,
     approval_id: UUID | None,
 ) -> UUID | None:
     if approval_id is None:
         return None
     approval = approval_repository.get_approval_by_id(db, approval_id)
+    reason: str | None = None
     if (
         approval is None
-        or approval.agent_id != agent_id
+        or approval.agent_id != tool.agent_id
         or approval.status != ApprovalStatus.APPROVED
-        or approval.requested_action != tool_name
+        or approval.requested_action != tool.name
     ):
-        audit_log_service.record_event(
-            db,
-            action=AuditAction.SECURITY_ACCESS_DENIED,
-            resource_type="approval",
-            resource_id=approval_id,
-            outcome=AuditOutcome.DENIED,
-            reason="Approval was invalid for the requested gateway tool call.",
-            metadata={"attempted_action": "mcp_gateway.call"},
-            actor="gateway",
-        )
-        raise MCPGatewayApprovalInvalidError
+        reason = "Approval was invalid for the requested gateway tool call."
+    elif approval.consumed_at is not None:
+        reason = "Approval has already been used."
+    elif not approval_risk_covers(approval.risk_level, tool.risk_level):
+        reason = "Approval risk level is lower than the tool's risk level."
+    if reason is not None or approval is None:
+        deny_gateway_approval(db, approval_id, reason or "Approval was invalid.")
+    assert approval is not None
     return approval.id
+
+
+def claim_gateway_approval(
+    db: Session,
+    token: MCPGatewayToken,
+    tool: AgentTool,
+    approval_id: UUID,
+    execution_id: UUID,
+) -> None:
+    claimed = approval_repository.claim_approval_pending(
+        db,
+        approval_id,
+        agent_id=tool.agent_id,
+        requested_action=tool.name,
+        allowed_risk_levels=covering_risk_levels(tool.risk_level),
+        execution_id=execution_id,
+        consumed_at=datetime.now(UTC),
+    )
+    if not claimed:
+        # Lost a concurrent race, or the approval changed after validation.
+        deny_gateway_approval(db, approval_id, "Approval has already been used.")
+    audit_log_service.create_critical_audit_log(
+        db,
+        AuditLogCreate(
+            actor=f"gateway:{token.id}",
+            action=AuditAction.APPROVAL_CONSUMED,
+            entity_type="approval",
+            entity_id=approval_id,
+            reason="Approval consumed by a gateway tool call.",
+            metadata={
+                "gateway_token_id": str(token.id),
+                "execution_id": str(execution_id),
+                "agent_id": str(tool.agent_id),
+                "tool_id": str(tool.id),
+            },
+        ),
+    )
+    db.commit()
+
+
+def deny_gateway_approval(db: Session, approval_id: UUID, reason: str) -> NoReturn:
+    audit_log_service.record_event(
+        db,
+        action=AuditAction.SECURITY_ACCESS_DENIED,
+        resource_type="approval",
+        resource_id=approval_id,
+        outcome=AuditOutcome.DENIED,
+        reason=reason,
+        metadata={"attempted_action": "mcp_gateway.call"},
+        actor="gateway",
+    )
+    raise MCPGatewayApprovalInvalidError
 
 
 def create_gateway_execution(
@@ -570,6 +628,7 @@ def create_gateway_execution(
     result: dict[str, object] | None,
     error: str | None,
     input_payload: dict[str, object],
+    execution_id: UUID | None = None,
 ) -> Execution:
     completed_at = (
         datetime.now(UTC)
@@ -579,6 +638,8 @@ def create_gateway_execution(
     execution = execution_repository.create_execution_pending(
         db,
         {
+            # An execution that consumed an approval uses the ID reserved by that claim.
+            **({"id": execution_id} if execution_id is not None else {}),
             "agent_id": tool.agent_id,
             "tool_id": tool.id,
             "action_name": tool.name,
