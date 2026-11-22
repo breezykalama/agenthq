@@ -13,14 +13,23 @@ This runbook does not authorize any deployment. Every rollback, roll-forward or 
 change still needs the normal release approval. No secrets or environment values belong in this
 document; use the deployment platform's secret store for every value referenced below.
 
+**This copy, in the release commit `cd43d1f`, is authoritative.** The rollback branches carry
+older copies of this file (`c7ed2e8` has the earlier `e53f81e` version, which lacks the
+corrections in this one). Never follow the runbook from a rollback checkout.
+
 ## 1. Commits
 
 | Role | Branch | Commit | Use |
 |---|---|---|---|
-| Secured release | `feature/v0.8.2-membership-safety` | `e53f81ed83f28e4636882b4e975a11c0f4ca09b1` | The release being recovered from or rolled forward to |
+| Secured release | `feature/v0.8.2-membership-safety` | `cd43d1f5ce18ca83f93d84694315459b5ef0fc8e` | The release being recovered from or rolled forward to |
 | **Primary rollback** | `rollback/v0.8.2-security-compat` | `c7ed2e8a347238e8ba428f74244c2e56a1cd6913` | Frontend recovery (section 2) |
 | Conditional, exceptional | `rollback/v0.8.2-compat` | `c763f56dbcd9db357915e77884c09fa25d2c957c` | Older backend, only after every section 12 precheck passes |
-| Never after multiple memberships exist | `release/v0.8.1-identity-hardening`, `rollback/v0.8.1-compat` | `c5d0bd3`, `fa29850` | See section 3 |
+| Pre-release staging baseline; restricted | `release/v0.8.1-identity-hardening` | `c5d0bd359634444dfadea8a6cd1b8026ab304c60` | Only after every section 12.6 check passes; never automatically (sections 3, 13, 14) |
+| Never after multiple memberships exist; restricted | `rollback/v0.8.1-compat` | `fa29850b67c6c1378b4240e46e34dab399450391` | See section 3 |
+
+The release `cd43d1f` has the same application as `e53f81e`: the two differ only in this runbook
+and in `tools/browser-regression/`, which are not part of either build. Verify (prints nothing):
+`git diff e53f81e cd43d1f -- backend frontend Dockerfile render.yaml docker-compose.yml`.
 
 The primary rollback `c7ed2e8` is the secured release with only `frontend/` restored from `c763f56`:
 
@@ -30,7 +39,8 @@ The primary rollback `c7ed2e8` is the secured release with only `frontend/` rest
   therefore keeps every backend protection of the release (section 10).
 * `frontend/` is byte-identical to `c763f56`, the frontend rehearsed in the first rollback
   rehearsal and again in section 16.
-* Verify before use (both commands print nothing when the trees match):
+* Verify before use (each command prints nothing when the trees match):
+  `git diff cd43d1f c7ed2e8 -- . ':(exclude)frontend' ':(exclude)docs' ':(exclude)tools'`,
   `git diff e53f81e c7ed2e8 -- . ':(exclude)frontend'` and `git diff c763f56 c7ed2e8 -- frontend`.
 
 **It is a frontend recovery artifact.** Its backend is the release backend, so it cannot repair any
@@ -60,7 +70,12 @@ acceptable only under the conditions in section 12.
 Abort any recovery that meets a section 14 condition. Where the security effect of a recovery is
 uncertain, do not roll back the backend: contain and fix forward.
 
-## 3. Never roll back to these once multiple memberships exist
+## 3. Restricted older builds (`c5d0bd3`, `fa29850`)
+
+Returning to either build restores older security behaviour. Neither is ever restored
+automatically, including by an abort (section 14). A multi-membership count of `0` is
+**necessary but not sufficient**: `c5d0bd3` additionally requires every section 12.6 check, and
+`fa29850` is not a recovery candidate for this release.
 
 Do **not** use either of these while any user has two or more active memberships (section 11
 query):
@@ -104,7 +119,7 @@ The primary rollback needs no new variable and no variable change.
 
 * Primary rollback: the frontend deployment must show commit
   `c7ed2e8a347238e8ba428f74244c2e56a1cd6913` (or a recorded earlier deployment of `c763f56`),
-  built with the production `VITE_API_BASE_URL`. The backend stays on the release (`e53f81e`).
+  built with the production `VITE_API_BASE_URL`. The backend stays on the release (`cd43d1f`).
 * If the backend is redeployed for artifact parity, its deployment must show `c7ed2e8` and the
   Docker image digest built from the root `Dockerfile`; the code is identical to the release.
 * `/health` does not report a version: record commits and image digests from the platform's
@@ -289,11 +304,54 @@ possible in time, and the authorizing operator. **Missing, incomplete or uncerta
 the procedure.** After the rollback, run sections 7–11 and repeat 12.2–12.4; any change aborts the
 rollback (section 14).
 
+### 12.6 Restoring the pre-release staging backend (`c5d0bd3`)
+
+`c5d0bd3` is the backend deployed before this release. Restoring it brings back older security
+behaviour: it lacks organization selection, the second-membership guard and invite-lockout fix,
+recovery of uncertain invitation acceptance, the deleted-organization gateway check, the removal
+of the implicit-membership fallback, and registration disabled by default (outside production it
+is open by default, the first registrant becomes an administrator, and registrants join a sole
+`default-organization`). Its frontend also ships production dependencies with known advisories
+(`axios` 1.17.0, `react-router-dom` 7.17.0 and transitive packages), fixed in `c763f56`.
+
+Prefer, in order: the primary rollback (frontend faults), containment and fix-forward (backend
+faults), then `c763f56` under 12.1–12.5. Restore `c5d0bd3` only when none of these is possible,
+and only when **every** check below passes, measured immediately before the change, with the
+evidence and authorization required by 12.5:
+
+1. The section 11 multi-membership count is `0`.
+2. No pending, unexpired invitation would give an existing member a second organization
+   (`c5d0bd3` has no guard, and accepting one locks that user out). The count must be `0`:
+   ```sql
+   SELECT count(*) FROM organization_invites i JOIN users u ON lower(u.email) = lower(i.email)
+   WHERE i.status = 'pending' AND i.expires_at > now() AND EXISTS (
+     SELECT 1 FROM organization_memberships m JOIN organizations o ON o.id = m.organization_id
+     WHERE m.user_id = u.id AND m.is_active AND o.deleted_at IS NULL
+       AND m.organization_id <> i.organization_id);
+   ```
+3. `ENVIRONMENT=production`, confirmed as in 12.2 (otherwise the fallback and default-open
+   registration return).
+4. `ALLOW_PUBLIC_REGISTRATION=false` set explicitly, confirmed as in 12.3.
+5. The 12.2 fallback preconditions are false, with a recorded freeze on organization changes for
+   the whole window.
+6. The 12.4 deleted-organization token count is `0`.
+7. A recorded frontend decision: the `c5d0bd3` frontend (known dependency advisories) or the
+   patched `c7ed2e8` frontend (never run against the `c5d0bd3` backend).
+8. `alembic_version` is `202611170001`, `JWT_SECRET_KEY` is unchanged and `REDIS_URL` is present.
+
+After the change, run sections 7–11 and repeat checks 1–6; any change aborts it.
+
 ## 13. Restoring the previous artifact
 
 Redeploy the deployment IDs recorded in section 6 (by commit and image digest, not by branch
 name). The schema is shared, so no database step is needed in either direction. Repeat sections
 7–11 afterwards.
+
+**When the recorded previous backend is `c5d0bd3`** (the first v0.8.2 deployment over the v0.8.1
+staging baseline), restoring it is not automatic: it is allowed only after every section 12.6 check
+passes. Otherwise keep the release backend, contain, and fix forward (section 15). A recorded
+frontend deployment may be restored freely only if it is the release or `c7ed2e8`/`c763f56`
+frontend; restoring the `c5d0bd3` frontend is part of the 12.6 decision.
 
 ## 14. Abort immediately if
 
@@ -311,8 +369,10 @@ name). The schema is shared, so no database step is needed in either direction. 
 * An older backend is selected without the recorded section 12 evidence, or any section 12 check
   fails.
 
-Abort means: restore the recorded artifacts (section 13) and escalate; do not retry with an older
-build.
+Abort means: stop the change, escalate, and restore the recorded artifacts under section 13. An
+abort never restores `c5d0bd3` or `fa29850` by itself: if the recorded backend is `c5d0bd3`,
+section 12.6 applies; if it fails, keep the release backend, contain and fix forward. Do not retry
+with an older build.
 
 ## 15. Fix-forward when shared backend code is defective
 
@@ -327,8 +387,9 @@ or bootstrap.
 3. Do not deactivate or delete memberships to work around the defect.
 4. Reproduce with the tests listed at the top; fix on a new branch from the secured release;
    release it through the normal review, with sections 7–11 as the acceptance checks.
-5. `c763f56` is acceptable only under section 12; older builds only if the multi-membership count
-   is `0` and their missing protections are acceptable for the situation.
+5. `c763f56` is acceptable only under sections 12.1–12.5 and `c5d0bd3` only under section 12.6.
+   A multi-membership count of `0` is never sufficient on its own. `fa29850` is not a recovery
+   candidate for this release.
 
 ## 16. Rehearsal evidence (local only)
 
@@ -346,7 +407,7 @@ not a hosted-deployment or production validation.
 | Primary rollback backend `c7ed2e8` | 21/21 |
 | Roll-forward backend `e53f81e` | 21/21 |
 | Negative control `c763f56` (development, separate database) | 9/9 |
-| Core browser scenarios (picker, switching, roles, cache isolation, organization header) | 16/16 on the release, the rollback and the roll-forward; on the release the first run was 15/16 because of the harness race in section 19, and the two reruns were 16/16 |
+| Core browser scenarios (picker, switching, roles, cache isolation, organization header) | 16/16 on the release, the rollback and the roll-forward; on the release the first run was 15/16 because of a B12 harness race (since fixed; section 16.1), and the two reruns were 16/16 |
 | Additional rollback browser workflows | passed: session survives the transition; legacy registration form receives `403`; older bootstrap dialog sends the secret only in `X-Bootstrap-Secret` and receives `409`; invitation acceptance on the older frontend |
 
 * Alembic stayed at `202611170001`; every startup was a no-op.
@@ -358,6 +419,26 @@ not a hosted-deployment or production validation.
   open with the setting unset, the fallback creating an admin membership for an account without
   one, and a registrant attached to `default-organization`; the section 12 checks flagged it.
 * All containers, worktrees and generated credentials were removed afterwards.
+
+### 16.1 Release-candidate evidence for `cd43d1f` (local only)
+
+Disposable PostgreSQL 18 and Redis, production mode, `MULTI_ORGANIZATION_MEMBERSHIPS_ENABLED=false`.
+Not a hosted-deployment or production validation.
+
+| Check | Release `cd43d1f` | Primary rollback `c7ed2e8` |
+|---|---|---|
+| Browser harness, all scenarios, 10 iterations each | 19/19 | 19/19 |
+| B12 (switch back to the previous organization), including negative control | 4 scenarios, 10/10 each | 4 scenarios, 10/10 each |
+| B5/B9 (first selection and switch; issuance-ordered request boundaries), including two negative controls | 5 scenarios, 10/10 each | 5 scenarios, 10/10 each |
+| Dashboard rendering and query-cache isolation (`dash-normal`, `dash-stale`, `dash-wrong-header`, `dash-negative`) | 4 scenarios, 10/10 each | 4 scenarios, 10/10 each |
+| Core browser suite | 3 × 16/16 | 3 × 16/16 |
+| Backend test suite, PostgreSQL tests included | 664 passed, 0 failed, 0 skipped | same backend |
+| Frontend unit tests | 93/93 | not run |
+
+The dashboard checks compare the rendered Total Agents card and Agents by Risk list, in every
+recorded frame and after each switch, and the live query cache, against each organization's
+distinct seeded values (17 and 3 agents). Their negative controls (a substituted response, a
+request with the wrong header) were detected on every run.
 
 ## 17. Future migrations
 
@@ -384,11 +465,13 @@ weakens the backend:
 
 ## 19. Open issues
 
-* **Browser rehearsal B12 (test harness):** the check that no request carries the previous
-  organization after switching back counts requests issued before the switch. In one release run
-  it counted seven header-B requests, all issued before the switch and none after. The assertion
-  must be changed to compare request issuance against a confirmed organization-switch boundary;
-  this is not yet done.
+* **Browser coverage limits.** Browser checks do not establish full tenant isolation; backend
+  authorization is covered by the backend test suite. Numeric rendering is checked for two
+  dashboard fields only; other pages rely on name-based text checks. Late-response delivery is
+  forced for one endpoint and one timing. A substituted backend response is rendered as-is (the
+  payloads carry no organization identifier), so backend authorization is the control. One
+  dual-membership user, Chrome on Windows, local services only; B2 and B15 still use a
+  request-count boundary. See `tools/browser-regression/README.md`.
 * The bootstrap page's success message is not shown (the organization change remounts the page
   and the user lands on the dashboard).
 * Not covered by the committed test suite: real-browser behavior (exercised only by local
